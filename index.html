@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chelan County Campus — Interactive 3D Map & Terrain</title>
+    <link rel="stylesheet" href="./css/styles.css?v=6" />
+</head>
+<body>
+    <!-- 3D WebGL + CSS2D Viewport -->
+    <div id="viewport-container"></div>
+
+    <!-- Top Civic Header Bar -->
+    <header class="top-header">
+        <div class="brand-group">
+            <div class="brand-crest">CC</div>
+            <div class="brand-titles">
+                <h1>Chelan County Government Campus — 3D Topographic Space</h1>
+                <p>USGS 3DEP Elevation (660–790 ft ASL) • 350 Orondo • 400 Douglas • 300–412 Washington St</p>
+            </div>
+        </div>
+
+        <div class="header-controls">
+            <div class="control-pill" title="Adjust Sun & Time of Day">
+                <span>☀️ Time:</span>
+                <input id="time-slider" type="range" min="6" max="22" step="0.25" value="14" />
+                <strong id="time-display">2:00 PM</strong>
+            </div>
+
+            <label class="control-pill">
+                <input id="toggle-satellite" type="checkbox" />
+                <span>Satellite Texture</span>
+            </label>
+
+            <label class="control-pill">
+                <input id="toggle-contours" type="checkbox" checked />
+                <span>Topo Contours (2m)</span>
+            </label>
+
+            <label class="control-pill">
+                <input id="toggle-context" type="checkbox" />
+                <span>Surrounding City</span>
+            </label>
+
+            <label class="control-pill">
+                <input id="toggle-labels" type="checkbox" />
+                <span>3D Pins</span>
+            </label>
+
+            <label class="control-pill" title="Toggle High-Performance GPU Acceleration (Shadows, High-DPI, Anisotropy & Sky Shader)">
+                <input id="toggle-gpu" type="checkbox" checked />
+                <span>⚡ GPU Accel</span>
+            </label>
+
+            <button id="btn-top-cam" class="btn-action">Top View</button>
+            <button id="btn-reset-cam" class="btn-action primary">Reset Orbit</button>
+        </div>
+    </header>
+
+    <!-- Left Sidebar: Campus Buildings & Departments Directory -->
+    <aside class="sidebar-left">
+        <div class="sidebar-search">
+            <input
+                id="campus-search"
+                type="text"
+                placeholder="Search buildings, addresses, departments (e.g. 300, 316, 400, 411/412)..."
+            />
+        </div>
+        <div id="building-list" class="building-list"></div>
+    </aside>
+
+    <!-- Right Inspector: Selected Building Details & Floor Directory -->
+    <section id="building-detail-card" class="detail-card">
+        <div class="detail-top">
+            <span id="detail-code" class="bldg-badge">350</span>
+            <button id="close-detail-btn" class="close-btn" title="Close Inspector">✕</button>
+        </div>
+        <h2 id="detail-name">Chelan County Courthouse (350 Orondo)</h2>
+        <div id="detail-address">350 Orondo Ave, Wenatchee, WA 98801</div>
+        <p id="detail-summary"></p>
+
+        <div class="detail-specs">
+            <div>
+                <span>Structure</span>
+                <strong id="detail-floors">5 Stories</strong>
+            </div>
+            <div>
+                <span>USGS 3DEP Elevation</span>
+                <strong id="detail-year">730.6 ft (222.7m ASL)</strong>
+            </div>
+            <div>
+                <span>Public Hours</span>
+                <strong id="detail-hours">Mon–Fri 8:30–5:00</strong>
+            </div>
+            <div>
+                <span>Main Phone</span>
+                <strong id="detail-phone">(509) 667-6800</strong>
+            </div>
+        </div>
+
+        <div class="dept-section-title">Floor & Department Directory</div>
+        <div id="detail-departments" class="dept-list"></div>
+    </section>
+
+    <!-- Bottom-Right: 3D Wall & Terrain Foundry Studio -->
+    <section id="foundry-drawer" class="foundry-drawer">
+        <div class="foundry-header">
+            <h3>🧱⛰️ 3D Wall & Terrain Foundry</h3>
+            <button id="btn-toggle-foundry" class="btn-action" style="padding: 3px 9px; font-size: 11px;">
+                Minimize / Expand
+            </button>
+        </div>
+
+        <div class="foundry-body foundry-grid">
+            <div class="foundry-row">
+                <span>Selected Building:</span>
+                <strong id="foundry-target-name" style="color: #38bdf8;">350 Orondo — Courthouse</strong>
+            </div>
+
+            <div class="foundry-row">
+                <label for="foundry-wall-style">Wall Architecture:</label>
+                <select id="foundry-wall-style">
+                    <option value="classical-cream-brick">Classical Cream Brick & Arches</option>
+                    <option value="historic-brick-limestone">Historic Brick & Limestone</option>
+                    <option value="civic-brick-precast">Civic Brick & Precast</option>
+                    <option value="ribbed-concrete-brick">Ribbed Concrete & Masonry</option>
+                    <option value="fortified-precast">Fortified Security Precast</option>
+                    <option value="modern-brick-curtainwall">Modern Curtain Wall & Brick</option>
+                </select>
+            </div>
+
+            <div class="foundry-row">
+                <span>Masonry & Trim Colors:</span>
+                <div style="display: flex; gap: 6px;">
+                    <input id="foundry-wall-color" type="color" value="#b85d43" title="Primary Wall Color" />
+                    <input id="foundry-trim-color" type="color" value="#e6dec8" title="Limestone / Trim Color" />
+                </div>
+            </div>
+
+            <div class="foundry-row">
+                <label for="foundry-mortar-depth">Wall Relief / Mortar Bump:</label>
+                <input id="foundry-mortar-depth" type="range" min="0" max="1.5" step="0.05" value="0.65" />
+            </div>
+
+            <div class="foundry-row">
+                <label for="foundry-window-glow">Office Window Illumination:</label>
+                <input id="foundry-window-glow" type="range" min="0" max="1.5" step="0.05" value="0.35" />
+            </div>
+
+            <div class="foundry-divider"></div>
+
+            <div class="foundry-row">
+                <label for="foundry-terrain-exag">Terrain Vertical Scale (<strong id="foundry-terrain-exag-val">1.0×</strong>):</label>
+                <input id="foundry-terrain-exag" type="range" min="1.0" max="3.0" step="0.25" value="1.0" />
+            </div>
+        </div>
+    </section>
+
+    <script defer src="./js/campus-bundle.js?v=69"></script>
+</body>
+</html>
