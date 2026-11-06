@@ -124,6 +124,30 @@ class ChelanCampus3DApp {
         this.selectionRing.visible = false;
         this.scene.add(this.selectionRing);
 
+        // Bulldozer 1m x 1m Square Cursor Highlight
+        this.bulldozerActive = false;
+        this.bulldozerGroup = new THREE.Group();
+        this.bulldozerGroup.name = 'Bulldozer1mCursor';
+        this.bulldozerGroup.visible = false;
+        const bBoxGeo = new THREE.BoxGeometry(1.0, 0.3048, 1.0);
+        const bFillMat = new THREE.MeshBasicMaterial({
+            color: '#f59e0b',
+            transparent: true,
+            opacity: 0.35,
+            depthTest: false
+        });
+        const bEdgesGeo = new THREE.EdgesGeometry(bBoxGeo);
+        const bLineMat = new THREE.LineBasicMaterial({
+            color: '#fde047',
+            depthTest: false
+        });
+        const bFillMesh = new THREE.Mesh(bBoxGeo, bFillMat);
+        bFillMesh.position.y = -0.3048 * 0.5;
+        const bWireMesh = new THREE.LineSegments(bEdgesGeo, bLineMat);
+        bWireMesh.position.y = -0.3048 * 0.5;
+        this.bulldozerGroup.add(bFillMesh, bWireMesh);
+        this.scene.add(this.bulldozerGroup);
+
         this.setTimeOfDay(14.0);
     }
 
@@ -453,7 +477,67 @@ class ChelanCampus3DApp {
             this.clearSelection();
         });
 
-        this.selectBuilding('courthouse-350', false);
+        this.clearSelection();
+        const optBtn = document.getElementById('btn-toggle-options');
+        if (optBtn) {
+            optBtn.addEventListener('click', () => {
+                const hidden = document.body.classList.toggle('options-hidden');
+                optBtn.textContent = hidden ? '⚙️ Options' : '✕ Hide Options';
+            });
+        }
+
+        // Bulldozer Tool UI Controls (1m x 1m square lowered by 1 foot per click/drag)
+        const bulldozeBtn = document.getElementById('btn-bulldozer-tool');
+        const undoBtn = document.getElementById('btn-bulldozer-undo');
+        const clearBtn = document.getElementById('btn-bulldozer-clear');
+        const readoutEl = document.getElementById('bulldozer-readout');
+
+        const syncBulldozerButtons = () => {
+            const hasEdits = this.groundFoundry.bulldozedCells && this.groundFoundry.bulldozedCells.size > 0;
+            if (undoBtn) undoBtn.classList.toggle('hidden', !this.bulldozerActive && !hasEdits);
+            if (clearBtn) clearBtn.classList.toggle('hidden', !this.bulldozerActive && !hasEdits);
+            if (readoutEl) readoutEl.classList.toggle('hidden', !this.bulldozerActive);
+        };
+        this._syncBulldozerButtons = syncBulldozerButtons;
+
+        if (bulldozeBtn) {
+            bulldozeBtn.addEventListener('click', () => {
+                this.bulldozerActive = !this.bulldozerActive;
+                bulldozeBtn.classList.toggle('active', this.bulldozerActive);
+                this.controls.enableRotate = !this.bulldozerActive;
+                this.renderer.domElement.style.cursor = this.bulldozerActive ? 'crosshair' : 'default';
+                if (!this.bulldozerActive) {
+                    this.bulldozerGroup.visible = false;
+                }
+                syncBulldozerButtons();
+            });
+        }
+        if (undoBtn) {
+            undoBtn.addEventListener('click', () => {
+                if (this.groundFoundry.undoBulldoze()) {
+                    this._refreshBulldozeDependents();
+                    syncBulldozerButtons();
+                }
+            });
+        }
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                if (this.groundFoundry.clearAllBulldoze()) {
+                    this._refreshBulldozeDependents();
+                    syncBulldozerButtons();
+                }
+            });
+        }
+        syncBulldozerButtons();
+    }
+
+    _refreshBulldozeDependents() {
+        // Re-spawn Building 316 so its terrain-contoured Douglas St grass & sidewalk follow any bulldozed terrain
+        const b316 = CAMPUS_DATA.campusBuildings.find((b) => b.code === '316' || b.id === 'building-316');
+        if (b316) {
+            this._spawnCampusBuilding(b316);
+        }
+        this.renderer.shadowMap.needsUpdate = true;
     }
 
     _renderBuildingDirectory(query) {
@@ -610,11 +694,82 @@ class ChelanCampus3DApp {
         });
 
         let pointerDownPos = { x: 0, y: 0 };
+        let isBulldozeDragging = false;
+        let lastBulldozedCellKey = null;
+        const readoutEl = document.getElementById('bulldozer-readout');
+
+        const raycastTerrainPoint = (clientX, clientY) => {
+            const targetMesh = this.groundFoundry.innerTerrainMesh;
+            if (!targetMesh) return null;
+            const rect = this.renderer.domElement.getBoundingClientRect();
+            this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+            this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+            this.raycaster.setFromCamera(this.pointer, this.camera);
+            const hits = this.raycaster.intersectObject(targetMesh, false);
+            return hits.length > 0 ? hits[0].point : null;
+        };
+
+        const applyBulldozeAtPoint = (pt, shiftKey = false) => {
+            const ix = Math.floor(pt.x);
+            const iz = Math.floor(pt.z);
+            const cellKey = `${ix},${iz}`;
+            if (isBulldozeDragging && cellKey === lastBulldozedCellKey) return;
+            lastBulldozedCellKey = cellKey;
+
+            const deltaSteps = shiftKey ? -1 : 1; // 1 foot down per step (Shift+Click raises 1 foot)
+            const res = this.groundFoundry.bulldoze1mSquare(pt.x, pt.z, deltaSteps);
+            const newY = this.groundFoundry.getTerrainHeight(ix + 0.5, iz + 0.5);
+            this.bulldozerGroup.position.set(ix + 0.5, newY + 0.02, iz + 0.5);
+            this.bulldozerGroup.visible = true;
+            if (readoutEl) {
+                readoutEl.textContent = `1m×1m [${ix}, ${iz}] • Lowered -${res.feetLowered} ft (${(res.feetLowered * 0.3048).toFixed(2)}m)`;
+            }
+            if (this._syncBulldozerButtons) this._syncBulldozerButtons();
+        };
+
+        this.renderer.domElement.addEventListener('pointermove', (e) => {
+            if (!this.bulldozerActive) return;
+            const pt = raycastTerrainPoint(e.clientX, e.clientY);
+            if (!pt) {
+                this.bulldozerGroup.visible = false;
+                return;
+            }
+            const ix = Math.floor(pt.x);
+            const iz = Math.floor(pt.z);
+            const cy = this.groundFoundry.getTerrainHeight(ix + 0.5, iz + 0.5);
+            this.bulldozerGroup.position.set(ix + 0.5, cy + 0.02, iz + 0.5);
+            this.bulldozerGroup.visible = true;
+
+            if (isBulldozeDragging && (e.buttons & 1)) {
+                applyBulldozeAtPoint(pt, e.shiftKey);
+            } else if (readoutEl) {
+                const curSteps = this.groundFoundry.bulldozedCells.get(`${ix},${iz}`) || 0;
+                readoutEl.textContent = `1m×1m [${ix}, ${iz}] • Current: -${curSteps} ft (Click: -1 ft | Shift+Click: +1 ft)`;
+            }
+        });
+
         this.renderer.domElement.addEventListener('pointerdown', (e) => {
             pointerDownPos = { x: e.clientX, y: e.clientY };
+            if (this.bulldozerActive && e.button === 0) {
+                const pt = raycastTerrainPoint(e.clientX, e.clientY);
+                if (pt) {
+                    isBulldozeDragging = true;
+                    lastBulldozedCellKey = null;
+                    applyBulldozeAtPoint(pt, e.shiftKey);
+                }
+            }
+        });
+
+        window.addEventListener('pointerup', () => {
+            if (isBulldozeDragging) {
+                isBulldozeDragging = false;
+                lastBulldozedCellKey = null;
+                this._refreshBulldozeDependents();
+            }
         });
 
         this.renderer.domElement.addEventListener('pointerup', (e) => {
+            if (this.bulldozerActive) return;
             const moveDist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
             if (moveDist > 6) return;
 

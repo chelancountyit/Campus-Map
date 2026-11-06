@@ -1,0 +1,612 @@
+import * as THREE from 'three';
+
+export function buildBuilding400GroundsAndSidewalks(ctx) {
+    const {
+        foundry, arch, addBox, wallZ, frontWingZ,
+        lowerPlazaY, lowerNumSteps, lowerStepRise, lowerStepRun, getConcreteTopY,
+        washX, portX, portDepth, portW, deckY,
+        creamBrickSolidMat, plinthConcreteMat, plazaConcreteMat, whiteCurbMat,
+        turfMat, darkMetalMat, galvSteelMat, blueTreadMat, globeMat, glassMat, trimMat, soilMat
+    } = ctx;
+
+        // 1. Upper Terrace Concrete Walkway (y = -0.51m up to 0.0m, spanning from SW sidewalk lx = -3.4m across to Right-Side Steps lx = 10.65m,
+        //    and from indented frontWingZ = 14.14m out to lz = wallZ + 4.25m = 18.87m so zero gap exists at the indented front wings!)
+        addBox(14.05, 0.51, 4.73, plazaConcreteMat, 3.625, -0.255, frontWingZ + 2.365, arch, false);
+
+        // 2. Lower Forecourt Plaza (trimmed at lz = wallZ + 7.05m = 21.67m so the orange-boxed front slab is removed,
+        //    aligning flush with the front edge of the Left Lawn, 2 square planters, and Right Square Lawn!)
+        {
+            const plazaW = 19.20; // lx: -4.50m .. +14.70m
+            const plazaD = 5.20;  // lz: wallZ + 1.85m (16.47m) .. wallZ + 7.05m (21.67m)
+            const plazaCX = 5.10;
+            const plazaCZ = wallZ + 4.45;
+            const plazaGeo = new THREE.BoxGeometry(plazaW, 0.32, plazaD, 48, 1, 20);
+            const pPos = plazaGeo.attributes.position;
+            for (let i = 0; i < pPos.count; i++) {
+                const vx = pPos.getX(i);
+                const vy = pPos.getY(i);
+                const vz = pPos.getZ(i);
+                const lx = plazaCX + vx;
+                const lz = plazaCZ + vz;
+                const topY = getConcreteTopY(lx, lz);
+                pPos.setY(i, vy > 0 ? topY : topY - 0.32);
+            }
+            pPos.needsUpdate = true;
+            plazaGeo.computeVertexNormals();
+            const plazaMesh = new THREE.Mesh(plazaGeo, plazaConcreteMat);
+            plazaMesh.position.set(plazaCX, 0, plazaCZ);
+            plazaMesh.receiveShadow = true;
+            arch.add(plazaMesh);
+        }
+
+        // 3. Upper 4-Level Portico Staircase (s = 0..3, from Upper Terrace y = 0.0m up to Portico Deck y = +0.76m):
+        //    - Every step s has the EXACT same top elevation ((s + 1) * stepRise) across the Left (-X) and Front (+Z) sides.
+        //    - On the Left (-X) side between the brick wall (lz = 14.62m) and left column pedestal (lz = 16.52m): 4 flush blue-gray treads & risers.
+        //    - On the Front (+Z) side: stepRunZ = 1.30 / 3 (0.433m) so s = 0 ends right at upperTerraceFrontZ (wallZ + 4.25m) with zero skinny ledge,
+        //      and frontLeftX = -0.25m so the front steps align cleanly with the Left Lamp Post!
+        const numSteps = 4;
+        const stepRise = deckY / numSteps;   // 0.19m per step level (0.19m, 0.38m, 0.57m, 0.76m)
+        const stepRunX = 0.36;               // 0.36m horizontal tread run on Left (-X) side
+        const stepRunZ = 1.30 / 3;           // 0.4333m horizontal tread run on Front (+Z) side (3 * stepRunZ = 1.30m -> wallZ + 4.25m)
+        const deckLeftX = -0.32;             // Top deck left edge (s = 3)
+        const deckRightX = 9.28;             // Top deck right edge (s = 3)
+        const deckFrontZ = wallZ + portDepth; // Top deck front edge (s = 3, lz = 17.57m)
+        const blueBayZEnd = wallZ + 1.90;    // Back edge of left/right column pedestals (lz = 16.52m)
+        const weatheredStepMat = new THREE.MeshStandardMaterial({
+            color: '#c8c2b6',
+            roughness: 0.88,
+            metalness: 0.03
+        });
+
+        for (let s = 0; s < numSteps; s++) {
+            const stepsOut = numSteps - 1 - s; // 3 for bottom step (s=0), 0 for top deck (s=3)
+            const sy = (s + 0.5) * stepRise;
+            const xLeft = deckLeftX - stepsOut * stepRunX;
+            const frontLeftX = -0.25; // Flush with lowerStairX0 and Left Lamp Post pedestal on the front flight!
+            const xRight = deckRightX + stepsOut * 0.16; // Stepped right end seen in ffcaac33.jpg & 232bfcca.jpg!
+            const zFront = deckFrontZ + stepsOut * stepRunZ;
+
+            // A. Rear section (lz = wallZ to blueBayZEnd = 16.52m):
+            //    - Leftmost tread/riser strip (lx = xLeft to xLeft + stepRunX) is flush blue-gray non-slip metal (687b2a06.jpg)
+            //    - Middle-left & center concrete (lx = xLeft + stepRunX to 6.60m)
+            //    - Right-bay darker weathered concrete in front of the right entry door (lx = 6.60m to xRight - 0.08m, seen in ffcaac33.jpg)
+            const blueStripW = stepRunX;
+            const blueStripX = xLeft + blueStripW * 0.5;
+            const rearDepth = blueBayZEnd - wallZ;
+            const rearCenterZ = wallZ + rearDepth * 0.5;
+            addBox(blueStripW, stepRise, rearDepth, blueTreadMat, blueStripX, sy, rearCenterZ);
+
+            const rearMidX0 = xLeft + blueStripW;
+            const rearMidX1 = 6.60;
+            addBox(
+                rearMidX1 - rearMidX0,
+                stepRise,
+                rearDepth,
+                plazaConcreteMat,
+                (rearMidX0 + rearMidX1) * 0.5,
+                sy,
+                rearCenterZ
+            );
+
+            const rearRightX1 = xRight - 0.06;
+            addBox(
+                rearRightX1 - rearMidX1,
+                stepRise,
+                rearDepth,
+                weatheredStepMat,
+                (rearMidX1 + rearRightX1) * 0.5,
+                sy,
+                rearCenterZ
+            );
+
+            // B. Middle section (lz = blueBayZEnd = 16.52m to zFront - stepRunZ): full-width concrete aligned at frontLeftX = -0.25m
+            const frontTreadZ0 = zFront - stepRunZ;
+            if (frontTreadZ0 > blueBayZEnd + 0.01) {
+                const midDepth = frontTreadZ0 - blueBayZEnd;
+                const fullW = xRight - frontLeftX;
+                addBox(fullW, stepRise, midDepth, plazaConcreteMat, frontLeftX + fullW * 0.5, sy, blueBayZEnd + midDepth * 0.5);
+            }
+
+            // C. Frontmost step tread & riser strip (lz = zFront - stepRunZ to zFront):
+            //    - Left bay (lx = frontLeftX to 3.12m): brushed concrete
+            //    - Center bay (lx = 3.12m to 5.88m, between Column 2 & Column 3): flush blue-gray non-slip metal tread & riser (3b9c07db.jpg & f097f1e6.jpg)
+            //    - Right bay (lx = 5.88m to xRight): brushed concrete with vertical expansion joint line at lx = 6.60m (ffcaac33.jpg)
+            const frontStripZ = zFront - stepRunZ * 0.5;
+            const cBayX0 = 3.12;
+            const cBayX1 = 5.88;
+            addBox(cBayX0 - frontLeftX, stepRise, stepRunZ, plazaConcreteMat, (frontLeftX + cBayX0) * 0.5, sy, frontStripZ);
+            addBox(cBayX1 - cBayX0, stepRise, stepRunZ, blueTreadMat, (cBayX0 + cBayX1) * 0.5, sy, frontStripZ);
+            addBox(xRight - cBayX1, stepRise, stepRunZ, plazaConcreteMat, (cBayX1 + xRight) * 0.5, sy, frontStripZ);
+        }
+
+        // 4. Lower 3-Step Forecourt Staircase (ls = 0..2, stepping DOWN seamlessly from s=0 at wallZ + 4.25m to Lower Plaza)
+        //    ls = 0 is at y = 0.0m, ls = 1 is at y = -0.17m, ls = 2 is at y = -0.34m (no skinny 10cm ledge!)
+        const lowerStairX0 = -0.25;
+        const lowerStairX1 = 9.76;
+        const lowerStairW = lowerStairX1 - lowerStairX0;
+        const lowerStairCenterX = (lowerStairX0 + lowerStairX1) * 0.5;
+        const upperTerraceFrontZ = wallZ + 4.25;
+        const stairBaseY = lowerPlazaY - 0.15;
+
+        for (let ls = 0; ls < lowerNumSteps; ls++) {
+            const stepTopY = -ls * lowerStepRise;
+            const stepH = stepTopY - stairBaseY;
+            const stepZ = upperTerraceFrontZ + (ls + 0.5) * lowerStepRun;
+            addBox(lowerStairW, stepH, lowerStepRun + 0.02, plazaConcreteMat, lowerStairCenterX, stairBaseY + stepH * 0.5, stepZ);
+        }
+
+        // 5. 4-Step Right-Side Staircase descending toward Washington St (lx = 10.65m..12.61m, outer edge flush with Front Pavilion wall 12.61m):
+        //    Tucked between the indented front brick wall (lz = frontWingZ = 14.14m) and the back retaining wall of the Right Square Lawn (lz = 16.47m)
+        const rightStairZ0 = frontWingZ;
+        const rightStairZ1 = wallZ + 1.85;
+        const rightStairDepth = rightStairZ1 - rightStairZ0;
+        const rightStairCenterZ = (rightStairZ0 + rightStairZ1) * 0.5;
+        const rightNumSteps = 4;
+        const rightStepRise = Math.abs(lowerPlazaY) / (rightNumSteps + 1); // 4 intermediate steps above lowerPlazaY
+        const rightStepRunX = 0.49;
+        const rightStairStartX = 12.61 - rightNumSteps * rightStepRunX; // 10.65m so bottom step ends at exact lx = 12.61m
+        for (let rs = 0; rs < rightNumSteps; rs++) {
+            const rTopY = -(rs + 1) * rightStepRise;
+            const rH = rTopY - stairBaseY;
+            const rx = rightStairStartX + (rs + 0.5) * rightStepRunX;
+            addBox(rightStepRunX, rH, rightStairDepth, plazaConcreteMat, rx, stairBaseY + rH * 0.5, rightStairCenterZ);
+        }
+
+        // 6. Double-Tier Black Wrought-Iron Front Stair Handrails with Middle Landing & Looped P-Returns (f097f1e6.jpg, 19f695cf.jpg, 3b9c07db.jpg)
+        //    2 handrail lines (lx = 3.16m, 5.84m flanking the blue-gray center steps; no guard rail on the right stairs)
+        const upperStairSpanZ = (numSteps - 1) * stepRunZ; // 1.30m
+        const upperStairEndZ = deckFrontZ + upperStairSpanZ; // wallZ + 4.25m = 18.87m
+        const lowerStairEndZ = upperTerraceFrontZ + lowerNumSteps * lowerStepRun; // 20.13m
+
+        [3.16, 5.84].forEach((rx) => {
+            // Upper tier sloped handrail (from portico deck down to Upper Terrace)
+            const uLen = Math.hypot(upperStairSpanZ, deckY) + 0.12;
+            const uRail = addBox(0.042, 0.042, uLen, darkMetalMat, rx, deckY * 0.5 + 0.82, deckFrontZ + upperStairSpanZ * 0.5);
+            uRail.rotation.x = Math.atan2(deckY, upperStairSpanZ);
+            addBox(0.038, 0.84, 0.038, darkMetalMat, rx, deckY + 0.42, deckFrontZ + 0.04);
+            addBox(0.038, 0.84, 0.038, darkMetalMat, rx, 0.42, upperStairEndZ);
+            // Top & middle horizontal return bends
+            addBox(0.042, 0.042, 0.22, darkMetalMat, rx, 0.82, upperStairEndZ + 0.10);
+
+            // Lower tier sloped handrail (stepping down the 3 lower concrete steps to the Lower Plaza, for lx = 3.16m & 5.84m)
+            if (rx <= 6.0) {
+                const lSpanZ = lowerNumSteps * lowerStepRun;
+                const lDropY = Math.abs(lowerPlazaY);
+                const lLen = Math.hypot(lSpanZ, lDropY) + 0.12;
+                const lRail = addBox(
+                    0.042,
+                    0.042,
+                    lLen,
+                    darkMetalMat,
+                    rx,
+                    -lDropY * 0.5 + 0.82,
+                    upperTerraceFrontZ + lSpanZ * 0.5
+                );
+                lRail.rotation.x = Math.atan2(lDropY, lSpanZ);
+                addBox(0.038, 0.84, 0.038, darkMetalMat, rx, 0.42, upperTerraceFrontZ + 0.04);
+                addBox(0.038, 0.84, 0.038, darkMetalMat, rx, lowerPlazaY + 0.42, lowerStairEndZ);
+                // Looped P-shaped curved end return at bottom post (seen in f097f1e6.jpg & 19f695cf.jpg)
+                addBox(0.042, 0.042, 0.18, darkMetalMat, rx, lowerPlazaY + 0.82, lowerStairEndZ + 0.08);
+                addBox(0.042, 0.18, 0.042, darkMetalMat, rx, lowerPlazaY + 0.73, lowerStairEndZ + 0.16);
+                addBox(0.042, 0.042, 0.18, darkMetalMat, rx, lowerPlazaY + 0.64, lowerStairEndZ + 0.08);
+            }
+        });
+
+        // 7. RIGHT SQUARE LAWN ("the right square lawn" — ffcaac33.jpg, 6b9c1a26.jpg, 232bfcca.jpg, 28f96301.jpg, 29a2721c.jpg, eadec65d.jpg):
+        //    - Grass surface is at y = 0.0m (flush with the Upper Terrace walkway along its inner back-left edge!)
+        //    - Retained above the Lower Plaza & Sidewalk (y = -0.51m) by a thick white-painted concrete retaining wall
+        //      with a rounded front-right corner (at Douglas & Washington), weathered stone-patch & crack lines (6b9c1a26.jpg & 232bfcca.jpg),
+        //      and a distinct 18cm-wide raised concrete coping rim around the perimeter of the grass.
+        const weatheredWallCanvas = document.createElement('canvas');
+        weatheredWallCanvas.width = 512;
+        weatheredWallCanvas.height = 128;
+        const wwCtx = weatheredWallCanvas.getContext('2d');
+        wwCtx.fillStyle = '#ede8de';
+        wwCtx.fillRect(0, 0, 512, 128);
+        // Subtle weathered concrete mottling, form-board horizontal seam & diagonal crack line seen in 6b9c1a26.jpg & 232bfcca.jpg
+        for (let i = 0; i < 900; i++) {
+            wwCtx.fillStyle = i % 2 === 0 ? 'rgba(120,114,104,0.08)' : 'rgba(255,253,248,0.08)';
+            wwCtx.fillRect((i * 67) % 512, (i * 29) % 128, 12, 6);
+        }
+        wwCtx.strokeStyle = 'rgba(95,88,78,0.45)';
+        wwCtx.lineWidth = 2.0;
+        wwCtx.beginPath();
+        wwCtx.moveTo(0, 58);
+        wwCtx.lineTo(512, 62);
+        wwCtx.moveTo(180, 4);
+        wwCtx.lineTo(196, 52);
+        wwCtx.lineTo(215, 124);
+        wwCtx.stroke();
+        const weatheredWallTex = new THREE.CanvasTexture(weatheredWallCanvas);
+        weatheredWallTex.wrapS = THREE.RepeatWrapping;
+        weatheredWallTex.wrapT = THREE.RepeatWrapping;
+        weatheredWallTex.colorSpace = THREE.SRGBColorSpace;
+        const rightLawnWallMat = new THREE.MeshStandardMaterial({
+            map: weatheredWallTex,
+            bumpMap: weatheredWallTex,
+            bumpScale: 0.03,
+            roughness: 0.85,
+            metalness: 0.03
+        });
+
+        // Build the elevated planter footprint with the red-marked left region removed (890ee219.jpg):
+        // - Back section (lz = wallZ + 1.85m to wallZ + 4.15m): left edge at lx = 10.55m (clearing the Upper Terrace & portico stairs)
+        // - Front section (lz = wallZ + 4.15m to wallZ + 7.05m): left edge at lx = 9.76m (aligned with the right edge of the portico stairs)
+        // - Right edge at lx = 14.70m (aligned with Washington St fence decoration) with rounded front-right bullnose corner (r = 1.45m)
+        const createRightPlanterShape = (inset = 0) => {
+            const xBackLeft = 10.55 + inset;
+            const xFrontLeft = 9.76 + inset;
+            const xRight = 14.70 - inset;
+            const zBack = wallZ + 1.85 + inset;
+            const zStep = wallZ + 4.15 + inset;
+            const zFront = wallZ + 7.05 - inset;
+            const r = Math.max(0.2, 1.45 - inset);
+
+            const s = new THREE.Shape();
+            // Note: rotateX(-Math.PI / 2) maps Shape (x, y) -> 3D (x, -z), so y = -z
+            s.moveTo(xBackLeft, -zBack);
+            s.lineTo(xRight, -zBack);
+            s.lineTo(xRight, -(zFront - r));
+            s.absarc(xRight - r, -(zFront - r), r, 0, -Math.PI * 0.5, true);
+            s.lineTo(xFrontLeft, -zFront);
+            s.lineTo(xFrontLeft, -zStep);
+            s.lineTo(xBackLeft, -zStep);
+            s.closePath();
+            return s;
+        };
+        const rightLawnBaseY = lowerPlazaY - 0.30; // extend base into contoured concrete
+        const rightLawnWallH = 0.85;               // from rightLawnBaseY (-0.81m) up to +0.04m coping lip
+
+        const outerPlanterShape = createRightPlanterShape(0);
+        const outerPlanterGeo = new THREE.ExtrudeGeometry(outerPlanterShape, {
+            depth: rightLawnWallH,
+            bevelEnabled: true,
+            bevelThickness: 0.02,
+            bevelSize: 0.02,
+            bevelSegments: 2
+        });
+        outerPlanterGeo.rotateX(-Math.PI / 2);
+        const outerPlanterMesh = new THREE.Mesh(outerPlanterGeo, rightLawnWallMat);
+        outerPlanterMesh.position.set(0, rightLawnBaseY, 0);
+        outerPlanterMesh.castShadow = true;
+        outerPlanterMesh.receiveShadow = true;
+        arch.add(outerPlanterMesh);
+
+        // Lush green turf recessed inside the 18cm-wide white concrete curb wall (ffcaac33.jpg, 6b9c1a26.jpg, 232bfcca.jpg)
+        const innerTurfGeo = new THREE.ExtrudeGeometry(createRightPlanterShape(0.18), {
+            depth: rightLawnWallH + 0.025,
+            bevelEnabled: false
+        });
+        innerTurfGeo.rotateX(-Math.PI / 2);
+        const innerTurfMesh = new THREE.Mesh(innerTurfGeo, turfMat);
+        innerTurfMesh.position.set(0, rightLawnBaseY, 0);
+        innerTurfMesh.receiveShadow = true;
+        arch.add(innerTurfMesh);
+
+        // 8. LEFT-SIDE LAWN (58d5c80a.jpg, 3b9c07db.jpg, b15a030b.jpg & 51a0f668.jpg):
+        //    Flush with the Upper Terrace walkway (y = 0.0m, zBack = wallZ + 4.25m) on the back/left, and shortened in front
+        //    so its front edge (zFront = wallZ + 7.05m) aligns with the 2 square planters and the Right Square Lawn!
+        //    (Circle object leftWalkFillet removed per 51a0f668.jpg)
+        addBox(3.15, 0.78, 2.80, whiteCurbMat, -1.85, lowerPlazaY + 0.15, wallZ + 5.65);
+        addBox(2.85, 0.80, 2.55, turfMat, -1.92, lowerPlazaY + 0.16, wallZ + 5.62);
+
+
+        [3.08, 5.92].forEach((px) => {
+            const pz = wallZ + 6.55;
+            const pSize = 0.96;
+            const pWall = 0.10;
+            const pH = 0.62;
+            const pBaseY = getConcreteTopY(px, pz);
+            const py = pBaseY + pH * 0.5;
+            // 4 hollow white concrete walls
+            addBox(pSize, pH, pWall, whiteCurbMat, px, py, pz + (pSize - pWall) * 0.5);
+            addBox(pSize, pH, pWall, whiteCurbMat, px, py, pz - (pSize - pWall) * 0.5);
+            addBox(pWall, pH, pSize - pWall * 2, whiteCurbMat, px - (pSize - pWall) * 0.5, py, pz);
+            addBox(pWall, pH, pSize - pWall * 2, whiteCurbMat, px + (pSize - pWall) * 0.5, py, pz);
+            // Recessed soil core 14cm below top rim
+            addBox(pSize - pWall * 2, pH - 0.14, pSize - pWall * 2, soilMat, px, pBaseY + (pH - 0.14) * 0.5, pz);
+        });
+
+        // Helper for Black Pole Globe Lanterns with 4-Ribbed Metal Cages on Tall Concrete Pedestals (f097f1e6.jpg, 3b9c07db.jpg)
+        const addCagedGlobeLamp = (lx, ly, lz, poleH = 2.55, pedH = 0.68) => {
+            if (pedH > 0) {
+                addBox(0.44, pedH, 0.44, whiteCurbMat, lx, ly + pedH * 0.5, lz);
+                addBox(0.46, 0.09, 0.46, darkMetalMat, lx, ly + pedH + 0.045, lz);
+            }
+            const baseTop = ly + pedH + 0.09;
+            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, poleH, 12), darkMetalMat);
+            post.position.set(lx, baseTop + poleH * 0.5, lz);
+            post.castShadow = true;
+            arch.add(post);
+
+            const globeY = baseTop + poleH + 0.22;
+            const globe = new THREE.Mesh(new THREE.SphereGeometry(0.23, 14, 14), globeMat);
+            globe.position.set(lx, globeY, lz);
+            arch.add(globe);
+
+            // Black equatorial ring & vertical metal cage ribs around the globe lantern
+            const eqRing = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.04, 16), darkMetalMat);
+            eqRing.position.set(lx, globeY, lz);
+            arch.add(eqRing);
+            addBox(0.50, 0.30, 0.03, darkMetalMat, lx, globeY - 0.08, lz);
+            addBox(0.03, 0.30, 0.50, darkMetalMat, lx, globeY - 0.08, lz);
+        };
+
+        // Forecourt & SW Sidewalk Caged Globe Lamps matching exact photo positions (eadec65d.jpg, 58d5c80a.jpg, 3b9c07db.jpg)
+        addCagedGlobeLamp(9.80, lowerPlazaY, wallZ + 4.35, 2.55, 1.05);  // Right lawn corner lamp pedestal at right edge of stairs
+        addCagedGlobeLamp(-0.30, lowerPlazaY, wallZ + 4.35, 2.55, 1.05); // Left lawn corner lamp pedestal at left edge of stairs
+        addCagedGlobeLamp(-4.65, getConcreteTopY(-4.65, wallZ + 1.85), wallZ + 1.85, 2.75, 0.12); // SW sidewalk front globe lamp (00de5feb.jpg & 09a0228b.jpg)
+        addCagedGlobeLamp(-4.65, getConcreteTopY(-4.65, -3.50), -3.50, 2.75, 0.12);               // SW sidewalk middle globe lamp (09a0228b.jpg)
+        addCagedGlobeLamp(-4.65, getConcreteTopY(-4.65, -11.50), -11.50, 2.75, 0.12);             // SW sidewalk rear globe lamp (09a0228b.jpg)
+
+        // White Metal Entrance Sign Post & Blue Handicap Parking Sign Post (00de5feb.jpg)
+        addBox(0.05, 1.35, 0.05, galvSteelMat, -0.32, 0.68, wallZ + 3.15);
+        addBox(0.32, 0.44, 0.03, whiteCurbMat, -0.32, 1.25, wallZ + 3.17);
+        addBox(0.05, 1.45, 0.05, galvSteelMat, -3.55, 0.72, wallZ + 1.45);
+        addBox(0.32, 0.42, 0.03, new THREE.MeshBasicMaterial({ color: '#2563eb' }), -3.55, 1.32, wallZ + 1.47);
+
+        // Tall Silver Curved-Arm Streetlight Pole at the Douglas & Washington Corner with Flared Base & Oval Access Cover (6b9c1a26.jpg)
+        const streetPoleX = 15.20;
+        const streetPoleZ = wallZ + 6.95;
+        const streetPoleBaseY = getConcreteTopY(streetPoleX, streetPoleZ);
+        const poleBaseCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.21, 0.24, 8), galvSteelMat);
+        poleBaseCollar.position.set(streetPoleX, streetPoleBaseY + 0.12, streetPoleZ);
+        arch.add(poleBaseCollar);
+        const mainPole = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.14, 8.4, 16), galvSteelMat);
+        mainPole.position.set(streetPoleX, streetPoleBaseY + 4.2, streetPoleZ);
+        mainPole.castShadow = true;
+        arch.add(mainPole);
+        // Oval hand-hole access cover plate near bottom of pole (seen in 6b9c1a26.jpg)
+        const handHole = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.03, 14), galvSteelMat);
+        handHole.scale.set(1.0, 1.65, 1.0);
+        handHole.rotation.x = Math.PI * 0.5;
+        handHole.position.set(streetPoleX, streetPoleBaseY + 0.48, streetPoleZ + 0.13);
+        arch.add(handHole);
+        const mastArm = addBox(0.08, 0.08, 2.8, galvSteelMat, streetPoleX - 0.6, streetPoleBaseY + 8.35, streetPoleZ + 1.1);
+        mastArm.rotation.y = -0.45;
+        mastArm.rotation.x = -0.15;
+        addBox(0.45, 0.10, 0.26, globeMat, streetPoleX - 1.2, streetPoleBaseY + 8.52, streetPoleZ + 2.2);
+        // Yellow Diamond Traffic Sign mounted on the streetlight pole (eadec65d.jpg)
+        const diamondSign = addBox(
+            0.65,
+            0.65,
+            0.04,
+            new THREE.MeshStandardMaterial({ color: '#eab308', roughness: 0.4 }),
+            streetPoleX - 0.12,
+            streetPoleBaseY + 2.55,
+            streetPoleZ + 0.12
+        );
+        diamondSign.rotation.z = Math.PI * 0.25;
+
+
+        // Helper to build a subdivided concrete/asphalt slab contoured to the 3D terrain topography
+        const addContouredSlab = (w, h, d, mat, cx, cz, topOffset = 0, segsX = 8, segsZ = 24) => {
+            const geo = new THREE.BoxGeometry(w, h, d, segsX, 1, segsZ);
+            const pos = geo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const vx = pos.getX(i);
+                const vy = pos.getY(i);
+                const vz = pos.getZ(i);
+                const topY = getConcreteTopY(cx + vx, cz + vz) + topOffset;
+                pos.setY(i, vy > 0 ? topY : topY - h);
+            }
+            pos.needsUpdate = true;
+            geo.computeVertexNormals();
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(cx, 0, cz);
+            mesh.receiveShadow = true;
+            arch.add(mesh);
+            return mesh;
+        };
+
+        // SW Side Sunken Basement Stairwell/Areaway & 6-Rail Silver Galvanized Pipe Guardrail + Gate (fe4f41a6.jpg & 9c5e0963.jpg)
+        addContouredSlab(3.2, 0.22, 30.0, plazaConcreteMat, -4.5, 1.0, 0, 8, 36); // Contoured SW parking sidewalk
+        const railMinZ = -12.2;
+        const railMaxZ = frontWingZ + 0.1;
+        const railLenSW = railMaxZ - railMinZ;
+        const railMidZ = (railMinZ + railMaxZ) * 0.5;
+        const railOuterX = -4.25;
+        for (let r = 1; r <= 6; r++) {
+            const ry = r * 0.17;
+            addBox(0.04, 0.04, railLenSW, galvSteelMat, railOuterX, ry, railMidZ);
+            addBox(1.02, 0.04, 0.04, galvSteelMat, -3.74, ry, railMaxZ);
+        }
+        for (let pz = railMinZ; pz <= railMaxZ + 0.1; pz += 2.65) {
+            addBox(0.05, 1.08, 0.05, galvSteelMat, railOuterX, 0.54, pz);
+        }
+        addBox(0.05, 1.08, 0.05, galvSteelMat, -3.26, 0.54, railMaxZ);
+
+        // --- WASHINGTON ST (+X) SUNKEN AREAWAY, EXTERIOR STAIRS, ADA RAMP, DOORS/WINDOWS, BRICK FENCE & SIDEWALK (19a77a6c.jpg & adc547e2.jpg) ---
+        // At the Front Pavilion (lz = +10.2m..+16.47m) and Rear Pavilion (lz = -20.20m..-11.2m), the sidewalk comes flush up to the building wall!
+        addContouredSlab(2.35, 0.24, 6.3, plazaConcreteMat, washX + 1.15, 13.32, 0, 6, 14);
+        addContouredSlab(2.35, 0.24, 9.0, plazaConcreteMat, washX + 1.15, -15.70, 0, 6, 18);
+
+        // Sunken Lightwell Trench Floor (lz = -11.2m to +10.2m)
+        addBox(2.35, 0.20, 21.4, plinthConcreteMat, washX + 1.15, -2.45, -0.5, arch, false);
+
+        // Front Sunken Door 1 Landing (lz = +5.4m to +7.8m, y = lowerPlazaY - 0.64m = -1.15m) + 4 Exterior Concrete Steps descending from lz = +10.0m (19a77a6c.jpg!)
+        const door1LandingY = lowerPlazaY - 0.64;
+        addBox(2.15, 1.35, 2.5, plazaConcreteMat, washX + 1.10, door1LandingY - 0.675, 6.6, arch, false);
+        for (let fs = 0; fs < 4; fs++) {
+            const fTopY = lowerPlazaY - (fs + 1) * 0.16;
+            const fz = 10.0 - (fs + 0.5) * 0.52;
+            addBox(2.10, 0.36, 0.54, plazaConcreteMat, washX + 1.10, fTopY - 0.18, fz, arch, false);
+        }
+        // Sloped black iron handrail mounted on the Front Pavilion wall beside the front sunken stairs (seen in 19a77a6c.jpg!)
+        const frontStairRail = addBox(0.04, 0.04, 2.25, darkMetalMat, washX + 0.44, lowerPlazaY + 0.42, 8.95);
+        frontStairRail.rotation.x = -0.30;
+        addBox(0.035, 0.72, 0.035, darkMetalMat, washX + 0.44, lowerPlazaY + 0.05, 7.90);
+
+        // Rear Sunken Door 2 Exterior Concrete Steps + Curved Black Iron Handrail descending from lz = -11.3m toward Door 2 (seen at right of adc547e2.jpg!)
+        for (let rs = 0; rs < 5; rs++) {
+            const rTopY = lowerPlazaY - (rs + 1) * 0.28;
+            const rz = -11.3 + (rs + 0.5) * 0.34;
+            addBox(2.10, 0.40, 0.36, plazaConcreteMat, washX + 1.10, rTopY - 0.20, rz, arch, false);
+        }
+        const rearStairRail = addBox(0.04, 0.04, 1.95, darkMetalMat, washX + 0.44, lowerPlazaY + 0.22, -10.45);
+        rearStairRail.rotation.x = 0.55;
+
+        // Open Pedestrian Entry Walkway (lz = +3.2m to +5.4m, at lowered Washington St sidewalk level) + Sloped Concrete ADA Ramp descending from lz = +3.2m to lz = -8.4m
+        const washEntryTopY = getConcreteTopY(washX + 2.22, 4.3);
+        addBox(2.20, 1.85, 2.2, plazaConcreteMat, washX + 1.10, washEntryTopY - 0.925, 4.3, arch, false);
+        const rampSpanZ = 11.6;
+        const rampEndTopY = -1.95;
+        const rampDropY = Math.max(0.4, washEntryTopY - rampEndTopY);
+        const rampMidY = (washEntryTopY + rampEndTopY) * 0.5;
+        const rampLen = Math.hypot(rampSpanZ, rampDropY);
+        const adaRamp = addBox(2.15, 0.22, rampLen, plazaConcreteMat, washX + 1.10, rampMidY - 0.10, -2.6, arch, false);
+        adaRamp.rotation.x = -Math.atan2(rampDropY, rampSpanZ);
+        // Sloped black metal pipe handrail mounted along the brick building wall beside the ADA ramp (19a77a6c.jpg & adc547e2.jpg)
+        const wallHandrail = addBox(0.045, 0.045, rampLen + 0.4, darkMetalMat, washX + 0.12, rampMidY + 0.82, -2.6);
+        wallHandrail.rotation.x = -Math.atan2(rampDropY, rampSpanZ);
+
+        // Continuous Outer Washington St Concrete Walkway / Sidewalk (purple-marked strip: lx = washX + 2.20m out to washX + 5.15m,
+        // spanning from rear lot edge lz = -20.20m up to front lawn edge lz = wallZ + 7.05m = 21.67m) + Lightwell Retaining Wall
+        const washSidewalkZ0 = -20.20;
+        const washSidewalkZ1 = wallZ + 7.05; // 21.67m, flush with front edge of Right Square Lawn
+        const washSidewalkD = washSidewalkZ1 - washSidewalkZ0; // 41.87m
+        const washSidewalkCZ = (washSidewalkZ0 + washSidewalkZ1) * 0.5; // 0.735m
+        const washSidewalkW = 2.95;
+        const washSidewalkCX = washX + 3.675; // 15.925m (lx: 14.45m .. 17.40m)
+        addContouredSlab(washSidewalkW, 0.26, washSidewalkD, plazaConcreteMat, washSidewalkCX, washSidewalkCZ, 0, 8, 56);
+        // Raised outer street curb along the right (+X) edge of the Washington St sidewalk
+        addContouredSlab(0.18, 0.30, washSidewalkD, whiteCurbMat, washX + 5.06, washSidewalkCZ, 0.03, 2, 56);
+        // Transverse concrete expansion score joints across the Washington St walkway/sidewalk
+        const swScoreMat = new THREE.MeshBasicMaterial({ color: '#9c9588' });
+        for (let jz = washSidewalkZ0 + 1.75; jz < washSidewalkZ1 - 0.3; jz += 1.75) {
+            const jy = getConcreteTopY(washSidewalkCX, jz) + 0.008;
+            addBox(washSidewalkW - 0.22, 0.01, 0.025, swScoreMat, washSidewalkCX - 0.06, jy, jz, arch, false);
+        }
+        addBox(0.32, 2.20, 21.4, whiteCurbMat, washX + 2.22, -1.40, -0.5, arch, false);
+
+        // 2 White Glazed Entry Doors with 4-Pane Vertical Sidelights (19a77a6c.jpg & adc547e2.jpg):
+        // - Door 1 at lz = +6.35m (sunken landing door1LandingY): white door leaf on left (with tall upper glass lite, wide lock rail with red sign strip,
+        //   and smaller lower glass lite) + 4-pane vertical sidelight window on right!
+        // - Door 2 at lz = -9.45m (bottom of ramp): 4-pane vertical sidelight on left + white glazed door leaf on right!
+        [
+            { dz: 6.35, by: door1LandingY, sideOffset: -0.52 },
+            { dz: -9.45, by: -2.05, sideOffset: 0.52 }
+        ].forEach(({ dz, by, sideOffset }) => {
+            const doorZ = dz - sideOffset * 0.52;
+            const sideZ = dz + sideOffset * 0.86;
+            // Outer white door frame + sidelight frame
+            addBox(0.16, 2.32, 1.72, whiteCurbMat, washX + 0.04, by + 1.16, dz);
+            // Upper & lower glass lites in main door leaf (matched to 19a77a6c.jpg)
+            addBox(0.20, 0.96, 0.78, glassMat, washX + 0.06, by + 1.56, doorZ); // Tall upper glass pane
+            addBox(0.20, 0.52, 0.78, glassMat, washX + 0.06, by + 0.56, doorZ); // Lower glass pane
+            addBox(0.22, 0.22, 0.84, whiteCurbMat, washX + 0.07, by + 0.96, doorZ); // Wide white lock rail
+            addBox(0.23, 0.05, 0.42, new THREE.MeshBasicMaterial({ color: '#dc2626' }), washX + 0.08, by + 1.12, doorZ); // Red sign strip on glass
+            // 4-pane vertical sidelight window next to door with crisp white horizontal muntin bars (seen in 19a77a6c.jpg!)
+            for (let p = 0; p < 4; p++) {
+                addBox(0.20, 0.44, 0.36, glassMat, washX + 0.06, by + 0.36 + p * 0.52, sideZ);
+            }
+        });
+        // Round red fire-alarm bell above-left of Door 1 + white wall mailbox/intercom box to the right of Door 1 (seen in 19a77a6c.jpg!)
+        const sideBell = new THREE.Mesh(
+            new THREE.SphereGeometry(0.11, 12, 12),
+            new THREE.MeshBasicMaterial({ color: '#b91c1c' })
+        );
+        sideBell.scale.set(0.55, 1, 1);
+        sideBell.position.set(washX + 0.06, door1LandingY + 2.38, 7.08);
+        arch.add(sideBell);
+        addBox(0.14, 0.24, 0.22, whiteCurbMat, washX + 0.06, door1LandingY + 1.48, 5.38); // White wall box right of Door 1
+
+        // 4 Square Recessed Basement Windows with White Frames, Dark Glass & Projecting Stone Sills along the Central Bay (19a77a6c.jpg & adc547e2.jpg)
+        [
+            [3.5, -0.05],
+            [0.4, -0.22],
+            [-2.6, -0.38],
+            [-5.6, -0.52]
+        ].forEach(([winZ, winY]) => {
+            addBox(0.16, 1.08, 1.18, whiteCurbMat, washX + 0.04, winY, winZ);
+            addBox(0.20, 0.90, 1.00, glassMat, washX + 0.06, winY, winZ);
+            addBox(0.24, 0.10, 1.28, trimMat, washX + 0.08, winY - 0.56, winZ); // Projecting stone sill
+        });
+
+        // 9 Cream-Brick Piers with White Caps, Return Walls, Wrought-Iron Picket Fence & 6 Caged Globe Lamps (19a77a6c.jpg & adc547e2.jpg)
+        const fenceX = washX + 2.22;
+        const pierSpecs = [
+            { z: 10.2, hasLamp: false }, // Pier 1: Front-left pier on sidewalk outside Front Pavilion stairs (19a77a6c.jpg)
+            { z: 7.8, hasLamp: true },   // Pier 2: Lamp 1 (left of Door 1, 19a77a6c.jpg)
+            { z: 5.4, hasLamp: true },   // Pier 3: Lamp 2 + brick/picket return wall on left of open entry walk (19a77a6c.jpg)
+            { z: 3.2, hasLamp: true },   // Pier 4: Lamp 3 on right of open entry walk (19a77a6c.jpg)
+            { z: 0.4, hasLamp: false },  // Pier 5: Mid-left pier
+            { z: -2.5, hasLamp: false }, // Pier 6: Mid pier
+            { z: -5.4, hasLamp: true },  // Pier 7: Lamp 4 (mid-right pier, adc547e2.jpg)
+            { z: -8.2, hasLamp: true },  // Pier 8: Lamp 5 (left of Door 2, adc547e2.jpg)
+            { z: -10.8, hasLamp: true }, // Pier 9: Lamp 6 (right of Door 2, adc547e2.jpg)
+            { z: -12.1, hasLamp: false } // Pier 10: Far-right end pier at Rear Pavilion stairs (adc547e2.jpg)
+        ];
+
+        // Cream-brick + wrought-iron picket return wall at Pier 3 (lz = 5.4m, seen in 19a77a6c.jpg!) and Pier 10 (lz = -12.1m)
+        [5.4, -12.1].forEach((rz) => {
+            const rBaseY = getConcreteTopY(fenceX, rz);
+            addBox(2.15, 0.56, 0.30, creamBrickSolidMat, washX + 1.12, rBaseY + 0.28, rz);
+            addBox(2.20, 0.07, 0.36, whiteCurbMat, washX + 1.12, rBaseY + 0.59, rz);
+            addBox(2.10, 0.04, 0.06, darkMetalMat, washX + 1.12, rBaseY + 1.04, rz);
+            addBox(2.10, 0.04, 0.06, darkMetalMat, washX + 1.12, rBaseY + 0.68, rz);
+            for (let pkx = washX + 0.20; pkx <= washX + 2.00; pkx += 0.16) {
+                addBox(0.03, 0.40, 0.03, darkMetalMat, pkx, rBaseY + 0.86, rz);
+            }
+        });
+
+        pierSpecs.forEach((p, idx) => {
+            const pz = p.z;
+            const pBaseY = getConcreteTopY(fenceX, pz);
+            // Cream-brick pier with white limestone cap sitting on the contoured Washington St sidewalk
+            addBox(0.46, 0.92, 0.46, creamBrickSolidMat, fenceX, pBaseY + 0.46, pz);
+            addBox(0.54, 0.09, 0.54, whiteCurbMat, fenceX, pBaseY + 0.96, pz);
+
+            if (p.hasLamp) {
+                addCagedGlobeLamp(fenceX, pBaseY + 1.00, pz, 1.65, 0);
+            }
+
+            // Low cream-brick wall + black wrought-iron picket fence between consecutive piers (leaving open entry gap between Pier 3 & Pier 4: idx === 2!)
+            if (idx < pierSpecs.length - 1 && idx !== 2) {
+                const nextZ = pierSpecs[idx + 1].z;
+                const span = Math.abs(pz - nextZ) - 0.44;
+                const midZ = (pz + nextZ) * 0.5;
+                const midBaseY = getConcreteTopY(fenceX, midZ);
+                addBox(0.32, 0.56, span, creamBrickSolidMat, fenceX, midBaseY + 0.28, midZ);
+                addBox(0.38, 0.07, span, whiteCurbMat, fenceX, midBaseY + 0.59, midZ);
+                // Top & bottom wrought-iron rails + vertical pickets
+                addBox(0.06, 0.04, span, darkMetalMat, fenceX, midBaseY + 1.04, midZ);
+                addBox(0.06, 0.04, span, darkMetalMat, fenceX, midBaseY + 0.68, midZ);
+                const numPickets = Math.max(4, Math.floor(span / 0.16));
+                for (let pk = 0; pk < numPickets; pk++) {
+                    const pkz = Math.min(pz, nextZ) + 0.26 + (pk + 0.5) * ((span - 0.08) / numPickets);
+                    addBox(0.03, 0.40, 0.03, darkMetalMat, fenceX, midBaseY + 0.86, pkz);
+                }
+            }
+        });
+
+        // Yellow diamond "15 MPH" street sign post on sidewalk right in front of Pier 3 (seen in 19a77a6c.jpg!)
+        const sign15Y = getConcreteTopY(fenceX + 0.35, 5.95);
+        addBox(0.05, 2.35, 0.05, galvSteelMat, fenceX + 0.35, sign15Y + 1.18, 5.95);
+        const speedDiamond = addBox(
+            0.52,
+            0.52,
+            0.03,
+            new THREE.MeshStandardMaterial({ color: '#eab308', roughness: 0.4 }),
+            fenceX + 0.38,
+            sign15Y + 2.15,
+            5.95
+        );
+        speedDiamond.rotation.y = Math.PI * 0.5;
+        speedDiamond.rotation.z = Math.PI * 0.25;
+        addBox(
+            0.03,
+            0.36,
+            0.28,
+            new THREE.MeshStandardMaterial({ color: '#eab308', roughness: 0.4 }),
+            fenceX + 0.38,
+            sign15Y + 1.55,
+            5.95
+        );
+
+        // 4 Square Street Tree Pits along the outer edge of the contoured Washington St Sidewalk (19a77a6c.jpg & adc547e2.jpg)
+        [8.4, 1.2, -4.5, -10.2].forEach((tz) => {
+            const pitY = getConcreteTopY(washX + 3.95, tz);
+            addBox(1.15, 0.04, 1.15, soilMat, washX + 3.95, pitY + 0.01, tz, arch, false);
+        });
+}

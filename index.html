@@ -4,9 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chelan County Campus — Interactive 3D Map & Terrain</title>
-    <link rel="stylesheet" href="./css/styles.css?v=6" />
+    <link rel="stylesheet" href="./css/styles.css?v=8" />
 </head>
-<body>
+<body class="options-hidden">
+    <div class="floating-top-tools">
+        <div class="bulldoze-toolbar">
+            <button id="btn-bulldozer-tool" class="btn-tool-pill" title="Bulldozer Tool: Click or drag on terrain to lower 1m × 1m square by 1 foot (Hold Shift to raise 1 ft)">
+                🚜 Bulldozer (1m×1m • -1 ft)
+            </button>
+            <button id="btn-bulldozer-undo" class="btn-tool-pill hidden" title="Undo last bulldoze step">↩ Undo</button>
+            <button id="btn-bulldozer-clear" class="btn-tool-pill hidden" title="Reset all bulldozed terrain">🗑 Reset</button>
+            <span id="bulldozer-readout" class="bulldozer-readout hidden">Click 1m×1m square to lower 1 ft</span>
+        </div>
+        <button id="btn-toggle-options" class="btn-toggle-options" title="Show or Hide All Options">⚙️ Options</button>
+    </div>
     <!-- 3D WebGL + CSS2D Viewport -->
     <div id="viewport-container"></div>
 
@@ -33,7 +44,7 @@
             </label>
 
             <label class="control-pill">
-                <input id="toggle-contours" type="checkbox" checked />
+                <input id="toggle-contours" type="checkbox" />
                 <span>Topo Contours (2m)</span>
             </label>
 
@@ -70,7 +81,7 @@
     </aside>
 
     <!-- Right Inspector: Selected Building Details & Floor Directory -->
-    <section id="building-detail-card" class="detail-card">
+    <section id="building-detail-card" class="detail-card hidden">
         <div class="detail-top">
             <span id="detail-code" class="bldg-badge">350</span>
             <button id="close-detail-btn" class="close-btn" title="Close Inspector">✕</button>
@@ -103,7 +114,7 @@
     </section>
 
     <!-- Bottom-Right: 3D Wall & Terrain Foundry Studio -->
-    <section id="foundry-drawer" class="foundry-drawer">
+    <section id="foundry-drawer" class="foundry-drawer collapsed">
         <div class="foundry-header">
             <h3>🧱⛰️ 3D Wall & Terrain Foundry</h3>
             <button id="btn-toggle-foundry" class="btn-action" style="padding: 3px 9px; font-size: 11px;">
@@ -156,6 +167,6 @@
         </div>
     </section>
 
-    <script defer src="./js/campus-bundle.js?v=69"></script>
+    <script defer src="./js/campus-bundle.js?v=92"></script>
 </body>
 </html>

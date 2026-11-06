@@ -14107,6 +14107,99 @@
       return new _DodecahedronGeometry(data.radius, data.detail);
     }
   };
+  var _v0 = /* @__PURE__ */ new Vector3();
+  var _v1$1 = /* @__PURE__ */ new Vector3();
+  var _normal = /* @__PURE__ */ new Vector3();
+  var _triangle = /* @__PURE__ */ new Triangle();
+  var EdgesGeometry = class extends BufferGeometry {
+    /**
+     * Constructs a new edges geometry.
+     *
+     * @param {?BufferGeometry} [geometry=null] - The geometry.
+     * @param {number} [thresholdAngle=1] - An edge is only rendered if the angle (in degrees)
+     * between the face normals of the adjoining faces exceeds this value.
+     */
+    constructor(geometry = null, thresholdAngle = 1) {
+      super();
+      this.type = "EdgesGeometry";
+      this.parameters = {
+        geometry,
+        thresholdAngle
+      };
+      if (geometry !== null) {
+        const precisionPoints = 4;
+        const precision = Math.pow(10, precisionPoints);
+        const thresholdDot = Math.cos(DEG2RAD * thresholdAngle);
+        const indexAttr = geometry.getIndex();
+        const positionAttr = geometry.getAttribute("position");
+        const indexCount = indexAttr ? indexAttr.count : positionAttr.count;
+        const indexArr = [0, 0, 0];
+        const vertKeys = ["a", "b", "c"];
+        const hashes = new Array(3);
+        const edgeData = {};
+        const vertices = [];
+        for (let i = 0; i < indexCount; i += 3) {
+          if (indexAttr) {
+            indexArr[0] = indexAttr.getX(i);
+            indexArr[1] = indexAttr.getX(i + 1);
+            indexArr[2] = indexAttr.getX(i + 2);
+          } else {
+            indexArr[0] = i;
+            indexArr[1] = i + 1;
+            indexArr[2] = i + 2;
+          }
+          const { a, b, c } = _triangle;
+          a.fromBufferAttribute(positionAttr, indexArr[0]);
+          b.fromBufferAttribute(positionAttr, indexArr[1]);
+          c.fromBufferAttribute(positionAttr, indexArr[2]);
+          _triangle.getNormal(_normal);
+          hashes[0] = `${Math.round(a.x * precision)},${Math.round(a.y * precision)},${Math.round(a.z * precision)}`;
+          hashes[1] = `${Math.round(b.x * precision)},${Math.round(b.y * precision)},${Math.round(b.z * precision)}`;
+          hashes[2] = `${Math.round(c.x * precision)},${Math.round(c.y * precision)},${Math.round(c.z * precision)}`;
+          if (hashes[0] === hashes[1] || hashes[1] === hashes[2] || hashes[2] === hashes[0]) {
+            continue;
+          }
+          for (let j = 0; j < 3; j++) {
+            const jNext = (j + 1) % 3;
+            const vecHash0 = hashes[j];
+            const vecHash1 = hashes[jNext];
+            const v0 = _triangle[vertKeys[j]];
+            const v1 = _triangle[vertKeys[jNext]];
+            const hash = `${vecHash0}_${vecHash1}`;
+            const reverseHash = `${vecHash1}_${vecHash0}`;
+            if (reverseHash in edgeData && edgeData[reverseHash]) {
+              if (_normal.dot(edgeData[reverseHash].normal) <= thresholdDot) {
+                vertices.push(v0.x, v0.y, v0.z);
+                vertices.push(v1.x, v1.y, v1.z);
+              }
+              edgeData[reverseHash] = null;
+            } else if (!(hash in edgeData)) {
+              edgeData[hash] = {
+                index0: indexArr[j],
+                index1: indexArr[jNext],
+                normal: _normal.clone()
+              };
+            }
+          }
+        }
+        for (const key in edgeData) {
+          if (edgeData[key]) {
+            const { index0, index1 } = edgeData[key];
+            _v0.fromBufferAttribute(positionAttr, index0);
+            _v1$1.fromBufferAttribute(positionAttr, index1);
+            vertices.push(_v0.x, _v0.y, _v0.z);
+            vertices.push(_v1$1.x, _v1$1.y, _v1$1.z);
+          }
+        }
+        this.setAttribute("position", new Float32BufferAttribute(vertices, 3));
+      }
+    }
+    copy(source) {
+      super.copy(source);
+      this.parameters = Object.assign({}, source.parameters);
+      return this;
+    }
+  };
   var Curve = class {
     /**
      * Constructs a new curve.
@@ -23269,12 +23362,12 @@
     }
     return "vec3 " + functionName + "( vec3 color ) { return " + toneMappingName + "ToneMapping( color ); }";
   }
-  var _v0 = /* @__PURE__ */ new Vector3();
+  var _v02 = /* @__PURE__ */ new Vector3();
   function getLuminanceFunction() {
-    ColorManagement.getLuminanceCoefficients(_v0);
-    const r = _v0.x.toFixed(4);
-    const g = _v0.y.toFixed(4);
-    const b = _v0.z.toFixed(4);
+    ColorManagement.getLuminanceCoefficients(_v02);
+    const r = _v02.x.toFixed(4);
+    const g = _v02.y.toFixed(4);
+    const b = _v02.z.toFixed(4);
     return [
       "float luminance( const in vec3 rgb ) {",
       `	const vec3 weights = vec3( ${r}, ${g}, ${b} );`,
@@ -31901,6 +31994,3843 @@ void main() {
     return result;
   }
 
+  // js/foundry/buildings/building400/Building400Materials.js
+  function createBuilding400Context(foundry, group, building, trimMat, terrainY, getTerrainHeightFn) {
+    const storyH = 4.2;
+    const whiteRoofMat = new MeshStandardMaterial({
+      color: "#f1f3f5",
+      roughness: 0.78,
+      metalness: 0.04
+    });
+    const solidBrickCanvas = document.createElement("canvas");
+    solidBrickCanvas.width = 512;
+    solidBrickCanvas.height = 512;
+    const sbCtx = solidBrickCanvas.getContext("2d");
+    sbCtx.fillStyle = "#8b8374";
+    sbCtx.fillRect(0, 0, 512, 512);
+    const brickBumpCanvas = document.createElement("canvas");
+    brickBumpCanvas.width = 512;
+    brickBumpCanvas.height = 512;
+    const bbCtx = brickBumpCanvas.getContext("2d");
+    bbCtx.fillStyle = "#181818";
+    bbCtx.fillRect(0, 0, 512, 512);
+    const baseBrickCol = new Color(building.color || "#dfd5bc");
+    for (let r = 0; r < 32; r++) {
+      const off = r % 2 * 16;
+      for (let c = -1; c <= 16; c++) {
+        const jitter = Math.sin(r * 19.7 + c * 37.3) * 43758.5 % 1 * 0.045 - 0.022;
+        const bc = baseBrickCol.clone().offsetHSL(0, jitter * 0.25, jitter);
+        const bx = c * 32 + off + 2;
+        const by = r * 16 + 2;
+        sbCtx.fillStyle = `#${bc.getHexString()}`;
+        sbCtx.fillRect(bx, by, 29, 13);
+        sbCtx.fillStyle = "rgba(255,255,255,0.14)";
+        sbCtx.fillRect(bx, by, 29, 1.5);
+        sbCtx.fillStyle = "rgba(40,34,26,0.14)";
+        sbCtx.fillRect(bx, by + 11.5, 29, 1.5);
+        const bGray = Math.round(215 + jitter * 500);
+        bbCtx.fillStyle = `rgb(${bGray},${bGray},${bGray})`;
+        bbCtx.fillRect(bx, by, 29, 13);
+      }
+    }
+    const solidBrickTex = new CanvasTexture(solidBrickCanvas);
+    solidBrickTex.wrapS = RepeatWrapping;
+    solidBrickTex.wrapT = RepeatWrapping;
+    solidBrickTex.repeat.set(2.5, 2.5);
+    solidBrickTex.colorSpace = SRGBColorSpace;
+    const solidBrickBumpTex = new CanvasTexture(brickBumpCanvas);
+    solidBrickBumpTex.wrapS = RepeatWrapping;
+    solidBrickBumpTex.wrapT = RepeatWrapping;
+    solidBrickBumpTex.repeat.set(2.5, 2.5);
+    const creamBrickSolidMat = new MeshStandardMaterial({
+      map: solidBrickTex,
+      bumpMap: solidBrickBumpTex,
+      bumpScale: 0.14,
+      roughness: 0.82,
+      metalness: 0.04
+    });
+    const plinthConcreteMat = new MeshStandardMaterial({
+      color: "#d5d0c5",
+      roughness: 0.88,
+      metalness: 0.03,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
+    });
+    const slateGableMat = new MeshStandardMaterial({
+      color: "#535961",
+      bumpMap: foundry.baseTextures.brickBump,
+      bumpScale: 0.06,
+      roughness: 0.82,
+      metalness: 0.08
+    });
+    const plazaConcreteMat = new MeshStandardMaterial({
+      color: "#e2dcd0",
+      roughness: 0.86,
+      metalness: 0.03,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
+    });
+    const whiteCurbMat = new MeshStandardMaterial({
+      color: "#f2eee6",
+      roughness: 0.75,
+      metalness: 0.04
+    });
+    const turfMat = new MeshLambertMaterial({
+      color: "#4b8638"
+    });
+    const darkMetalMat = new MeshStandardMaterial({
+      color: "#1e2226",
+      roughness: 0.45,
+      metalness: 0.65
+    });
+    const galvSteelMat = new MeshStandardMaterial({
+      color: "#aeb6be",
+      roughness: 0.38,
+      metalness: 0.75
+    });
+    const blueTreadMat = new MeshStandardMaterial({
+      color: "#6e8294",
+      roughness: 0.7,
+      metalness: 0.25
+    });
+    const bronzePlaqueMat = new MeshStandardMaterial({
+      color: "#3d2f24",
+      roughness: 0.42,
+      metalness: 0.68
+    });
+    const globeMat = new MeshBasicMaterial({
+      color: "#fffdf5"
+    });
+    const glassMat = new MeshStandardMaterial({
+      color: "#1b2e40",
+      roughness: 0.2,
+      metalness: 0.35
+    });
+    const cosArch = 0.584197;
+    const sinArch = 0.811612;
+    const wallZ = 14.62;
+    const frontIndentZ = 0.48;
+    const frontWingZ = wallZ - frontIndentZ;
+    const arch = new Group();
+    arch.name = "Building400_PhotoDetails";
+    arch.rotation.y = Math.atan2(0.8116, 0.5842);
+    group.add(arch);
+    const addBox = (w, h, d, mat, x, y, z, parent = arch, cast = true) => {
+      const m = new Mesh(new BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z);
+      m.castShadow = cast;
+      m.receiveShadow = true;
+      parent.add(m);
+      return m;
+    };
+    const lowerPlazaY = -0.51;
+    const lowerNumSteps = 3;
+    const lowerStepRise = 0.17;
+    const lowerStepRun = 0.42;
+    const cosT = 0.5842;
+    const sinT = 0.8116;
+    const getConcreteTopY = (lx, lz) => {
+      if (!getTerrainHeightFn) return lowerPlazaY;
+      const wx = building.center[0] + lx * cosT + lz * sinT;
+      const wz = building.center[1] - lx * sinT + lz * cosT;
+      return getTerrainHeightFn(wx, wz) - terrainY + 0.06;
+    };
+    const stuccoCanvas = document.createElement("canvas");
+    stuccoCanvas.width = 256;
+    stuccoCanvas.height = 256;
+    const stCtx = stuccoCanvas.getContext("2d");
+    stCtx.fillStyle = "#d7ceb8";
+    stCtx.fillRect(0, 0, 256, 256);
+    for (let x = 0; x < 256; x += 2) {
+      const streak = Math.sin(x * 0.23) * 6 + Math.cos(x * 0.71) * 4;
+      stCtx.fillStyle = streak > 0 ? `rgba(245,240,228,${streak * 0.012})` : `rgba(95,88,74,${-streak * 0.016})`;
+      stCtx.fillRect(x, 0, 2, 256);
+    }
+    const weatheredStuccoTex = new CanvasTexture(stuccoCanvas);
+    weatheredStuccoTex.wrapS = RepeatWrapping;
+    weatheredStuccoTex.wrapT = RepeatWrapping;
+    weatheredStuccoTex.repeat.set(3, 2);
+    weatheredStuccoTex.colorSpace = SRGBColorSpace;
+    const weatheredStuccoMat = new MeshStandardMaterial({
+      map: weatheredStuccoTex,
+      roughness: 0.88,
+      metalness: 0.02
+    });
+    const rearBoxStuccoMat = new MeshStandardMaterial({
+      map: weatheredStuccoTex,
+      color: "#ebe6d8",
+      roughness: 0.86,
+      metalness: 0.02
+    });
+    const soilMat = new MeshLambertMaterial({ color: "#3b332a" });
+    const washX = 12.25;
+    const portX = 4.5;
+    const portDepth = 2.95;
+    const portW = 9.8;
+    const deckY = 0.76;
+    return {
+      foundry,
+      group,
+      building,
+      trimMat,
+      terrainY,
+      getTerrainHeightFn,
+      arch,
+      addBox,
+      storyH,
+      cosArch,
+      sinArch,
+      wallZ,
+      frontIndentZ,
+      frontWingZ,
+      lowerPlazaY,
+      lowerNumSteps,
+      lowerStepRise,
+      lowerStepRun,
+      cosT,
+      sinT,
+      getConcreteTopY,
+      washX,
+      portX,
+      portDepth,
+      portW,
+      deckY,
+      whiteRoofMat,
+      creamBrickSolidMat,
+      plinthConcreteMat,
+      slateGableMat,
+      plazaConcreteMat,
+      whiteCurbMat,
+      turfMat,
+      darkMetalMat,
+      galvSteelMat,
+      blueTreadMat,
+      bronzePlaqueMat,
+      globeMat,
+      glassMat,
+      weatheredStuccoMat,
+      rearBoxStuccoMat,
+      soilMat
+    };
+  }
+
+  // js/foundry/buildings/building400/Building400Structure.js
+  function buildBuilding400Structure(ctx) {
+    const {
+      foundry,
+      group,
+      building,
+      trimMat,
+      arch,
+      addBox,
+      cosArch,
+      sinArch,
+      wallZ,
+      frontWingZ,
+      lowerPlazaY,
+      portX,
+      portDepth,
+      portW,
+      deckY,
+      getConcreteTopY,
+      whiteRoofMat,
+      creamBrickSolidMat,
+      plinthConcreteMat,
+      slateGableMat,
+      plazaConcreteMat,
+      whiteCurbMat,
+      darkMetalMat,
+      galvSteelMat,
+      bronzePlaqueMat,
+      globeMat,
+      glassMat,
+      weatheredStuccoMat,
+      rearBoxStuccoMat
+    } = ctx;
+    const bldg400LocalPts = [
+      [-3.24, frontWingZ],
+      // Front-left wing outer corner
+      [-0.35, frontWingZ],
+      // Front-left indentation inner corner
+      [-0.35, wallZ],
+      // Central front wall left corner (behind portico)
+      [9.35, wallZ],
+      // Central front wall right corner (behind portico)
+      [9.35, frontWingZ],
+      // Front-right indentation inner corner
+      [12.61, frontWingZ],
+      // Front-right wing outer corner (Washington St Front Pavilion)
+      [12.61, 7.3],
+      // Washington St Front Pavilion step-in
+      [12.25, 7.3],
+      // Washington St Central Bay front corner
+      [12.25, -11.2],
+      // Washington St Central Bay rear corner
+      [12.61, -11.2],
+      // Washington St Rear Pavilion step-out
+      [12.61, -16.64],
+      // Washington St Rear Pavilion rear corner
+      [-5.35, -16.64],
+      // SW Rear Box (Stair/Mechanical Tower) rear corner (+1m toward SW parking area)
+      [-5.35, -11.2],
+      // SW Rear Box front step-out corner (closes SW sunken lightwell trench)
+      [-2.86, -11.2],
+      // SW Central Bay rear corner
+      [-2.86, 7.3],
+      // SW Central Bay front corner
+      [-3.24, 7.3]
+      // SW Front Pavilion step-out
+    ];
+    const bldg400Shape = new Shape();
+    bldg400LocalPts.forEach(([lx, lz], idx) => {
+      const sx = lx * cosArch + lz * sinArch;
+      const sy = lx * sinArch - lz * cosArch;
+      if (idx === 0) bldg400Shape.moveTo(sx, sy);
+      else bldg400Shape.lineTo(sx, sy);
+    });
+    bldg400Shape.closePath();
+    const footingGeo = new ExtrudeGeometry(bldg400Shape, {
+      depth: 3.4,
+      bevelEnabled: false
+    });
+    footingGeo.rotateX(-Math.PI / 2);
+    const footingMesh = new Mesh(footingGeo, plinthConcreteMat);
+    footingMesh.position.y = -5.2;
+    footingMesh.receiveShadow = true;
+    group.add(footingMesh);
+    const layerSpecs = [
+      { idx: 1, name: "Layer1_Basement", y0: -3.6, h: 3.5, mat: creamBrickSolidMat },
+      { idx: 2, name: "Layer2_RoadLevel", y0: 0.1, h: 4.1, mat: creamBrickSolidMat },
+      { idx: 3, name: "Layer3_UpperLevel", y0: 4.22, h: 3.23, mat: creamBrickSolidMat }
+    ];
+    layerSpecs.forEach((spec) => {
+      const geo = new ExtrudeGeometry(bldg400Shape, {
+        depth: spec.h,
+        bevelEnabled: false
+      });
+      geo.rotateX(-Math.PI / 2);
+      foundry._applyArchitecturalUVs(geo, spec.h, 1);
+      const mesh = new Mesh(geo, [whiteRoofMat, spec.mat]);
+      mesh.name = spec.name;
+      mesh.position.y = spec.y0;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData = { isSelectableBuilding: true, building, floorLayer: spec.idx };
+      group.add(mesh);
+    });
+    const brickEntablatureLocalPts = [
+      [-3.24, frontWingZ],
+      [-0.35, frontWingZ],
+      [-0.35, wallZ],
+      [9.35, wallZ],
+      [9.35, frontWingZ],
+      [12.61, frontWingZ],
+      [12.61, 7.3],
+      [12.25, 7.3],
+      [12.25, -11.2],
+      [12.61, -11.2],
+      [12.61, -16.64],
+      [11.2, -16.64],
+      [11.2, 7.3],
+      [-3.24, 7.3]
+    ];
+    const brickEntablatureShape = new Shape();
+    brickEntablatureLocalPts.forEach(([lx, lz], idx) => {
+      const sx = lx * cosArch + lz * sinArch;
+      const sy = lx * sinArch - lz * cosArch;
+      if (idx === 0) brickEntablatureShape.moveTo(sx, sy);
+      else brickEntablatureShape.lineTo(sx, sy);
+    });
+    brickEntablatureShape.closePath();
+    const beltBands = [
+      { y: -0.05, depth: 0.62, overhang: 0.08, mat: plinthConcreteMat, fullFootprint: true },
+      // Smooth concrete water-table plinth at road level
+      { y: 7.45, depth: 0.26, overhang: 0.22, mat: trimMat },
+      // Lower limestone architrave band
+      { y: 7.71, depth: 0.52, overhang: 0.12, mat: creamBrickSolidMat },
+      // Dentil brick frieze band
+      { y: 8.23, depth: 0.32, overhang: 0.46, mat: trimMat },
+      // Main projecting classical limestone cornice ledge
+      { y: 8.55, depth: 0.54, overhang: 0.14, mat: creamBrickSolidMat },
+      // Upper cream-brick roof parapet
+      { y: 9.09, depth: 0.18, overhang: 0.22, mat: whiteCurbMat }
+      // White limestone parapet coping
+    ];
+    beltBands.forEach((b) => {
+      const bGeo = new ExtrudeGeometry(b.fullFootprint ? bldg400Shape : brickEntablatureShape, {
+        depth: b.depth,
+        bevelEnabled: true,
+        bevelThickness: 0.06,
+        bevelSize: b.overhang,
+        bevelSegments: 2
+      });
+      bGeo.rotateX(-Math.PI / 2);
+      const bMesh = new Mesh(bGeo, b.mat);
+      bMesh.position.y = b.y;
+      bMesh.castShadow = true;
+      bMesh.receiveShadow = true;
+      group.add(bMesh);
+    });
+    for (let qy = 0.75; qy < 7.35; qy += 0.52) {
+      addBox(0.42, 0.28, 0.14, creamBrickSolidMat, -3.05, qy, frontWingZ + 0.04);
+      addBox(0.42, 0.28, 0.14, creamBrickSolidMat, 12.42, qy, frontWingZ + 0.04);
+    }
+    addBox(portW - 0.2, 0.6, portDepth, trimMat, portX, -0.3, wallZ + portDepth * 0.5);
+    const voluteCanvas = document.createElement("canvas");
+    voluteCanvas.width = 256;
+    voluteCanvas.height = 256;
+    const vCtx = voluteCanvas.getContext("2d");
+    vCtx.fillStyle = "#dcd5c7";
+    vCtx.fillRect(0, 0, 256, 256);
+    const cxV = 128;
+    const cyV = 128;
+    for (let pass = 0; pass < 2; pass++) {
+      vCtx.beginPath();
+      const maxSteps = 260;
+      for (let i = 0; i <= maxSteps; i++) {
+        const t = i / maxSteps * Math.PI * 5.5;
+        const r = 14 + t / (Math.PI * 5.5) * 102;
+        const x = cxV + Math.cos(t) * r;
+        const y = cyV + Math.sin(t) * r + (pass === 0 ? -3 : 2);
+        if (i === 0) vCtx.moveTo(x, y);
+        else vCtx.lineTo(x, y);
+      }
+      vCtx.strokeStyle = pass === 0 ? "#5c5549" : "#f7f3ea";
+      vCtx.lineWidth = pass === 0 ? 15 : 10;
+      vCtx.lineCap = "round";
+      vCtx.stroke();
+    }
+    vCtx.beginPath();
+    vCtx.arc(cxV, cyV, 16, 0, Math.PI * 2);
+    vCtx.fillStyle = "#ebe5d8";
+    vCtx.fill();
+    vCtx.lineWidth = 4;
+    vCtx.strokeStyle = "#6b6355";
+    vCtx.stroke();
+    const voluteTex = new CanvasTexture(voluteCanvas);
+    voluteTex.colorSpace = SRGBColorSpace;
+    const voluteFaceMat = new MeshStandardMaterial({
+      map: voluteTex,
+      bumpMap: voluteTex,
+      bumpScale: 0.06,
+      roughness: 0.76,
+      metalness: 0.04
+    });
+    const addSculptedIonicCapital = (cxPos, capBaseY, czPos, scaleX = 1, scaleZ = 1) => {
+      const capGroup = new Group();
+      capGroup.position.set(cxPos, capBaseY, czPos);
+      capGroup.scale.set(scaleX, 1, scaleZ);
+      const neckRing = new Mesh(new CylinderGeometry(0.405, 0.405, 0.055, 28), trimMat);
+      neckRing.position.set(0, -0.03, 0);
+      capGroup.add(neckRing);
+      const neckFillet = new Mesh(new CylinderGeometry(0.385, 0.395, 0.03, 28), plinthConcreteMat);
+      neckFillet.position.set(0, -0.065, 0);
+      capGroup.add(neckFillet);
+      const echinus = new Mesh(new CylinderGeometry(0.46, 0.38, 0.17, 28), trimMat);
+      echinus.position.set(0, 0.085, 0);
+      capGroup.add(echinus);
+      [-1, 1].forEach((zDir) => {
+        for (let e = -2; e <= 2; e++) {
+          const ex = e * 0.095;
+          const ez = zDir * Math.sqrt(Math.max(0.05, 0.44 * 0.44 - ex * ex));
+          const shell = new Mesh(new SphereGeometry(0.052, 10, 10), plinthConcreteMat);
+          shell.scale.set(0.92, 1.45, 0.72);
+          shell.position.set(ex, 0.11, ez);
+          capGroup.add(shell);
+          const egg = new Mesh(new SphereGeometry(0.038, 10, 10), trimMat);
+          egg.scale.set(0.82, 1.38, 0.88);
+          egg.position.set(ex, 0.115, ez + zDir * 0.014);
+          capGroup.add(egg);
+          if (e < 2) {
+            addBox(0.018, 0.11, 0.035, trimMat, ex + 0.0475, 0.11, ez + zDir * 8e-3, capGroup);
+          }
+        }
+      });
+      addBox(0.92, 0.13, 0.84, trimMat, 0, 0.21, 0, capGroup);
+      addBox(0.96, 0.045, 0.9, plinthConcreteMat, 0, 0.26, 0, capGroup);
+      [-0.43, 0.43].forEach((vx) => {
+        const signX = Math.sign(vx);
+        [-0.23, 0.23].forEach((bzHalf) => {
+          const halfBolster = new Mesh(
+            new CylinderGeometry(
+              bzHalf > 0 ? 0.185 : 0.145,
+              bzHalf > 0 ? 0.145 : 0.185,
+              0.46,
+              20
+            ),
+            trimMat
+          );
+          halfBolster.rotation.x = Math.PI * 0.5;
+          halfBolster.position.set(vx, 0.135, bzHalf);
+          halfBolster.castShadow = true;
+          capGroup.add(halfBolster);
+        });
+        for (let f = 0; f < 9; f++) {
+          const fang = -Math.PI * 0.35 + f / 8 * Math.PI * 1.15 * signX;
+          const flute = new Mesh(
+            new CylinderGeometry(0.024, 0.024, 0.92, 8),
+            f % 2 === 0 ? trimMat : plinthConcreteMat
+          );
+          flute.rotation.x = Math.PI * 0.5;
+          flute.position.set(vx + Math.cos(fang) * 0.162, 0.135 + Math.sin(fang) * 0.162, 0);
+          capGroup.add(flute);
+        }
+        const centerStrap = new Mesh(new CylinderGeometry(0.168, 0.168, 0.08, 18), trimMat);
+        centerStrap.rotation.x = Math.PI * 0.5;
+        centerStrap.position.set(vx, 0.135, 0);
+        capGroup.add(centerStrap);
+        [-0.048, 0.048].forEach((bz) => {
+          const cord = new Mesh(new CylinderGeometry(0.174, 0.174, 0.022, 18), plinthConcreteMat);
+          cord.rotation.x = Math.PI * 0.5;
+          cord.position.set(vx, 0.135, bz);
+          capGroup.add(cord);
+        });
+        [-0.46, 0.46].forEach((vz) => {
+          const signZ = Math.sign(vz);
+          const voluteDrum = new Mesh(
+            new CylinderGeometry(0.195, 0.195, 0.055, 24),
+            [trimMat, voluteFaceMat, voluteFaceMat]
+          );
+          voluteDrum.rotation.x = Math.PI * 0.5;
+          voluteDrum.position.set(vx, 0.135, vz);
+          capGroup.add(voluteDrum);
+          [
+            [0.182, 0.024, 0.022],
+            [0.128, 0.02, 0.032],
+            [0.076, 0.017, 0.04]
+          ].forEach(([rad, tube, zOff], idx) => {
+            const ring = new Mesh(new TorusGeometry(rad, tube, 10, 22), trimMat);
+            ring.position.set(
+              vx - idx * 0.01 * signX,
+              0.135 - idx * 8e-3,
+              vz + signZ * zOff
+            );
+            capGroup.add(ring);
+          });
+          const eyeBtn = new Mesh(new SphereGeometry(0.034, 10, 10), trimMat);
+          eyeBtn.scale.set(1, 1, 0.55);
+          eyeBtn.position.set(vx - 0.022 * signX, 0.12, vz + signZ * 0.045);
+          capGroup.add(eyeBtn);
+        });
+      });
+      addBox(0.92, 0.075, 0.92, plinthConcreteMat, 0, 0.295, 0, capGroup);
+      addBox(1.02, 0.075, 1.02, trimMat, 0, 0.365, 0, capGroup);
+      arch.add(capGroup);
+    };
+    [0.25, 8.75].forEach((px2) => {
+      addBox(0.92, 0.48, 0.34, trimMat, px2, deckY + 0.24, wallZ + 0.17);
+      addBox(0.84, 0.14, 0.3, trimMat, px2, deckY + 0.55, wallZ + 0.15);
+      addBox(0.76, 6.32, 0.22, creamBrickSolidMat, px2, deckY + 0.62 + 3.16, wallZ + 0.11);
+      addSculptedIonicCapital(px2, deckY + 6.82, wallZ + 0.16, 0.94, 0.46);
+    });
+    const colXs = [0.25, 3.08, 5.92, 8.75];
+    const colH = 6.22;
+    const colZ = wallZ + portDepth - 0.48;
+    colXs.forEach((cxPos) => {
+      addBox(1.1, 0.46, 1.1, plinthConcreteMat, cxPos, deckY + 0.23, colZ);
+      addBox(1.02, 0.12, 1.02, trimMat, cxPos, deckY + 0.52, colZ);
+      const lowerTorus = new Mesh(new CylinderGeometry(0.49, 0.52, 0.12, 24), trimMat);
+      lowerTorus.position.set(cxPos, deckY + 0.64, colZ);
+      arch.add(lowerTorus);
+      const upperTorus = new Mesh(new CylinderGeometry(0.44, 0.47, 0.1, 24), trimMat);
+      upperTorus.position.set(cxPos, deckY + 0.74, colZ);
+      arch.add(upperTorus);
+      const shaftBaseY = deckY + 0.78;
+      const shaft = new Mesh(new CylinderGeometry(0.365, 0.425, colH, 28), trimMat);
+      shaft.position.set(cxPos, shaftBaseY + colH * 0.5, colZ);
+      shaft.castShadow = true;
+      shaft.receiveShadow = true;
+      arch.add(shaft);
+      for (let d = 1; d <= 4; d++) {
+        const frac = d / 5;
+        const drumR = 0.425 - frac * (0.425 - 0.365) + 4e-3;
+        const jointRing = new Mesh(new CylinderGeometry(drumR, drumR, 0.022, 24), plinthConcreteMat);
+        jointRing.position.set(cxPos, shaftBaseY + frac * colH, colZ);
+        arch.add(jointRing);
+      }
+      addSculptedIonicCapital(cxPos, shaftBaseY + colH, colZ, 1, 1);
+    });
+    const addSaggingChain = (x0, z0, x1, z1, yEnds = deckY + 0.78, sag = 0.16) => {
+      const segs = 10;
+      for (let i = 0; i < segs; i++) {
+        const t0 = i / segs;
+        const t1 = (i + 1) / segs;
+        const tm = (t0 + t1) * 0.5;
+        const px0 = x0 + (x1 - x0) * t0;
+        const pz0 = z0 + (z1 - z0) * t0;
+        const py0 = yEnds - 4 * sag * t0 * (1 - t0);
+        const px1 = x0 + (x1 - x0) * t1;
+        const pz1 = z0 + (z1 - z0) * t1;
+        const py1 = yEnds - 4 * sag * t1 * (1 - t1);
+        const segLen = Math.hypot(px1 - px0, py1 - py0, pz1 - pz0) + 0.01;
+        const link = addBox(
+          segLen,
+          0.032,
+          0.032,
+          darkMetalMat,
+          x0 + (x1 - x0) * tm,
+          (py0 + py1) * 0.5,
+          z0 + (z1 - z0) * tm
+        );
+        link.rotation.z = Math.atan2(py1 - py0, Math.hypot(px1 - px0, pz1 - pz0));
+        link.rotation.y = -Math.atan2(pz1 - pz0, px1 - px0);
+      }
+    };
+    [
+      [0.25, 3.08],
+      [5.92, 8.75]
+    ].forEach(([x0, x1]) => {
+      const p0x = x0 + 0.56;
+      const p1x = x1 - 0.56;
+      addBox(0.055, 0.88, 0.055, darkMetalMat, p0x, deckY + 0.44, colZ);
+      addBox(0.055, 0.88, 0.055, darkMetalMat, p1x, deckY + 0.44, colZ);
+      addSaggingChain(p0x, colZ, p1x, colZ, deckY + 0.82, 0.15);
+    });
+    [0.25, 8.75].forEach((cxPos) => {
+      addBox(0.05, 0.88, 0.05, darkMetalMat, cxPos, deckY + 0.44, colZ - 0.58);
+      addSaggingChain(cxPos, wallZ + 0.35, cxPos, colZ - 0.58, deckY + 0.82, 0.12);
+    });
+    const entabW = portW + 0.36;
+    const entabH = 1.12;
+    const entabD = portDepth + 0.26;
+    const entabY = 8.08;
+    addBox(portW, 0.08, portDepth, trimMat, portX, entabY - entabH * 0.5 + 0.02, wallZ + portDepth * 0.5);
+    addBox(portW - 1.55, 0.06, portDepth - 1.35, plinthConcreteMat, portX, entabY - entabH * 0.5 + 0.07, wallZ + portDepth * 0.5);
+    const archBaseY = entabY - entabH * 0.5;
+    addBox(entabW + 0.16, 0.11, entabD + 0.16, trimMat, portX, archBaseY + 0.055, wallZ + entabD * 0.5);
+    addBox(entabW + 0.24, 0.11, entabD + 0.24, trimMat, portX, archBaseY + 0.165, wallZ + entabD * 0.5);
+    addBox(entabW + 0.34, 0.09, entabD + 0.32, trimMat, portX, archBaseY + 0.265, wallZ + entabD * 0.5);
+    addBox(entabW, 0.62, entabD, creamBrickSolidMat, portX, entabY + 0.02, wallZ + entabD * 0.5);
+    const friezeCanvas = document.createElement("canvas");
+    friezeCanvas.width = 1024;
+    friezeCanvas.height = 160;
+    const fCtx = friezeCanvas.getContext("2d");
+    fCtx.fillStyle = "#c8be9e";
+    fCtx.fillRect(0, 0, 1024, 160);
+    for (let i = 0; i < 700; i++) {
+      fCtx.fillStyle = i % 2 === 0 ? "rgba(85,76,60,0.07)" : "rgba(250,245,232,0.07)";
+      fCtx.fillRect(i * 73 % 1024, i * 41 % 160, 14, 5);
+    }
+    fCtx.strokeStyle = "rgba(80,72,58,0.45)";
+    fCtx.lineWidth = 5;
+    fCtx.strokeRect(10, 10, 1004, 140);
+    fCtx.font = 'bold 82px "Times New Roman", Georgia, serif';
+    fCtx.textAlign = "center";
+    fCtx.textBaseline = "middle";
+    fCtx.fillStyle = "#5e5645";
+    fCtx.fillText("CHELAN COUNTY", 509, 79);
+    fCtx.fillStyle = "#ece5d2";
+    fCtx.fillText("CHELAN COUNTY", 515, 85);
+    fCtx.fillStyle = "#8b816b";
+    fCtx.fillText("CHELAN COUNTY", 512, 82);
+    const friezeTex = new CanvasTexture(friezeCanvas);
+    friezeTex.colorSpace = SRGBColorSpace;
+    const friezeMat = new MeshStandardMaterial({
+      map: friezeTex,
+      bumpMap: friezeTex,
+      bumpScale: -0.05,
+      roughness: 0.84
+    });
+    addBox(7.82, 0.56, 0.05, trimMat, portX, entabY + 0.02, wallZ + entabD + 0.02);
+    const friezePlaque = new Mesh(new BoxGeometry(7.68, 0.5, 0.06), friezeMat);
+    friezePlaque.position.set(portX, entabY + 0.02, wallZ + entabD + 0.035);
+    arch.add(friezePlaque);
+    const dentilY = entabY + 0.38;
+    const numFrontDentils = 46;
+    const dentilSpanX = entabW + 0.24;
+    for (let d = 0; d < numFrontDentils; d++) {
+      const dx = portX - dentilSpanX * 0.5 + (d + 0.5) * (dentilSpanX / numFrontDentils);
+      addBox(0.11, 0.13, 0.14, trimMat, dx, dentilY, wallZ + entabD + 0.1);
+    }
+    for (let dz = wallZ + 0.2; dz < wallZ + entabD; dz += 0.22) {
+      addBox(0.14, 0.13, 0.11, trimMat, portX - entabW * 0.5 - 0.1, dentilY, dz);
+      addBox(0.14, 0.13, 0.11, trimMat, portX + entabW * 0.5 + 0.1, dentilY, dz);
+    }
+    for (let wx = -3.15; wx <= 12.5; wx += 0.22) {
+      if (wx < -0.42 || wx > 9.42) {
+        addBox(0.11, 0.13, 0.14, trimMat, wx, 8.15, frontWingZ + 0.12);
+      }
+    }
+    for (let rz = frontWingZ + 0.12; rz <= wallZ + 0.05; rz += 0.2) {
+      addBox(0.14, 0.13, 0.11, trimMat, -0.42, 8.15, rz);
+      addBox(0.14, 0.13, 0.11, trimMat, 9.42, 8.15, rz);
+    }
+    addBox(entabW + 0.56, 0.2, entabD + 0.44, trimMat, portX, entabY + entabH * 0.5 - 0.04, wallZ + entabD * 0.5);
+    const pedBaseY = entabY + entabH * 0.5 + 0.04;
+    const pedW = entabW + 0.44;
+    const pedH = 2.05;
+    const pedShape = new Shape();
+    pedShape.moveTo(-pedW * 0.5, 0);
+    pedShape.lineTo(pedW * 0.5, 0);
+    pedShape.lineTo(0, pedH);
+    pedShape.closePath();
+    const pedGeo = new ExtrudeGeometry(pedShape, {
+      depth: entabD + 0.08,
+      bevelEnabled: false
+    });
+    const pedMesh = new Mesh(pedGeo, creamBrickSolidMat);
+    pedMesh.position.set(portX, pedBaseY, wallZ - 0.05);
+    pedMesh.castShadow = true;
+    pedMesh.receiveShadow = true;
+    arch.add(pedMesh);
+    addBox(9.7, 1.55, 1.18, creamBrickSolidMat, portX, pedBaseY + 0.72, wallZ - 0.58);
+    addBox(9.92, 0.18, 1.32, whiteCurbMat, portX, pedBaseY + 1.55, wallZ - 0.58);
+    const slopeLen = Math.hypot(pedW * 0.5 + 0.28, pedH) + 0.18;
+    const slopeAngle = Math.atan2(pedH, pedW * 0.5);
+    [-1, 1].forEach((dir) => {
+      const rakingGroup = new Group();
+      rakingGroup.position.set(
+        portX + dir * (pedW * 0.25 + 0.04),
+        pedBaseY + pedH * 0.5 - 0.04,
+        wallZ + entabD * 0.5
+      );
+      rakingGroup.rotation.z = -dir * slopeAngle;
+      addBox(slopeLen, 0.2, entabD + 0.42, trimMat, 0, 0.06, 0.04, rakingGroup);
+      addBox(slopeLen - 0.35, 0.12, 0.24, trimMat, 0, -0.14, entabD * 0.5 + 0.04, rakingGroup);
+      const rakingDentilCount = 22;
+      const rakingSpan = slopeLen - 0.55;
+      for (let rd = 0; rd < rakingDentilCount; rd++) {
+        const rdx = -rakingSpan * 0.5 + (rd + 0.5) * (rakingSpan / rakingDentilCount);
+        addBox(0.1, 0.12, 0.16, trimMat, rdx, -0.06, entabD * 0.5 + 0.12, rakingGroup);
+      }
+      addBox(slopeLen + 0.12, 0.15, entabD + 0.5, slateGableMat, 0, 0.21, 0.04, rakingGroup);
+      arch.add(rakingGroup);
+    });
+    addBox(0.32, 0.14, entabD + 0.52, trimMat, portX, pedBaseY + pedH + 0.22, wallZ + entabD * 0.5 + 0.04);
+    addBox(portW - 0.4, 0.14, 1.35, plazaConcreteMat, portX, deckY + 0.07, wallZ + 0.68);
+    const doorBaseY = deckY + 0.14;
+    addBox(2.68, 4.75, 0.22, trimMat, portX, doorBaseY + 2.38, wallZ + 0.06);
+    addBox(2.34, 4.52, 0.18, whiteCurbMat, portX, doorBaseY + 2.26, wallZ + 0.08);
+    [-0.54, 0.54].forEach((dx) => {
+      addBox(0.98, 2.38, 0.14, whiteCurbMat, portX + dx, doorBaseY + 1.19, wallZ + 0.11);
+      addBox(0.74, 1.24, 0.16, glassMat, portX + dx, doorBaseY + 1.62, wallZ + 0.12);
+      addBox(0.74, 0.58, 0.12, plinthConcreteMat, portX + dx, doorBaseY + 0.48, wallZ + 0.12);
+      addBox(0.035, 0.34, 0.06, darkMetalMat, portX + dx * 0.22, doorBaseY + 1.05, wallZ + 0.18);
+    });
+    addBox(0.1, 2.42, 0.2, whiteCurbMat, portX, doorBaseY + 1.21, wallZ + 0.13);
+    addBox(2.28, 0.16, 0.22, whiteCurbMat, portX, doorBaseY + 2.46, wallZ + 0.13);
+    addBox(2.08, 1.38, 0.16, glassMat, portX, doorBaseY + 3.28, wallZ + 0.11);
+    addBox(2.1, 0.055, 0.2, whiteCurbMat, portX, doorBaseY + 3.28, wallZ + 0.13);
+    for (let m = -2; m <= 2; m++) {
+      addBox(0.048, 1.38, 0.2, whiteCurbMat, portX + m * 0.345, doorBaseY + 3.28, wallZ + 0.13);
+    }
+    addBox(2.82, 0.18, 0.42, trimMat, portX, doorBaseY + 4.58, wallZ + 0.21);
+    addBox(3.02, 0.22, 0.54, trimMat, portX, doorBaseY + 4.76, wallZ + 0.27);
+    [-1.24, 1.24].forEach((bx) => {
+      addBox(0.24, 0.68, 0.36, trimMat, portX + bx, doorBaseY + 4.18, wallZ + 0.18);
+      const topRoll = new Mesh(new CylinderGeometry(0.14, 0.14, 0.26, 14), trimMat);
+      topRoll.rotation.z = Math.PI * 0.5;
+      topRoll.position.set(portX + bx, doorBaseY + 4.38, wallZ + 0.32);
+      arch.add(topRoll);
+      const botRoll = new Mesh(new CylinderGeometry(0.1, 0.1, 0.26, 14), trimMat);
+      botRoll.rotation.z = Math.PI * 0.5;
+      botRoll.position.set(portX + bx, doorBaseY + 3.92, wallZ + 0.24);
+      arch.add(botRoll);
+    });
+    [2.98, 6.02].forEach((sx) => {
+      addBox(0.14, 0.34, 0.06, darkMetalMat, sx, doorBaseY + 2.38, wallZ + 0.05);
+      addBox(0.06, 0.08, 0.28, darkMetalMat, sx, doorBaseY + 2.34, wallZ + 0.16);
+      const sconceGlobe = new Mesh(new SphereGeometry(0.17, 14, 14), globeMat);
+      sconceGlobe.position.set(sx, doorBaseY + 2.58, wallZ + 0.26);
+      arch.add(sconceGlobe);
+      const sconceRing = new Mesh(new CylinderGeometry(0.185, 0.185, 0.03, 14), darkMetalMat);
+      sconceRing.position.set(sx, doorBaseY + 2.58, wallZ + 0.26);
+      arch.add(sconceRing);
+      const finial = new Mesh(new ConeGeometry(0.08, 0.12, 10), darkMetalMat);
+      finial.position.set(sx, doorBaseY + 2.78, wallZ + 0.26);
+      arch.add(finial);
+    });
+    addBox(0.26, 0.32, 0.16, whiteCurbMat, 3.06, doorBaseY + 1.42, wallZ + 0.1);
+    addBox(0.18, 0.06, 0.18, darkMetalMat, 3.06, doorBaseY + 1.5, wallZ + 0.11);
+    const alarmBell = new Mesh(
+      new SphereGeometry(0.11, 12, 12),
+      new MeshStandardMaterial({ color: "#b91c1c", roughness: 0.4, metalness: 0.3 })
+    );
+    alarmBell.scale.set(1, 1, 0.55);
+    alarmBell.position.set(2.58, doorBaseY + 4.55, wallZ + 0.07);
+    arch.add(alarmBell);
+    [1.65, 7.35].forEach((sx) => {
+      addBox(1.52, 3.35, 0.18, trimMat, sx, doorBaseY + 1.67, wallZ + 0.05);
+      addBox(1.28, 3.18, 0.16, whiteCurbMat, sx, doorBaseY + 1.59, wallZ + 0.07);
+      addBox(0.88, 1.32, 0.18, glassMat, sx, doorBaseY + 2.18, wallZ + 0.09);
+      addBox(0.88, 0.82, 0.18, glassMat, sx, doorBaseY + 0.78, wallZ + 0.09);
+      addBox(1.66, 0.26, 0.26, trimMat, sx, doorBaseY + 3.42, wallZ + 0.11);
+    });
+    addBox(1.48, 0.11, 0.52, trimMat, -2.28, 0.48, frontWingZ + 0.48);
+    addBox(1.42, 0.05, 0.46, plinthConcreteMat, -2.28, 0.41, frontWingZ + 0.48);
+    [-2.78, -1.78].forEach((legX) => {
+      addBox(0.26, 0.1, 0.46, trimMat, legX, 0.05, frontWingZ + 0.48);
+      addBox(0.2, 0.28, 0.38, trimMat, legX, 0.24, frontWingZ + 0.48);
+      addBox(0.25, 0.08, 0.44, trimMat, legX, 0.38, frontWingZ + 0.48);
+    });
+    addBox(0.58, 0.74, 0.05, bronzePlaqueMat, -1.82, 1.72, frontWingZ + 0.04);
+    addBox(0.5, 0.66, 0.06, new MeshStandardMaterial({ color: "#5c4736", roughness: 0.35, metalness: 0.75 }), -1.82, 1.72, frontWingZ + 0.045);
+    addBox(0.16, 0.2, 0.08, new MeshBasicMaterial({ color: "#dc2626" }), -2.68, 1.78, frontWingZ + 0.05);
+    const addrTex = foundry._createTextPlaqueTexture(["400", "DOUGLAS STREET"], "#dfd5bc", "#1a1917", 512, 160);
+    const addrMat = new MeshStandardMaterial({ map: addrTex, roughness: 0.8 });
+    const addrSign = new Mesh(new PlaneGeometry(2.25, 0.72), addrMat);
+    addrSign.position.set(10.85, 2.55, frontWingZ + 0.06);
+    arch.add(addrSign);
+    const adaPlaque = new Mesh(
+      new PlaneGeometry(0.4, 0.48),
+      new MeshBasicMaterial({ color: "#1d4ed8" })
+    );
+    adaPlaque.position.set(10.85, 1.68, frontWingZ + 0.06);
+    arch.add(adaPlaque);
+    addBox(0.48, 0.32, 0.06, whiteCurbMat, 11.85, 0.08, frontWingZ + 0.06);
+    for (let lv = -2; lv <= 2; lv++) {
+      addBox(0.42, 0.025, 0.08, plinthConcreteMat, 11.85, 0.08 + lv * 0.055, frontWingZ + 0.07);
+    }
+    const addMonumentalArchedWindow = (wx, wy, wz, sideDir = 1, hasBalcony = false) => {
+      const wGroup = new Group();
+      wGroup.position.set(wx, wy, wz);
+      wGroup.rotation.y = sideDir > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
+      const winW = 1.68;
+      const rectH = 2.65;
+      const archR = winW * 0.5;
+      addBox(winW + 0.28, rectH, 0.1, creamBrickSolidMat, 0, rectH * 0.5, 0.02, wGroup);
+      addBox(winW + 0.16, rectH, 0.14, whiteCurbMat, 0, rectH * 0.5, 0.03, wGroup);
+      addBox(winW, rectH - 0.12, 0.18, glassMat, 0, rectH * 0.5, 0.045, wGroup);
+      addBox(winW - 0.08, rectH * 0.42, 0.17, plinthConcreteMat, 0, rectH * 0.74, 0.042, wGroup);
+      addBox(winW + 0.12, 0.1, 0.24, whiteCurbMat, 0, rectH - 0.03, 0.07, wGroup);
+      const archDisc = new Mesh(
+        new CylinderGeometry(archR + 0.16, archR + 0.16, 0.15, 24, 1, false, 0, Math.PI),
+        creamBrickSolidMat
+      );
+      archDisc.rotation.z = Math.PI * 0.5;
+      archDisc.rotation.y = Math.PI * 0.5;
+      archDisc.position.set(0, rectH, 0.03);
+      wGroup.add(archDisc);
+      const sashDisc = new Mesh(
+        new CylinderGeometry(archR + 0.06, archR + 0.06, 0.17, 22, 1, false, 0, Math.PI),
+        whiteCurbMat
+      );
+      sashDisc.rotation.z = Math.PI * 0.5;
+      sashDisc.rotation.y = Math.PI * 0.5;
+      sashDisc.position.set(0, rectH, 0.04);
+      wGroup.add(sashDisc);
+      const glassDisc = new Mesh(
+        new CylinderGeometry(archR - 0.02, archR - 0.02, 0.2, 20, 1, false, 0, Math.PI),
+        glassMat
+      );
+      glassDisc.rotation.z = Math.PI * 0.5;
+      glassDisc.rotation.y = Math.PI * 0.5;
+      glassDisc.position.set(0, rectH, 0.05);
+      wGroup.add(glassDisc);
+      addBox(0.28, 0.44, 0.26, trimMat, 0, rectH + archR + 0.08, 0.08, wGroup);
+      addBox(0.34, 0.16, 0.28, trimMat, 0, rectH + archR + 0.24, 0.09, wGroup);
+      if (hasBalcony) {
+        addBox(2.36, 0.16, 0.48, trimMat, 0, -0.08, 0.2, wGroup);
+        addBox(2.22, 0.1, 0.42, plinthConcreteMat, 0, -0.21, 0.17, wGroup);
+        addBox(2.08, 0.46, 0.34, trimMat, 0, -0.49, 0.14, wGroup);
+        addBox(1.82, 0.3, 0.36, plinthConcreteMat, 0, -0.49, 0.15, wGroup);
+        addBox(2.24, 0.12, 0.42, trimMat, 0, -0.78, 0.17, wGroup);
+        addBox(2.4, 0.16, 0.5, trimMat, 0, -0.92, 0.21, wGroup);
+        addBox(2.18, 0.08, 0.38, plinthConcreteMat, 0, -1.04, 0.15, wGroup);
+      } else {
+        addBox(winW + 0.34, 0.15, 0.26, trimMat, 0, -0.075, 0.09, wGroup);
+        addBox(winW - 0.12, 0.58, 0.03, plinthConcreteMat, 0, -0.44, 0.015, wGroup);
+        addBox(winW - 0.16, 0.52, 0.04, creamBrickSolidMat, 0, -0.44, 0.02, wGroup);
+        [-winW * 0.5 - 0.04, winW * 0.5 + 0.04].forEach((bx) => {
+          addBox(0.18, 0.64, 0.09, creamBrickSolidMat, bx, -0.44, 0.045, wGroup);
+        });
+        addBox(winW + 0.26, 0.11, 0.1, creamBrickSolidMat, 0, -0.78, 0.05, wGroup);
+      }
+      arch.add(wGroup);
+    };
+    const washX = 12.25;
+    addBox(0.08, 6.85, 0.42, creamBrickSolidMat, washX + 0.38, 4, frontWingZ - 0.21);
+    const frontPavLen = frontWingZ - 7.3;
+    const frontPavMidZ = (frontWingZ + 7.3) * 0.5;
+    addBox(0.14, 2.25, frontPavLen + 0.04, plinthConcreteMat, washX + 0.36, lowerPlazaY + 0.425, frontPavMidZ);
+    addBox(0.18, 0.08, frontPavLen + 0.08, trimMat, washX + 0.38, lowerPlazaY + 1.56, frontPavMidZ);
+    addBox(0.14, 2.25, 5.48, plinthConcreteMat, washX + 0.36, lowerPlazaY + 0.425, -13.92);
+    addBox(0.18, 0.08, 5.52, trimMat, washX + 0.38, lowerPlazaY + 1.56, -13.92);
+    [11.85, 9.05].forEach((vz) => {
+      addBox(0.08, 0.28, 0.52, whiteCurbMat, washX + 0.41, lowerPlazaY + 0.36, vz);
+      for (let lv = -2; lv <= 2; lv++) {
+        addBox(0.1, 0.025, 0.46, plinthConcreteMat, washX + 0.42, lowerPlazaY + 0.36 + lv * 0.05, vz);
+      }
+    });
+    for (let dz = -16.5; dz <= frontWingZ - 0.1; dz += 0.24) {
+      const isPavilionZ = dz > 7.25 || dz < -11.15;
+      const dentilOutX = isPavilionZ ? washX + 0.46 : washX + 0.12;
+      addBox(0.14, 0.13, 0.11, trimMat, dentilOutX, 8.15, dz);
+      if (dz > 7.25) {
+        addBox(0.14, 0.13, 0.11, trimMat, -3.34, 8.15, dz);
+      }
+    }
+    addBox(0.14, 12.45, 18.52, weatheredStuccoMat, -2.84, 2.625, -1.95);
+    addBox(0.22, 0.1, 18.56, trimMat, -2.86, 8.88, -1.95);
+    addMonumentalArchedWindow(washX + 0.36, 2.55, 10.72, 1, true);
+    [5.3, 2.2, -0.9, -4, -7.1, -10].forEach((wz) => {
+      addMonumentalArchedWindow(washX, 2.55, wz, 1, false);
+    });
+    addMonumentalArchedWindow(washX + 0.36, 2.55, -13.92, 1, true);
+    addMonumentalArchedWindow(-3.24, 2.55, 10.72, -1, true);
+    [4.8, 1.2, -2.4, -6, -9.6].forEach((wz) => {
+      addMonumentalArchedWindow(-2.86, 2.55, wz, -1, false);
+      addBox(0.16, 0.78, 2.15, weatheredStuccoMat, -2.86, 2.08, wz);
+      addBox(0.18, 1.05, 1.22, whiteCurbMat, -2.88, -0.52, wz);
+      addBox(0.22, 0.88, 1.04, glassMat, -2.9, -0.52, wz);
+    });
+    const rearRoofTopY = 8.42 + 1.76;
+    const rearBoxW = 5;
+    const rearBoxD = 5.48;
+    const rearBoxX = -2.85;
+    const rearBoxZ = -13.92;
+    const rearBoxH = rearRoofTopY - -3.6;
+    const rearBoxCenterY = (-3.6 + rearRoofTopY) * 0.5;
+    addBox(rearBoxW, rearBoxH, rearBoxD, rearBoxStuccoMat, rearBoxX, rearBoxCenterY, rearBoxZ);
+    addBox(rearBoxW + 0.1, 0.08, rearBoxD + 0.1, darkMetalMat, rearBoxX, rearRoofTopY - 0.02, rearBoxZ);
+    addBox(rearBoxW - 0.2, 0.06, rearBoxD - 0.2, whiteRoofMat, rearBoxX, rearRoofTopY + 0.01, rearBoxZ);
+    addBox(0.98, 2.12, 0.1, whiteCurbMat, -3.55, -1.06, -11.14);
+    addBox(0.88, 2.02, 0.12, new MeshStandardMaterial({ color: "#e5e2d9", roughness: 0.7 }), -3.55, -1.06, -11.13);
+    addBox(0.08, 0.05, 0.16, darkMetalMat, -3.22, -1.05, -11.11);
+    addBox(1.02, 1.08, 0.06, whiteCurbMat, -3.65, 2.85, -11.15);
+    addBox(0.055, 10.8, 0.055, galvSteelMat, -5.05, 5.2, -11.13);
+    addBox(0.065, 6.8, 0.065, galvSteelMat, -3.02, 7.15, -11.13);
+    addBox(1.1, 0.04, 0.04, galvSteelMat, -4.05, 1.55, -11.13);
+    const scupperHood = addBox(0.55, 0.32, 0.45, galvSteelMat, -2.98, 8.92, -11.08);
+    scupperHood.rotation.z = -0.22;
+    addBox(0.05, 1.85, 0.05, galvSteelMat, -2.96, 9.85, -11.12);
+    const gravelMat = new MeshStandardMaterial({ color: "#6e685c", roughness: 0.96, metalness: 0.02 });
+    addBox(1.42, 0.16, 18.5, gravelMat, -3.55, -2.18, -1.95, arch, false);
+    addBox(0.3, 2.25, 18.5, plinthConcreteMat, -4.25, -1.08, -1.95, arch, false);
+    const boulderGeo = new DodecahedronGeometry(0.46, 2);
+    boulderGeo.scale(0.95, 0.68, 1.45);
+    const boulderMesh = new Mesh(
+      boulderGeo,
+      new MeshStandardMaterial({ color: "#847e70", roughness: 0.92, metalness: 0.02 })
+    );
+    boulderMesh.position.set(-3.88, -1.92, -6.35);
+    boulderMesh.rotation.y = 0.25;
+    boulderMesh.receiveShadow = true;
+    boulderMesh.castShadow = true;
+    arch.add(boulderMesh);
+    [-15.65, -14.35].forEach((wz) => {
+      addBox(0.12, 1.42, 0.96, whiteCurbMat, -5.36, 7.3, wz);
+      addBox(0.14, 1.26, 0.82, glassMat, -5.37, 7.3, wz);
+    });
+    const utilPadY = getConcreteTopY(-6.6, -12.6);
+    addBox(2.45, 0.24, 4.1, plinthConcreteMat, -6.58, utilPadY + 0.12, -12.65);
+    addBox(0.82, 2.05, 1.75, new MeshStandardMaterial({ color: "#e4e8ec", roughness: 0.5, metalness: 0.3 }), -5.82, utilPadY + 1.24, -13.35);
+    const greenBoxMat = new MeshStandardMaterial({ color: "#4d5940", roughness: 0.65, metalness: 0.25 });
+    addBox(1.12, 1.52, 1.38, greenBoxMat, -6.75, utilPadY + 0.98, -11.65);
+    const chainMeshMat = new MeshStandardMaterial({
+      color: "#22262a",
+      roughness: 0.5,
+      metalness: 0.6,
+      transparent: true,
+      opacity: 0.38,
+      side: DoubleSide
+    });
+    const fH = 1.95;
+    const fY = utilPadY + 0.2 + fH * 0.5;
+    addBox(2.4, fH, 0.02, chainMeshMat, -6.55, fY, -10.65, arch, false);
+    addBox(0.02, fH, 4, chainMeshMat, -7.75, fY, -12.65, arch, false);
+    addBox(2.4, fH, 0.02, chainMeshMat, -6.55, fY, -14.65, arch, false);
+    [utilPadY + 0.22, utilPadY + 0.2 + fH].forEach((ry) => {
+      addBox(2.42, 0.04, 0.04, darkMetalMat, -6.55, ry, -10.65);
+      addBox(0.04, 0.04, 4.02, darkMetalMat, -7.75, ry, -12.65);
+      addBox(2.42, 0.04, 0.04, darkMetalMat, -6.55, ry, -14.65);
+    });
+    [
+      [-5.4, -10.65],
+      [-6.55, -10.65],
+      [-7.75, -10.65],
+      [-7.75, -12.65],
+      [-7.75, -14.65],
+      [-5.4, -14.65]
+    ].forEach(([px2, pz2]) => {
+      addBox(0.055, fH + 0.12, 0.055, darkMetalMat, px2, fY, pz2);
+    });
+    addBox(11.55, 12.25, 0.18, weatheredStuccoMat, 5.425, 2.525, -16.62);
+    const blueReflGlassMat = new MeshStandardMaterial({ color: "#3b6e8c", roughness: 0.15, metalness: 0.45 });
+    [-4.45, -2.55].forEach((wx) => {
+      addBox(1.36, 1.58, 0.12, weatheredStuccoMat, wx, 7.35, -16.68);
+      addBox(1.24, 1.44, 0.14, blueReflGlassMat, wx, 7.35, -16.69);
+      addBox(1.42, 0.1, 0.18, trimMat, wx, 6.54, -16.71);
+    });
+    const fanDrum = new Mesh(new CylinderGeometry(0.5, 0.5, 0.58, 24), galvSteelMat);
+    fanDrum.rotation.x = Math.PI * 0.5;
+    fanDrum.position.set(-4.45, 5.18, -16.96);
+    fanDrum.castShadow = true;
+    arch.add(fanDrum);
+    const fanCap = new Mesh(new CylinderGeometry(0.36, 0.48, 0.16, 24), galvSteelMat);
+    fanCap.rotation.x = Math.PI * 0.5;
+    fanCap.position.set(-4.45, 5.18, -17.3);
+    arch.add(fanCap);
+    [-4.45, -2.55].forEach((wx) => {
+      addBox(1.32, 1.48, 0.06, rearBoxStuccoMat, wx, 3.35, -16.68);
+      addBox(1.38, 0.06, 0.09, whiteCurbMat, wx, 2.6, -16.69);
+    });
+    [3.15, 5.45].forEach((wx) => {
+      addBox(1.32, 1.42, 0.06, rearBoxStuccoMat, wx, 6.35, -16.68);
+      addBox(1.32, 1.48, 0.06, rearBoxStuccoMat, wx, 3.35, -16.68);
+      addBox(0.92, 1.05, 0.06, rearBoxStuccoMat, wx, 1.1, -16.68);
+    });
+    addBox(0.96, 1.32, 0.08, whiteCurbMat, -2.45, 0.92, -16.68);
+    for (let ly = 0.36; ly <= 1.48; ly += 0.14) {
+      addBox(0.84, 0.04, 0.1, darkMetalMat, -2.45, ly, -16.69);
+    }
+    [-2.82, -2.12].forEach((bx) => {
+      const bollard = new Mesh(new CylinderGeometry(0.055, 0.055, 1.15, 12), whiteCurbMat);
+      bollard.position.set(bx, 0.55, -17.02);
+      arch.add(bollard);
+    });
+    addBox(0.74, 0.06, 0.06, whiteCurbMat, -2.47, 0.85, -17.02);
+    const tiltedHatch = addBox(0.56, 0.42, 0.06, whiteCurbMat, -3.55, 0.42, -16.68);
+    tiltedHatch.rotation.z = -0.22;
+    [-4.05, -4.28, -4.5, -4.72].forEach((bx) => {
+      addBox(0.16, 0.42, 0.1, galvSteelMat, bx, 0.28, -16.69);
+    });
+    const woodPoleMat = new MeshStandardMaterial({ color: "#3d2b1f", roughness: 0.9, metalness: 0.02 });
+    const utilPole = new Mesh(new CylinderGeometry(0.14, 0.19, 11.4, 14), woodPoleMat);
+    utilPole.position.set(-5.52, 5.5, -16.82);
+    utilPole.castShadow = true;
+    arch.add(utilPole);
+    const poleRiser = new Mesh(new CylinderGeometry(0.045, 0.045, 4.8, 10), galvSteelMat);
+    poleRiser.position.set(-5.42, 2.2, -16.92);
+    arch.add(poleRiser);
+    const roofBaseY = 8.42;
+    const pentRoomX = 4.25;
+    const pentRoomZ = 10.42;
+    const pentRoomW = 9.2;
+    const pentRoomD = 6.25;
+    const pentRoomH = 1.48;
+    addBox(pentRoomW, pentRoomH, pentRoomD, whiteCurbMat, pentRoomX, roofBaseY + pentRoomH * 0.5, pentRoomZ);
+    addBox(pentRoomW - 0.48, 0.08, pentRoomD - 0.48, plinthConcreteMat, pentRoomX, roofBaseY + pentRoomH + 0.02, pentRoomZ);
+    const cricketSlab = addBox(pentRoomW - 0.65, 0.09, pentRoomD * 0.46, whiteCurbMat, pentRoomX, roofBaseY + pentRoomH + 0.08, pentRoomZ + 1.2);
+    cricketSlab.rotation.x = -0.04;
+    const frameT = 0.26;
+    const frameH = 0.36;
+    const frameY = roofBaseY + pentRoomH + frameH * 0.5;
+    addBox(pentRoomW + 0.12, frameH, frameT, whiteCurbMat, pentRoomX, frameY, pentRoomZ + pentRoomD * 0.5 - frameT * 0.5);
+    addBox(pentRoomW + 0.12, frameH, frameT, whiteCurbMat, pentRoomX, frameY, pentRoomZ - pentRoomD * 0.5 + frameT * 0.5);
+    addBox(frameT, frameH, pentRoomD, whiteCurbMat, pentRoomX - pentRoomW * 0.5 + frameT * 0.5, frameY, pentRoomZ);
+    addBox(frameT, frameH, pentRoomD, whiteCurbMat, pentRoomX + pentRoomW * 0.5 - frameT * 0.5, frameY, pentRoomZ);
+    addBox(pentRoomW + 0.22, 0.06, frameT + 0.08, whiteRoofMat, pentRoomX, frameY + frameH * 0.5 + 0.02, pentRoomZ + pentRoomD * 0.5 - frameT * 0.5);
+    addBox(pentRoomW + 0.22, 0.06, frameT + 0.08, whiteRoofMat, pentRoomX, frameY + frameH * 0.5 + 0.02, pentRoomZ - pentRoomD * 0.5 + frameT * 0.5);
+    addBox(frameT + 0.08, 0.06, pentRoomD + 0.12, whiteRoofMat, pentRoomX - pentRoomW * 0.5 + frameT * 0.5, frameY + frameH * 0.5 + 0.02, pentRoomZ);
+    addBox(frameT + 0.08, 0.06, pentRoomD + 0.12, whiteRoofMat, pentRoomX + pentRoomW * 0.5 - frameT * 0.5, frameY + frameH * 0.5 + 0.02, pentRoomZ);
+    const aFrameHalfW = 5.45;
+    const aFrameEaveH = 0.67;
+    const aFramePeakH = 1.76;
+    const aFrameLen = 23.99;
+    const aFrameZ0 = -16.64;
+    const aFrameShape = new Shape();
+    aFrameShape.moveTo(-aFrameHalfW, 0);
+    aFrameShape.lineTo(aFrameHalfW, 0);
+    aFrameShape.lineTo(aFrameHalfW, aFrameEaveH);
+    aFrameShape.lineTo(0, aFramePeakH);
+    aFrameShape.lineTo(-aFrameHalfW, aFrameEaveH);
+    aFrameShape.closePath();
+    const aFrameGeo = new ExtrudeGeometry(aFrameShape, {
+      depth: aFrameLen,
+      bevelEnabled: false
+    });
+    const aFrameMesh = new Mesh(aFrameGeo, [weatheredStuccoMat, whiteRoofMat]);
+    aFrameMesh.position.set(4.5, roofBaseY, aFrameZ0);
+    aFrameMesh.castShadow = true;
+    aFrameMesh.receiveShadow = true;
+    arch.add(aFrameMesh);
+    const aSlopeLen = Math.hypot(aFrameHalfW, aFramePeakH - aFrameEaveH) + 0.12;
+    const aSlopeAng = Math.atan2(aFramePeakH - aFrameEaveH, aFrameHalfW);
+    [-1, 1].forEach((dir) => {
+      const rakeTrim = addBox(
+        aSlopeLen,
+        0.14,
+        0.26,
+        trimMat,
+        4.5 + dir * aFrameHalfW * 0.5,
+        roofBaseY + (aFrameEaveH + aFramePeakH) * 0.5 + 0.04,
+        aFrameZ0 + 0.06
+      );
+      rakeTrim.rotation.z = -dir * aSlopeAng;
+    });
+    addBox(0.38, 0.1, aFrameLen + 0.1, whiteCurbMat, 4.5, roofBaseY + aFramePeakH + 0.03, aFrameZ0 + aFrameLen * 0.5);
+    const addRoofCupola = (cxPos, cyPos, czPos, size = 0.82, h = 0.92) => {
+      addBox(size, h, size, whiteCurbMat, cxPos, cyPos + h * 0.5, czPos);
+      const cap = new Mesh(new ConeGeometry(size * 0.84, 0.36, 4), galvSteelMat);
+      cap.rotation.y = Math.PI * 0.25;
+      cap.position.set(cxPos, cyPos + h + 0.18, czPos);
+      arch.add(cap);
+    };
+    addRoofCupola(8.35, roofBaseY + pentRoomH + 0.12, 7.55, 0.88, 0.98);
+    addRoofCupola(9.55, roofBaseY + aFrameEaveH, 1.8, 0.78, 0.88);
+    addRoofCupola(9.55, roofBaseY + aFrameEaveH, -7.8, 0.78, 0.88);
+    addRoofCupola(-0.55, roofBaseY + aFrameEaveH, 1.8, 0.78, 0.88);
+    addRoofCupola(-0.55, roofBaseY + aFrameEaveH, -7.8, 0.78, 0.88);
+    const hvacMat = new MeshStandardMaterial({ color: "#8a857e", roughness: 0.55, metalness: 0.35 });
+    addBox(1.1, 0.1, 1.1, plinthConcreteMat, 10.2, roofBaseY + 0.05, 6.55);
+    addBox(0.88, 0.92, 0.88, darkMetalMat, 10.2, roofBaseY + 0.51, 6.55);
+    addBox(0.22, 0.42, 0.16, whiteCurbMat, 8.68, roofBaseY + 0.85, 7.25);
+    addBox(1.05, 0.1, 1.05, plinthConcreteMat, 10.3, roofBaseY + 0.05, -1.6);
+    addBox(0.85, 0.88, 0.85, darkMetalMat, 10.3, roofBaseY + 0.49, -1.6);
+    addBox(0.2, 0.55, 0.16, whiteCurbMat, 9.75, roofBaseY + 0.72, -1.1);
+    addBox(1.45, 0.96, 2.35, hvacMat, 10.45, roofBaseY + 0.48, -5.2);
+    addBox(1.48, 0.72, 1.1, darkMetalMat, 10.45, roofBaseY + 0.46, -5.75);
+    [-4.65, -5.7].forEach((fz) => {
+      const fanRing = new Mesh(new CylinderGeometry(0.42, 0.42, 0.05, 18), darkMetalMat);
+      fanRing.position.set(10.45, roofBaseY + 0.97, fz);
+      arch.add(fanRing);
+    });
+    addBox(0.92, 1.18, 1.25, darkMetalMat, 9.65, roofBaseY + 0.59, -9.8);
+    addBox(0.9, 0.85, 0.9, hvacMat, -0.55, roofBaseY + 0.45, -2.2);
+    addBox(1.3, 0.88, 2.1, hvacMat, -0.55, roofBaseY + 0.46, -5.4);
+  }
+
+  // js/foundry/buildings/building400/Building400GroundsAndSidewalks.js
+  function buildBuilding400GroundsAndSidewalks(ctx) {
+    const {
+      foundry,
+      arch,
+      addBox,
+      wallZ,
+      frontWingZ,
+      lowerPlazaY,
+      lowerNumSteps,
+      lowerStepRise,
+      lowerStepRun,
+      getConcreteTopY,
+      washX,
+      portX,
+      portDepth,
+      portW,
+      deckY,
+      creamBrickSolidMat,
+      plinthConcreteMat,
+      plazaConcreteMat,
+      whiteCurbMat,
+      turfMat,
+      darkMetalMat,
+      galvSteelMat,
+      blueTreadMat,
+      globeMat,
+      glassMat,
+      trimMat,
+      soilMat
+    } = ctx;
+    addBox(14.05, 0.51, 4.73, plazaConcreteMat, 3.625, -0.255, frontWingZ + 2.365, arch, false);
+    {
+      const plazaW = 19.2;
+      const plazaD = 5.2;
+      const plazaCX = 5.1;
+      const plazaCZ = wallZ + 4.45;
+      const plazaGeo = new BoxGeometry(plazaW, 0.32, plazaD, 48, 1, 20);
+      const pPos = plazaGeo.attributes.position;
+      for (let i = 0; i < pPos.count; i++) {
+        const vx = pPos.getX(i);
+        const vy = pPos.getY(i);
+        const vz = pPos.getZ(i);
+        const lx = plazaCX + vx;
+        const lz = plazaCZ + vz;
+        const topY = getConcreteTopY(lx, lz);
+        pPos.setY(i, vy > 0 ? topY : topY - 0.32);
+      }
+      pPos.needsUpdate = true;
+      plazaGeo.computeVertexNormals();
+      const plazaMesh = new Mesh(plazaGeo, plazaConcreteMat);
+      plazaMesh.position.set(plazaCX, 0, plazaCZ);
+      plazaMesh.receiveShadow = true;
+      arch.add(plazaMesh);
+    }
+    const numSteps = 4;
+    const stepRise = deckY / numSteps;
+    const stepRunX = 0.36;
+    const stepRunZ = 1.3 / 3;
+    const deckLeftX = -0.32;
+    const deckRightX = 9.28;
+    const deckFrontZ = wallZ + portDepth;
+    const blueBayZEnd = wallZ + 1.9;
+    const weatheredStepMat = new MeshStandardMaterial({
+      color: "#c8c2b6",
+      roughness: 0.88,
+      metalness: 0.03
+    });
+    for (let s = 0; s < numSteps; s++) {
+      const stepsOut = numSteps - 1 - s;
+      const sy = (s + 0.5) * stepRise;
+      const xLeft = deckLeftX - stepsOut * stepRunX;
+      const frontLeftX = -0.25;
+      const xRight = deckRightX + stepsOut * 0.16;
+      const zFront = deckFrontZ + stepsOut * stepRunZ;
+      const blueStripW = stepRunX;
+      const blueStripX = xLeft + blueStripW * 0.5;
+      const rearDepth = blueBayZEnd - wallZ;
+      const rearCenterZ = wallZ + rearDepth * 0.5;
+      addBox(blueStripW, stepRise, rearDepth, blueTreadMat, blueStripX, sy, rearCenterZ);
+      const rearMidX0 = xLeft + blueStripW;
+      const rearMidX1 = 6.6;
+      addBox(
+        rearMidX1 - rearMidX0,
+        stepRise,
+        rearDepth,
+        plazaConcreteMat,
+        (rearMidX0 + rearMidX1) * 0.5,
+        sy,
+        rearCenterZ
+      );
+      const rearRightX1 = xRight - 0.06;
+      addBox(
+        rearRightX1 - rearMidX1,
+        stepRise,
+        rearDepth,
+        weatheredStepMat,
+        (rearMidX1 + rearRightX1) * 0.5,
+        sy,
+        rearCenterZ
+      );
+      const frontTreadZ0 = zFront - stepRunZ;
+      if (frontTreadZ0 > blueBayZEnd + 0.01) {
+        const midDepth = frontTreadZ0 - blueBayZEnd;
+        const fullW = xRight - frontLeftX;
+        addBox(fullW, stepRise, midDepth, plazaConcreteMat, frontLeftX + fullW * 0.5, sy, blueBayZEnd + midDepth * 0.5);
+      }
+      const frontStripZ = zFront - stepRunZ * 0.5;
+      const cBayX0 = 3.12;
+      const cBayX1 = 5.88;
+      addBox(cBayX0 - frontLeftX, stepRise, stepRunZ, plazaConcreteMat, (frontLeftX + cBayX0) * 0.5, sy, frontStripZ);
+      addBox(cBayX1 - cBayX0, stepRise, stepRunZ, blueTreadMat, (cBayX0 + cBayX1) * 0.5, sy, frontStripZ);
+      addBox(xRight - cBayX1, stepRise, stepRunZ, plazaConcreteMat, (cBayX1 + xRight) * 0.5, sy, frontStripZ);
+    }
+    const lowerStairX0 = -0.25;
+    const lowerStairX1 = 9.76;
+    const lowerStairW = lowerStairX1 - lowerStairX0;
+    const lowerStairCenterX = (lowerStairX0 + lowerStairX1) * 0.5;
+    const upperTerraceFrontZ = wallZ + 4.25;
+    const stairBaseY = lowerPlazaY - 0.15;
+    for (let ls = 0; ls < lowerNumSteps; ls++) {
+      const stepTopY = -ls * lowerStepRise;
+      const stepH = stepTopY - stairBaseY;
+      const stepZ = upperTerraceFrontZ + (ls + 0.5) * lowerStepRun;
+      addBox(lowerStairW, stepH, lowerStepRun + 0.02, plazaConcreteMat, lowerStairCenterX, stairBaseY + stepH * 0.5, stepZ);
+    }
+    const rightStairZ0 = frontWingZ;
+    const rightStairZ1 = wallZ + 1.85;
+    const rightStairDepth = rightStairZ1 - rightStairZ0;
+    const rightStairCenterZ = (rightStairZ0 + rightStairZ1) * 0.5;
+    const rightNumSteps = 4;
+    const rightStepRise = Math.abs(lowerPlazaY) / (rightNumSteps + 1);
+    const rightStepRunX = 0.49;
+    const rightStairStartX = 12.61 - rightNumSteps * rightStepRunX;
+    for (let rs = 0; rs < rightNumSteps; rs++) {
+      const rTopY = -(rs + 1) * rightStepRise;
+      const rH = rTopY - stairBaseY;
+      const rx = rightStairStartX + (rs + 0.5) * rightStepRunX;
+      addBox(rightStepRunX, rH, rightStairDepth, plazaConcreteMat, rx, stairBaseY + rH * 0.5, rightStairCenterZ);
+    }
+    const upperStairSpanZ = (numSteps - 1) * stepRunZ;
+    const upperStairEndZ = deckFrontZ + upperStairSpanZ;
+    const lowerStairEndZ = upperTerraceFrontZ + lowerNumSteps * lowerStepRun;
+    [3.16, 5.84].forEach((rx) => {
+      const uLen = Math.hypot(upperStairSpanZ, deckY) + 0.12;
+      const uRail = addBox(0.042, 0.042, uLen, darkMetalMat, rx, deckY * 0.5 + 0.82, deckFrontZ + upperStairSpanZ * 0.5);
+      uRail.rotation.x = Math.atan2(deckY, upperStairSpanZ);
+      addBox(0.038, 0.84, 0.038, darkMetalMat, rx, deckY + 0.42, deckFrontZ + 0.04);
+      addBox(0.038, 0.84, 0.038, darkMetalMat, rx, 0.42, upperStairEndZ);
+      addBox(0.042, 0.042, 0.22, darkMetalMat, rx, 0.82, upperStairEndZ + 0.1);
+      if (rx <= 6) {
+        const lSpanZ = lowerNumSteps * lowerStepRun;
+        const lDropY = Math.abs(lowerPlazaY);
+        const lLen = Math.hypot(lSpanZ, lDropY) + 0.12;
+        const lRail = addBox(
+          0.042,
+          0.042,
+          lLen,
+          darkMetalMat,
+          rx,
+          -lDropY * 0.5 + 0.82,
+          upperTerraceFrontZ + lSpanZ * 0.5
+        );
+        lRail.rotation.x = Math.atan2(lDropY, lSpanZ);
+        addBox(0.038, 0.84, 0.038, darkMetalMat, rx, 0.42, upperTerraceFrontZ + 0.04);
+        addBox(0.038, 0.84, 0.038, darkMetalMat, rx, lowerPlazaY + 0.42, lowerStairEndZ);
+        addBox(0.042, 0.042, 0.18, darkMetalMat, rx, lowerPlazaY + 0.82, lowerStairEndZ + 0.08);
+        addBox(0.042, 0.18, 0.042, darkMetalMat, rx, lowerPlazaY + 0.73, lowerStairEndZ + 0.16);
+        addBox(0.042, 0.042, 0.18, darkMetalMat, rx, lowerPlazaY + 0.64, lowerStairEndZ + 0.08);
+      }
+    });
+    const weatheredWallCanvas = document.createElement("canvas");
+    weatheredWallCanvas.width = 512;
+    weatheredWallCanvas.height = 128;
+    const wwCtx = weatheredWallCanvas.getContext("2d");
+    wwCtx.fillStyle = "#ede8de";
+    wwCtx.fillRect(0, 0, 512, 128);
+    for (let i = 0; i < 900; i++) {
+      wwCtx.fillStyle = i % 2 === 0 ? "rgba(120,114,104,0.08)" : "rgba(255,253,248,0.08)";
+      wwCtx.fillRect(i * 67 % 512, i * 29 % 128, 12, 6);
+    }
+    wwCtx.strokeStyle = "rgba(95,88,78,0.45)";
+    wwCtx.lineWidth = 2;
+    wwCtx.beginPath();
+    wwCtx.moveTo(0, 58);
+    wwCtx.lineTo(512, 62);
+    wwCtx.moveTo(180, 4);
+    wwCtx.lineTo(196, 52);
+    wwCtx.lineTo(215, 124);
+    wwCtx.stroke();
+    const weatheredWallTex = new CanvasTexture(weatheredWallCanvas);
+    weatheredWallTex.wrapS = RepeatWrapping;
+    weatheredWallTex.wrapT = RepeatWrapping;
+    weatheredWallTex.colorSpace = SRGBColorSpace;
+    const rightLawnWallMat = new MeshStandardMaterial({
+      map: weatheredWallTex,
+      bumpMap: weatheredWallTex,
+      bumpScale: 0.03,
+      roughness: 0.85,
+      metalness: 0.03
+    });
+    const createRightPlanterShape = (inset = 0) => {
+      const xBackLeft = 10.55 + inset;
+      const xFrontLeft = 9.76 + inset;
+      const xRight = 14.7 - inset;
+      const zBack = wallZ + 1.85 + inset;
+      const zStep = wallZ + 4.15 + inset;
+      const zFront = wallZ + 7.05 - inset;
+      const r = Math.max(0.2, 1.45 - inset);
+      const s = new Shape();
+      s.moveTo(xBackLeft, -zBack);
+      s.lineTo(xRight, -zBack);
+      s.lineTo(xRight, -(zFront - r));
+      s.absarc(xRight - r, -(zFront - r), r, 0, -Math.PI * 0.5, true);
+      s.lineTo(xFrontLeft, -zFront);
+      s.lineTo(xFrontLeft, -zStep);
+      s.lineTo(xBackLeft, -zStep);
+      s.closePath();
+      return s;
+    };
+    const rightLawnBaseY = lowerPlazaY - 0.3;
+    const rightLawnWallH = 0.85;
+    const outerPlanterShape = createRightPlanterShape(0);
+    const outerPlanterGeo = new ExtrudeGeometry(outerPlanterShape, {
+      depth: rightLawnWallH,
+      bevelEnabled: true,
+      bevelThickness: 0.02,
+      bevelSize: 0.02,
+      bevelSegments: 2
+    });
+    outerPlanterGeo.rotateX(-Math.PI / 2);
+    const outerPlanterMesh = new Mesh(outerPlanterGeo, rightLawnWallMat);
+    outerPlanterMesh.position.set(0, rightLawnBaseY, 0);
+    outerPlanterMesh.castShadow = true;
+    outerPlanterMesh.receiveShadow = true;
+    arch.add(outerPlanterMesh);
+    const innerTurfGeo = new ExtrudeGeometry(createRightPlanterShape(0.18), {
+      depth: rightLawnWallH + 0.025,
+      bevelEnabled: false
+    });
+    innerTurfGeo.rotateX(-Math.PI / 2);
+    const innerTurfMesh = new Mesh(innerTurfGeo, turfMat);
+    innerTurfMesh.position.set(0, rightLawnBaseY, 0);
+    innerTurfMesh.receiveShadow = true;
+    arch.add(innerTurfMesh);
+    addBox(3.15, 0.78, 2.8, whiteCurbMat, -1.85, lowerPlazaY + 0.15, wallZ + 5.65);
+    addBox(2.85, 0.8, 2.55, turfMat, -1.92, lowerPlazaY + 0.16, wallZ + 5.62);
+    [3.08, 5.92].forEach((px2) => {
+      const pz2 = wallZ + 6.55;
+      const pSize = 0.96;
+      const pWall = 0.1;
+      const pH = 0.62;
+      const pBaseY = getConcreteTopY(px2, pz2);
+      const py2 = pBaseY + pH * 0.5;
+      addBox(pSize, pH, pWall, whiteCurbMat, px2, py2, pz2 + (pSize - pWall) * 0.5);
+      addBox(pSize, pH, pWall, whiteCurbMat, px2, py2, pz2 - (pSize - pWall) * 0.5);
+      addBox(pWall, pH, pSize - pWall * 2, whiteCurbMat, px2 - (pSize - pWall) * 0.5, py2, pz2);
+      addBox(pWall, pH, pSize - pWall * 2, whiteCurbMat, px2 + (pSize - pWall) * 0.5, py2, pz2);
+      addBox(pSize - pWall * 2, pH - 0.14, pSize - pWall * 2, soilMat, px2, pBaseY + (pH - 0.14) * 0.5, pz2);
+    });
+    const addCagedGlobeLamp = (lx, ly, lz, poleH = 2.55, pedH = 0.68) => {
+      if (pedH > 0) {
+        addBox(0.44, pedH, 0.44, whiteCurbMat, lx, ly + pedH * 0.5, lz);
+        addBox(0.46, 0.09, 0.46, darkMetalMat, lx, ly + pedH + 0.045, lz);
+      }
+      const baseTop = ly + pedH + 0.09;
+      const post = new Mesh(new CylinderGeometry(0.055, 0.075, poleH, 12), darkMetalMat);
+      post.position.set(lx, baseTop + poleH * 0.5, lz);
+      post.castShadow = true;
+      arch.add(post);
+      const globeY = baseTop + poleH + 0.22;
+      const globe = new Mesh(new SphereGeometry(0.23, 14, 14), globeMat);
+      globe.position.set(lx, globeY, lz);
+      arch.add(globe);
+      const eqRing = new Mesh(new CylinderGeometry(0.25, 0.25, 0.04, 16), darkMetalMat);
+      eqRing.position.set(lx, globeY, lz);
+      arch.add(eqRing);
+      addBox(0.5, 0.3, 0.03, darkMetalMat, lx, globeY - 0.08, lz);
+      addBox(0.03, 0.3, 0.5, darkMetalMat, lx, globeY - 0.08, lz);
+    };
+    addCagedGlobeLamp(9.8, lowerPlazaY, wallZ + 4.35, 2.55, 1.05);
+    addCagedGlobeLamp(-0.3, lowerPlazaY, wallZ + 4.35, 2.55, 1.05);
+    addCagedGlobeLamp(-4.65, getConcreteTopY(-4.65, wallZ + 1.85), wallZ + 1.85, 2.75, 0.12);
+    addCagedGlobeLamp(-4.65, getConcreteTopY(-4.65, -3.5), -3.5, 2.75, 0.12);
+    addCagedGlobeLamp(-4.65, getConcreteTopY(-4.65, -11.5), -11.5, 2.75, 0.12);
+    addBox(0.05, 1.35, 0.05, galvSteelMat, -0.32, 0.68, wallZ + 3.15);
+    addBox(0.32, 0.44, 0.03, whiteCurbMat, -0.32, 1.25, wallZ + 3.17);
+    addBox(0.05, 1.45, 0.05, galvSteelMat, -3.55, 0.72, wallZ + 1.45);
+    addBox(0.32, 0.42, 0.03, new MeshBasicMaterial({ color: "#2563eb" }), -3.55, 1.32, wallZ + 1.47);
+    const streetPoleX = 15.2;
+    const streetPoleZ = wallZ + 6.95;
+    const streetPoleBaseY = getConcreteTopY(streetPoleX, streetPoleZ);
+    const poleBaseCollar = new Mesh(new CylinderGeometry(0.14, 0.21, 0.24, 8), galvSteelMat);
+    poleBaseCollar.position.set(streetPoleX, streetPoleBaseY + 0.12, streetPoleZ);
+    arch.add(poleBaseCollar);
+    const mainPole = new Mesh(new CylinderGeometry(0.095, 0.14, 8.4, 16), galvSteelMat);
+    mainPole.position.set(streetPoleX, streetPoleBaseY + 4.2, streetPoleZ);
+    mainPole.castShadow = true;
+    arch.add(mainPole);
+    const handHole = new Mesh(new CylinderGeometry(0.065, 0.065, 0.03, 14), galvSteelMat);
+    handHole.scale.set(1, 1.65, 1);
+    handHole.rotation.x = Math.PI * 0.5;
+    handHole.position.set(streetPoleX, streetPoleBaseY + 0.48, streetPoleZ + 0.13);
+    arch.add(handHole);
+    const mastArm = addBox(0.08, 0.08, 2.8, galvSteelMat, streetPoleX - 0.6, streetPoleBaseY + 8.35, streetPoleZ + 1.1);
+    mastArm.rotation.y = -0.45;
+    mastArm.rotation.x = -0.15;
+    addBox(0.45, 0.1, 0.26, globeMat, streetPoleX - 1.2, streetPoleBaseY + 8.52, streetPoleZ + 2.2);
+    const diamondSign = addBox(
+      0.65,
+      0.65,
+      0.04,
+      new MeshStandardMaterial({ color: "#eab308", roughness: 0.4 }),
+      streetPoleX - 0.12,
+      streetPoleBaseY + 2.55,
+      streetPoleZ + 0.12
+    );
+    diamondSign.rotation.z = Math.PI * 0.25;
+    const addContouredSlab = (w, h, d, mat, cx, cz, topOffset = 0, segsX = 8, segsZ = 24) => {
+      const geo = new BoxGeometry(w, h, d, segsX, 1, segsZ);
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const vx = pos.getX(i);
+        const vy = pos.getY(i);
+        const vz = pos.getZ(i);
+        const topY = getConcreteTopY(cx + vx, cz + vz) + topOffset;
+        pos.setY(i, vy > 0 ? topY : topY - h);
+      }
+      pos.needsUpdate = true;
+      geo.computeVertexNormals();
+      const mesh = new Mesh(geo, mat);
+      mesh.position.set(cx, 0, cz);
+      mesh.receiveShadow = true;
+      arch.add(mesh);
+      return mesh;
+    };
+    addContouredSlab(3.2, 0.22, 30, plazaConcreteMat, -4.5, 1, 0, 8, 36);
+    const railMinZ = -12.2;
+    const railMaxZ = frontWingZ + 0.1;
+    const railLenSW = railMaxZ - railMinZ;
+    const railMidZ = (railMinZ + railMaxZ) * 0.5;
+    const railOuterX = -4.25;
+    for (let r = 1; r <= 6; r++) {
+      const ry = r * 0.17;
+      addBox(0.04, 0.04, railLenSW, galvSteelMat, railOuterX, ry, railMidZ);
+      addBox(1.02, 0.04, 0.04, galvSteelMat, -3.74, ry, railMaxZ);
+    }
+    for (let pz2 = railMinZ; pz2 <= railMaxZ + 0.1; pz2 += 2.65) {
+      addBox(0.05, 1.08, 0.05, galvSteelMat, railOuterX, 0.54, pz2);
+    }
+    addBox(0.05, 1.08, 0.05, galvSteelMat, -3.26, 0.54, railMaxZ);
+    addContouredSlab(2.35, 0.24, 6.3, plazaConcreteMat, washX + 1.15, 13.32, 0, 6, 14);
+    addContouredSlab(2.35, 0.24, 9, plazaConcreteMat, washX + 1.15, -15.7, 0, 6, 18);
+    addBox(2.35, 0.2, 21.4, plinthConcreteMat, washX + 1.15, -2.45, -0.5, arch, false);
+    const door1LandingY = lowerPlazaY - 0.64;
+    addBox(2.15, 1.35, 2.5, plazaConcreteMat, washX + 1.1, door1LandingY - 0.675, 6.6, arch, false);
+    for (let fs = 0; fs < 4; fs++) {
+      const fTopY = lowerPlazaY - (fs + 1) * 0.16;
+      const fz = 10 - (fs + 0.5) * 0.52;
+      addBox(2.1, 0.36, 0.54, plazaConcreteMat, washX + 1.1, fTopY - 0.18, fz, arch, false);
+    }
+    const frontStairRail = addBox(0.04, 0.04, 2.25, darkMetalMat, washX + 0.44, lowerPlazaY + 0.42, 8.95);
+    frontStairRail.rotation.x = -0.3;
+    addBox(0.035, 0.72, 0.035, darkMetalMat, washX + 0.44, lowerPlazaY + 0.05, 7.9);
+    for (let rs = 0; rs < 5; rs++) {
+      const rTopY = lowerPlazaY - (rs + 1) * 0.28;
+      const rz = -11.3 + (rs + 0.5) * 0.34;
+      addBox(2.1, 0.4, 0.36, plazaConcreteMat, washX + 1.1, rTopY - 0.2, rz, arch, false);
+    }
+    const rearStairRail = addBox(0.04, 0.04, 1.95, darkMetalMat, washX + 0.44, lowerPlazaY + 0.22, -10.45);
+    rearStairRail.rotation.x = 0.55;
+    const washEntryTopY = getConcreteTopY(washX + 2.22, 4.3);
+    addBox(2.2, 1.85, 2.2, plazaConcreteMat, washX + 1.1, washEntryTopY - 0.925, 4.3, arch, false);
+    const rampSpanZ = 11.6;
+    const rampEndTopY = -1.95;
+    const rampDropY = Math.max(0.4, washEntryTopY - rampEndTopY);
+    const rampMidY = (washEntryTopY + rampEndTopY) * 0.5;
+    const rampLen = Math.hypot(rampSpanZ, rampDropY);
+    const adaRamp = addBox(2.15, 0.22, rampLen, plazaConcreteMat, washX + 1.1, rampMidY - 0.1, -2.6, arch, false);
+    adaRamp.rotation.x = -Math.atan2(rampDropY, rampSpanZ);
+    const wallHandrail = addBox(0.045, 0.045, rampLen + 0.4, darkMetalMat, washX + 0.12, rampMidY + 0.82, -2.6);
+    wallHandrail.rotation.x = -Math.atan2(rampDropY, rampSpanZ);
+    const washSidewalkZ0 = -20.2;
+    const washSidewalkZ1 = wallZ + 7.05;
+    const washSidewalkD = washSidewalkZ1 - washSidewalkZ0;
+    const washSidewalkCZ = (washSidewalkZ0 + washSidewalkZ1) * 0.5;
+    const washSidewalkW = 2.95;
+    const washSidewalkCX = washX + 3.675;
+    addContouredSlab(washSidewalkW, 0.26, washSidewalkD, plazaConcreteMat, washSidewalkCX, washSidewalkCZ, 0, 8, 56);
+    addContouredSlab(0.18, 0.3, washSidewalkD, whiteCurbMat, washX + 5.06, washSidewalkCZ, 0.03, 2, 56);
+    const swScoreMat = new MeshBasicMaterial({ color: "#9c9588" });
+    for (let jz = washSidewalkZ0 + 1.75; jz < washSidewalkZ1 - 0.3; jz += 1.75) {
+      const jy = getConcreteTopY(washSidewalkCX, jz) + 8e-3;
+      addBox(washSidewalkW - 0.22, 0.01, 0.025, swScoreMat, washSidewalkCX - 0.06, jy, jz, arch, false);
+    }
+    addBox(0.32, 2.2, 21.4, whiteCurbMat, washX + 2.22, -1.4, -0.5, arch, false);
+    [
+      { dz: 6.35, by: door1LandingY, sideOffset: -0.52 },
+      { dz: -9.45, by: -2.05, sideOffset: 0.52 }
+    ].forEach(({ dz, by, sideOffset }) => {
+      const doorZ = dz - sideOffset * 0.52;
+      const sideZ = dz + sideOffset * 0.86;
+      addBox(0.16, 2.32, 1.72, whiteCurbMat, washX + 0.04, by + 1.16, dz);
+      addBox(0.2, 0.96, 0.78, glassMat, washX + 0.06, by + 1.56, doorZ);
+      addBox(0.2, 0.52, 0.78, glassMat, washX + 0.06, by + 0.56, doorZ);
+      addBox(0.22, 0.22, 0.84, whiteCurbMat, washX + 0.07, by + 0.96, doorZ);
+      addBox(0.23, 0.05, 0.42, new MeshBasicMaterial({ color: "#dc2626" }), washX + 0.08, by + 1.12, doorZ);
+      for (let p = 0; p < 4; p++) {
+        addBox(0.2, 0.44, 0.36, glassMat, washX + 0.06, by + 0.36 + p * 0.52, sideZ);
+      }
+    });
+    const sideBell = new Mesh(
+      new SphereGeometry(0.11, 12, 12),
+      new MeshBasicMaterial({ color: "#b91c1c" })
+    );
+    sideBell.scale.set(0.55, 1, 1);
+    sideBell.position.set(washX + 0.06, door1LandingY + 2.38, 7.08);
+    arch.add(sideBell);
+    addBox(0.14, 0.24, 0.22, whiteCurbMat, washX + 0.06, door1LandingY + 1.48, 5.38);
+    [
+      [3.5, -0.05],
+      [0.4, -0.22],
+      [-2.6, -0.38],
+      [-5.6, -0.52]
+    ].forEach(([winZ, winY]) => {
+      addBox(0.16, 1.08, 1.18, whiteCurbMat, washX + 0.04, winY, winZ);
+      addBox(0.2, 0.9, 1, glassMat, washX + 0.06, winY, winZ);
+      addBox(0.24, 0.1, 1.28, trimMat, washX + 0.08, winY - 0.56, winZ);
+    });
+    const fenceX = washX + 2.22;
+    const pierSpecs = [
+      { z: 10.2, hasLamp: false },
+      // Pier 1: Front-left pier on sidewalk outside Front Pavilion stairs (19a77a6c.jpg)
+      { z: 7.8, hasLamp: true },
+      // Pier 2: Lamp 1 (left of Door 1, 19a77a6c.jpg)
+      { z: 5.4, hasLamp: true },
+      // Pier 3: Lamp 2 + brick/picket return wall on left of open entry walk (19a77a6c.jpg)
+      { z: 3.2, hasLamp: true },
+      // Pier 4: Lamp 3 on right of open entry walk (19a77a6c.jpg)
+      { z: 0.4, hasLamp: false },
+      // Pier 5: Mid-left pier
+      { z: -2.5, hasLamp: false },
+      // Pier 6: Mid pier
+      { z: -5.4, hasLamp: true },
+      // Pier 7: Lamp 4 (mid-right pier, adc547e2.jpg)
+      { z: -8.2, hasLamp: true },
+      // Pier 8: Lamp 5 (left of Door 2, adc547e2.jpg)
+      { z: -10.8, hasLamp: true },
+      // Pier 9: Lamp 6 (right of Door 2, adc547e2.jpg)
+      { z: -12.1, hasLamp: false }
+      // Pier 10: Far-right end pier at Rear Pavilion stairs (adc547e2.jpg)
+    ];
+    [5.4, -12.1].forEach((rz) => {
+      const rBaseY = getConcreteTopY(fenceX, rz);
+      addBox(2.15, 0.56, 0.3, creamBrickSolidMat, washX + 1.12, rBaseY + 0.28, rz);
+      addBox(2.2, 0.07, 0.36, whiteCurbMat, washX + 1.12, rBaseY + 0.59, rz);
+      addBox(2.1, 0.04, 0.06, darkMetalMat, washX + 1.12, rBaseY + 1.04, rz);
+      addBox(2.1, 0.04, 0.06, darkMetalMat, washX + 1.12, rBaseY + 0.68, rz);
+      for (let pkx = washX + 0.2; pkx <= washX + 2; pkx += 0.16) {
+        addBox(0.03, 0.4, 0.03, darkMetalMat, pkx, rBaseY + 0.86, rz);
+      }
+    });
+    pierSpecs.forEach((p, idx) => {
+      const pz2 = p.z;
+      const pBaseY = getConcreteTopY(fenceX, pz2);
+      addBox(0.46, 0.92, 0.46, creamBrickSolidMat, fenceX, pBaseY + 0.46, pz2);
+      addBox(0.54, 0.09, 0.54, whiteCurbMat, fenceX, pBaseY + 0.96, pz2);
+      if (p.hasLamp) {
+        addCagedGlobeLamp(fenceX, pBaseY + 1, pz2, 1.65, 0);
+      }
+      if (idx < pierSpecs.length - 1 && idx !== 2) {
+        const nextZ = pierSpecs[idx + 1].z;
+        const span = Math.abs(pz2 - nextZ) - 0.44;
+        const midZ = (pz2 + nextZ) * 0.5;
+        const midBaseY = getConcreteTopY(fenceX, midZ);
+        addBox(0.32, 0.56, span, creamBrickSolidMat, fenceX, midBaseY + 0.28, midZ);
+        addBox(0.38, 0.07, span, whiteCurbMat, fenceX, midBaseY + 0.59, midZ);
+        addBox(0.06, 0.04, span, darkMetalMat, fenceX, midBaseY + 1.04, midZ);
+        addBox(0.06, 0.04, span, darkMetalMat, fenceX, midBaseY + 0.68, midZ);
+        const numPickets = Math.max(4, Math.floor(span / 0.16));
+        for (let pk = 0; pk < numPickets; pk++) {
+          const pkz = Math.min(pz2, nextZ) + 0.26 + (pk + 0.5) * ((span - 0.08) / numPickets);
+          addBox(0.03, 0.4, 0.03, darkMetalMat, fenceX, midBaseY + 0.86, pkz);
+        }
+      }
+    });
+    const sign15Y = getConcreteTopY(fenceX + 0.35, 5.95);
+    addBox(0.05, 2.35, 0.05, galvSteelMat, fenceX + 0.35, sign15Y + 1.18, 5.95);
+    const speedDiamond = addBox(
+      0.52,
+      0.52,
+      0.03,
+      new MeshStandardMaterial({ color: "#eab308", roughness: 0.4 }),
+      fenceX + 0.38,
+      sign15Y + 2.15,
+      5.95
+    );
+    speedDiamond.rotation.y = Math.PI * 0.5;
+    speedDiamond.rotation.z = Math.PI * 0.25;
+    addBox(
+      0.03,
+      0.36,
+      0.28,
+      new MeshStandardMaterial({ color: "#eab308", roughness: 0.4 }),
+      fenceX + 0.38,
+      sign15Y + 1.55,
+      5.95
+    );
+    [8.4, 1.2, -4.5, -10.2].forEach((tz) => {
+      const pitY = getConcreteTopY(washX + 3.95, tz);
+      addBox(1.15, 0.04, 1.15, soilMat, washX + 3.95, pitY + 0.01, tz, arch, false);
+    });
+  }
+
+  // js/foundry/buildings/building400/buildBuilding400.js
+  function buildPhotoRealisticBuilding400(foundry, group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
+    const ctx = createBuilding400Context(foundry, group, building, trimMat, terrainY, getTerrainHeightFn);
+    buildBuilding400Structure(ctx);
+    buildBuilding400GroundsAndSidewalks(ctx);
+  }
+
+  // js/foundry/buildings/building316/Building316Materials.js
+  function createBuilding316Context(foundry, group, building, shape, terrainY, getTerrainHeightFn) {
+    const storyH = 4.2;
+    const precastCanvas = document.createElement("canvas");
+    precastCanvas.width = 512;
+    precastCanvas.height = 512;
+    const pCtx = precastCanvas.getContext("2d");
+    pCtx.fillStyle = "#c8bca6";
+    pCtx.fillRect(0, 0, 512, 512);
+    for (let y = 0; y < 512; y += 64) {
+      for (let x = 0; x < 512; x += 128) {
+        const j = Math.sin(x * 12.3 + y * 27.1) * 43758.5 % 1 * 6 - 3;
+        pCtx.fillStyle = `rgb(${200 + j}, ${188 + j}, ${166 + j})`;
+        pCtx.fillRect(x + 2, y + 2, 124, 60);
+      }
+    }
+    pCtx.strokeStyle = "rgba(92, 84, 70, 0.42)";
+    pCtx.lineWidth = 3;
+    for (let x = 0; x <= 512; x += 128) {
+      pCtx.beginPath();
+      pCtx.moveTo(x, 0);
+      pCtx.lineTo(x, 512);
+      pCtx.stroke();
+    }
+    for (let y = 0; y <= 512; y += 64) {
+      pCtx.beginPath();
+      pCtx.moveTo(0, y);
+      pCtx.lineTo(512, y);
+      pCtx.stroke();
+    }
+    const precastTex = new CanvasTexture(precastCanvas);
+    precastTex.wrapS = RepeatWrapping;
+    precastTex.wrapT = RepeatWrapping;
+    precastTex.repeat.set(0.22, 0.22);
+    precastTex.colorSpace = SRGBColorSpace;
+    const tanPrecastMat = new MeshStandardMaterial({
+      map: precastTex,
+      roughness: 0.82,
+      metalness: 0.04
+    });
+    const darkSpandrelMat = new MeshStandardMaterial({
+      color: "#9e917b",
+      roughness: 0.84,
+      metalness: 0.04
+    });
+    const basementConcreteMat = new MeshStandardMaterial({
+      color: "#a79c88",
+      roughness: 0.88,
+      metalness: 0.03
+    });
+    const whiteTrimMat = new MeshStandardMaterial({
+      color: "#f0eee9",
+      roughness: 0.65,
+      metalness: 0.08
+    });
+    const grayCoreStuccoMat = new MeshStandardMaterial({
+      color: "#8c908d",
+      roughness: 0.8,
+      metalness: 0.05
+    });
+    const roofMembraneMat = new MeshStandardMaterial({
+      color: "#6e7378",
+      roughness: 0.88,
+      metalness: 0.05
+    });
+    const penthouseWallMat = new MeshStandardMaterial({
+      color: "#b8b3a8",
+      roughness: 0.8,
+      metalness: 0.05
+    });
+    const copperCanvas = document.createElement("canvas");
+    copperCanvas.width = 256;
+    copperCanvas.height = 256;
+    const cCtx = copperCanvas.getContext("2d");
+    cCtx.fillStyle = "#733d20";
+    cCtx.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 256; y += 8) {
+      cCtx.fillStyle = "#c4794e";
+      cCtx.fillRect(0, y, 256, 4);
+      cCtx.fillStyle = "#a45d36";
+      cCtx.fillRect(0, y + 4, 256, 2);
+      cCtx.fillStyle = "#582c15";
+      cCtx.fillRect(0, y + 6, 256, 2);
+    }
+    const copperLouverTex = new CanvasTexture(copperCanvas);
+    copperLouverTex.wrapS = RepeatWrapping;
+    copperLouverTex.wrapT = RepeatWrapping;
+    copperLouverTex.colorSpace = SRGBColorSpace;
+    const copperLouverMat = new MeshStandardMaterial({
+      map: copperLouverTex,
+      roughness: 0.52,
+      metalness: 0.32
+    });
+    const copperFrameMat = new MeshStandardMaterial({
+      color: "#b56c43",
+      roughness: 0.48,
+      metalness: 0.36
+    });
+    const silverCanvas = document.createElement("canvas");
+    silverCanvas.width = 256;
+    silverCanvas.height = 256;
+    const sCtx = silverCanvas.getContext("2d");
+    sCtx.fillStyle = "#686e75";
+    sCtx.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 256; y += 8) {
+      sCtx.fillStyle = "#d3d8de";
+      sCtx.fillRect(0, y, 256, 4);
+      sCtx.fillStyle = "#aeb5bd";
+      sCtx.fillRect(0, y + 4, 256, 2);
+      sCtx.fillStyle = "#5c6268";
+      sCtx.fillRect(0, y + 6, 256, 2);
+    }
+    const silverLouverTex = new CanvasTexture(silverCanvas);
+    silverLouverTex.wrapS = RepeatWrapping;
+    silverLouverTex.wrapT = RepeatWrapping;
+    silverLouverTex.colorSpace = SRGBColorSpace;
+    const silverLouverMat = new MeshStandardMaterial({
+      map: silverLouverTex,
+      roughness: 0.42,
+      metalness: 0.55
+    });
+    const brickCanvas = document.createElement("canvas");
+    brickCanvas.width = 256;
+    brickCanvas.height = 256;
+    const bCtx = brickCanvas.getContext("2d");
+    bCtx.fillStyle = "#7c6e5f";
+    bCtx.fillRect(0, 0, 256, 256);
+    const baseBrick = new Color("#a87c5f");
+    for (let r = 0; r < 16; r++) {
+      const off = r % 2 * 16;
+      for (let c = -1; c <= 8; c++) {
+        const j = Math.sin(r * 17.3 + c * 31.7) * 43758.5 % 1 * 0.06 - 0.03;
+        const col = baseBrick.clone().offsetHSL(0, j * 0.3, j);
+        bCtx.fillStyle = `#${col.getHexString()}`;
+        bCtx.fillRect(c * 32 + off + 2, r * 16 + 2, 29, 13);
+      }
+    }
+    const entryBrickTex = new CanvasTexture(brickCanvas);
+    entryBrickTex.wrapS = RepeatWrapping;
+    entryBrickTex.wrapT = RepeatWrapping;
+    entryBrickTex.repeat.set(2, 2);
+    entryBrickTex.colorSpace = SRGBColorSpace;
+    const entryBrickMat = new MeshStandardMaterial({
+      map: entryBrickTex,
+      roughness: 0.84,
+      metalness: 0.04
+    });
+    const officeGlassMat = new MeshStandardMaterial({
+      color: "#4e6e6a",
+      roughness: 0.18,
+      metalness: 0.35
+    });
+    const sageBlindGlassMat = new MeshStandardMaterial({
+      color: "#9eb8ad",
+      roughness: 0.28,
+      metalness: 0.18
+    });
+    const darkBronzeMat = new MeshStandardMaterial({
+      color: "#26282a",
+      roughness: 0.42,
+      metalness: 0.62
+    });
+    const yellowDoorMat = new MeshStandardMaterial({
+      color: "#d9c574",
+      roughness: 0.65,
+      metalness: 0.08
+    });
+    const galvSteelMat = new MeshStandardMaterial({
+      color: "#b8bfc6",
+      roughness: 0.42,
+      metalness: 0.62
+    });
+    const bldgLift316 = 0.6096;
+    let arch = new Group();
+    arch.name = "Building316ArchitecturalDetails";
+    arch.rotation.y = Math.atan2(0.59621, -0.80283);
+    arch.position.y = bldgLift316;
+    group.add(arch);
+    const groundArch = new Group();
+    groundArch.name = "Building316GroundGrassAndConcrete";
+    groundArch.rotation.y = Math.atan2(0.59621, -0.80283);
+    groundArch.position.y = 0;
+    group.add(groundArch);
+    const addBox = (w, h, d, mat, x, y, z, cast = true) => {
+      const m = new Mesh(new BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z);
+      m.castShadow = cast;
+      m.receiveShadow = true;
+      m.userData = { isSelectableBuilding: true, building };
+      arch.add(m);
+      return m;
+    };
+    const bldgCx316 = building.center[0];
+    const bldgCz316 = building.center[1];
+    const sinT316 = 0.59621006;
+    const cosT316 = -0.80282848;
+    const getDouglasLocalGroundY = (lx, lz) => {
+      if (typeof getTerrainHeightFn !== "function" || lz >= 25.4) return 0;
+      const blend = MathUtils.smoothstep(25.4 - lz, 0, 4);
+      const wx = bldgCx316 + lx * cosT316 + lz * sinT316;
+      const wz = bldgCz316 - lx * sinT316 + lz * cosT316;
+      return Math.max(0, (getTerrainHeightFn(wx, wz) - terrainY) * blend);
+    };
+    const addContouredDouglasStrip = (xMin, xMax, zMin, zMax, topOffset, minBotY, mat, zSteps = 48, sampleX = 11.375, targetGroup = groundArch) => {
+      const positions = [];
+      const pushQuad = (ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) => {
+        positions.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+        positions.push(ax, ay, az, cx, cy, cz, dx, dy, dz);
+      };
+      for (let i = 0; i < zSteps; i++) {
+        const z0 = zMin + i / zSteps * (zMax - zMin);
+        const z1 = zMin + (i + 1) / zSteps * (zMax - zMin);
+        const g0 = Math.max(
+          getDouglasLocalGroundY(xMin, z0),
+          getDouglasLocalGroundY(xMax, z0),
+          getDouglasLocalGroundY(sampleX, z0)
+        );
+        const g1 = Math.max(
+          getDouglasLocalGroundY(xMin, z1),
+          getDouglasLocalGroundY(xMax, z1),
+          getDouglasLocalGroundY(sampleX, z1)
+        );
+        const yTop0 = g0 + topOffset;
+        const yTop1 = g1 + topOffset;
+        const yBot0 = Math.min(minBotY, yTop0 - 0.34);
+        const yBot1 = Math.min(minBotY, yTop1 - 0.34);
+        pushQuad(xMin, yTop0, z0, xMin, yTop1, z1, xMax, yTop1, z1, xMax, yTop0, z0);
+        pushQuad(xMax, yTop0, z0, xMax, yTop1, z1, xMax, yBot1, z1, xMax, yBot0, z0);
+        pushQuad(xMin, yTop1, z1, xMin, yTop0, z0, xMin, yBot0, z0, xMin, yBot1, z1);
+        if (i === 0) {
+          pushQuad(xMin, yTop0, z0, xMax, yTop0, z0, xMax, yBot0, z0, xMin, yBot0, z0);
+        }
+        if (i === zSteps - 1) {
+          pushQuad(xMax, yTop1, z1, xMin, yTop1, z1, xMin, yBot1, z1, xMax, yBot1, z1);
+        }
+      }
+      const geo = new BufferGeometry();
+      geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
+      geo.computeVertexNormals();
+      const mesh = new Mesh(geo, mat);
+      mesh.receiveShadow = true;
+      mesh.userData = { isSelectableBuilding: true, building };
+      targetGroup.add(mesh);
+      return mesh;
+    };
+    const addRibbonWindow = (wallAxis, centerCoord, yBot, totalW, totalH, numBays, hasLowerHopper = true) => {
+      const winGrp = new Group();
+      const isZWall = Math.abs(wallAxis.nz) > 0.5;
+      if (isZWall) {
+        winGrp.position.set(centerCoord, yBot + totalH * 0.5, wallAxis.pos + wallAxis.nz * 0.05);
+        if (wallAxis.nz < 0) winGrp.rotation.y = Math.PI;
+      } else {
+        winGrp.position.set(wallAxis.pos + wallAxis.nx * 0.05, yBot + totalH * 0.5, centerCoord);
+        winGrp.rotation.y = wallAxis.nx > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
+      }
+      const frameD = 0.12;
+      const frameT = 0.07;
+      const topBar = new Mesh(new BoxGeometry(totalW + 0.08, frameT, frameD), whiteTrimMat);
+      topBar.position.set(0, totalH * 0.5 - frameT * 0.5, 0);
+      winGrp.add(topBar);
+      const botBar = new Mesh(new BoxGeometry(totalW + 0.12, frameT + 0.02, frameD + 0.04), whiteTrimMat);
+      botBar.position.set(0, -totalH * 0.5 + frameT * 0.5, 0.02);
+      winGrp.add(botBar);
+      const bayW = totalW / numBays;
+      for (let b = 0; b < numBays; b++) {
+        const bx = -totalW * 0.5 + (b + 0.5) * bayW;
+        const useBlind = b === 0 || b === 2 || b === numBays - 1;
+        const pane = new Mesh(
+          new BoxGeometry(bayW - 0.04, totalH - frameT * 2, 0.04),
+          useBlind ? sageBlindGlassMat : officeGlassMat
+        );
+        pane.position.set(bx, 0, -0.01);
+        winGrp.add(pane);
+      }
+      for (let b = 0; b <= numBays; b++) {
+        const mx = -totalW * 0.5 + b * bayW;
+        const mul = new Mesh(new BoxGeometry(0.055, totalH, frameD), whiteTrimMat);
+        mul.position.set(mx, 0, 0.01);
+        winGrp.add(mul);
+      }
+      if (hasLowerHopper) {
+        const hBar = new Mesh(new BoxGeometry(totalW, 0.05, frameD), whiteTrimMat);
+        hBar.position.set(0, -totalH * 0.22, 0.015);
+        winGrp.add(hBar);
+      }
+      arch.add(winGrp);
+    };
+    const frontZ = 25.4;
+    const douglasX = 7.91;
+    const courtX = -11.1;
+    const rearZ = -6.05;
+    return {
+      foundry,
+      group,
+      building,
+      shape,
+      terrainY,
+      getTerrainHeightFn,
+      storyH,
+      bldgLift316,
+      arch,
+      groundArch,
+      addBox,
+      bldgCx316,
+      bldgCz316,
+      sinT316,
+      cosT316,
+      getDouglasLocalGroundY,
+      addContouredDouglasStrip,
+      addRibbonWindow,
+      frontZ,
+      douglasX,
+      courtX,
+      rearZ,
+      tanPrecastMat,
+      darkSpandrelMat,
+      basementConcreteMat,
+      whiteTrimMat,
+      grayCoreStuccoMat,
+      roofMembraneMat,
+      penthouseWallMat,
+      copperLouverMat,
+      copperFrameMat,
+      silverLouverMat,
+      entryBrickMat,
+      officeGlassMat,
+      sageBlindGlassMat,
+      darkBronzeMat,
+      yellowDoorMat,
+      galvSteelMat
+    };
+  }
+
+  // js/foundry/buildings/building316/Building316Structure.js
+  function buildBuilding316Structure(ctx) {
+    const {
+      foundry,
+      group,
+      building,
+      shape,
+      storyH,
+      bldgLift316,
+      arch,
+      addBox,
+      getDouglasLocalGroundY,
+      addContouredDouglasStrip,
+      addRibbonWindow,
+      frontZ,
+      douglasX,
+      courtX,
+      rearZ,
+      tanPrecastMat,
+      darkSpandrelMat,
+      basementConcreteMat,
+      whiteTrimMat,
+      grayCoreStuccoMat,
+      roofMembraneMat,
+      penthouseWallMat,
+      copperLouverMat,
+      copperFrameMat,
+      silverLouverMat,
+      entryBrickMat,
+      officeGlassMat,
+      darkBronzeMat,
+      yellowDoorMat,
+      galvSteelMat
+    } = ctx;
+    const footingGeo = new ExtrudeGeometry(shape, { depth: 2.35, bevelEnabled: false });
+    footingGeo.rotateX(-Math.PI / 2);
+    const footingMesh = new Mesh(footingGeo, basementConcreteMat);
+    footingMesh.position.y = -6.5 + bldgLift316;
+    group.add(footingMesh);
+    const bsmtGeo = new ExtrudeGeometry(shape, { depth: storyH, bevelEnabled: false });
+    bsmtGeo.rotateX(-Math.PI / 2);
+    const bsmtMesh = new Mesh(bsmtGeo, basementConcreteMat);
+    bsmtMesh.name = "Layer1_Basement_BelowRoad";
+    bsmtMesh.position.y = -storyH + bldgLift316;
+    bsmtMesh.castShadow = true;
+    bsmtMesh.receiveShadow = true;
+    bsmtMesh.userData = { isSelectableBuilding: true, building, floorLayer: 1 };
+    group.add(bsmtMesh);
+    const mainBodyGeo = new ExtrudeGeometry(shape, { depth: 9.85, bevelEnabled: false });
+    mainBodyGeo.rotateX(-Math.PI / 2);
+    foundry._applyArchitecturalUVs(mainBodyGeo, 9.85, 2.35);
+    const mainBodyMesh = new Mesh(mainBodyGeo, [roofMembraneMat, tanPrecastMat]);
+    mainBodyMesh.name = "Layer2_3_4_MainPrecastBody";
+    mainBodyMesh.position.y = bldgLift316;
+    mainBodyMesh.castShadow = true;
+    mainBodyMesh.receiveShadow = true;
+    mainBodyMesh.userData = { isSelectableBuilding: true, building, floorLayer: 2 };
+    group.add(mainBodyMesh);
+    const addFootprintBand = (yStart, bandH, overhang, mat) => {
+      const bGeo = new ExtrudeGeometry(shape, {
+        depth: bandH,
+        bevelEnabled: true,
+        bevelThickness: 0.03,
+        bevelSize: overhang,
+        bevelSegments: 1
+      });
+      bGeo.rotateX(-Math.PI / 2);
+      const bMesh = new Mesh(bGeo, mat);
+      bMesh.position.y = yStart + bldgLift316;
+      bMesh.castShadow = true;
+      bMesh.receiveShadow = true;
+      group.add(bMesh);
+    };
+    addFootprintBand(0, 0.72, 0.05, darkSpandrelMat);
+    addFootprintBand(3.35, 0.97, 0.04, darkSpandrelMat);
+    addFootprintBand(4.92, 0.12, 0.06, darkSpandrelMat);
+    addFootprintBand(6.55, 0.12, 0.06, darkSpandrelMat);
+    addFootprintBand(8.32, 0.18, 0.16, whiteTrimMat);
+    addFootprintBand(9.76, 0.14, 0.16, whiteTrimMat);
+    addFootprintBand(12.56, 0.12, 0.14, copperFrameMat);
+    addBox(3.68, 3.32, 0.24, entryBrickMat, -9.28, 1.66, frontZ + 0.04);
+    addBox(0.24, 3.32, 7.26, entryBrickMat, courtX - 0.04, 1.66, 21.81);
+    addBox(0.14, 0.16, 0.24, copperFrameMat, courtX - 0.16, 3.02, 23.8);
+    const addrTex = foundry._createTextPlaqueTexture(
+      ["316", "WASHINGTON STREET"],
+      "#a2775b",
+      "#f2f4f7",
+      512,
+      160
+    );
+    const addrMat = new MeshStandardMaterial({ map: addrTex, roughness: 0.45, metalness: 0.35 });
+    addBox(2.35, 0.58, 0.05, addrMat, -9.28, 2.68, frontZ + 0.17, false);
+    addBox(1.68, 0.88, 0.1, darkBronzeMat, -9.28, 1.65, frontZ + 0.18);
+    addBox(1.52, 0.72, 0.03, officeGlassMat, -9.28, 1.65, frontZ + 0.23, false);
+    const entryCenterX = -5.55;
+    const entryW = 3.8;
+    const entryH = 3.15;
+    addBox(entryW, entryH, 0.35, officeGlassMat, entryCenterX, entryH * 0.5 + 0.05, frontZ - 0.12);
+    addBox(entryW + 0.1, 0.09, 0.18, whiteTrimMat, entryCenterX, entryH + 0.04, frontZ + 0.04);
+    addBox(entryW + 0.1, 0.07, 0.18, whiteTrimMat, entryCenterX, 2.28, frontZ + 0.04);
+    addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX - 1.42, 0.95, frontZ + 0.04);
+    addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX + 1.42, 0.95, frontZ + 0.04);
+    [-1.9, -0.95, 0, 0.95, 1.9].forEach((dx) => {
+      const h = Math.abs(dx) < 0.05 ? entryH - 2.28 : entryH;
+      const yPos = Math.abs(dx) < 0.05 ? 2.28 + h * 0.5 : entryH * 0.5 + 0.04;
+      addBox(0.07, h, 0.18, whiteTrimMat, entryCenterX + dx, yPos, frontZ + 0.04);
+    });
+    addBox(0.9, 2.22, 0.05, whiteTrimMat, entryCenterX - 0.48, 1.15, frontZ + 0.02);
+    addBox(0.76, 2.02, 0.06, officeGlassMat, entryCenterX - 0.48, 1.15, frontZ + 0.02);
+    const openDoorGrp = new Group();
+    openDoorGrp.position.set(entryCenterX + 0.92, 1.15, frontZ + 0.05);
+    openDoorGrp.rotation.y = -0.95;
+    const doorFrameMesh = new Mesh(new BoxGeometry(0.92, 2.22, 0.05), whiteTrimMat);
+    doorFrameMesh.position.set(-0.46, 0, 0);
+    openDoorGrp.add(doorFrameMesh);
+    const doorGlassMesh = new Mesh(new BoxGeometry(0.76, 2.02, 0.06), officeGlassMat);
+    doorGlassMesh.position.set(-0.46, 0, 0);
+    openDoorGrp.add(doorGlassMesh);
+    arch.add(openDoorGrp);
+    addBox(0.42, 0.52, 0.05, copperFrameMat, -3.15, 1.48, frontZ + 0.06);
+    addBox(0.18, 0.24, 0.04, darkBronzeMat, -3.15, 2.02, frontZ + 0.06);
+    addRibbonWindow({ pos: frontZ, nz: 1 }, -0.2, 0.78, 4.75, 2.05, 5, true);
+    addRibbonWindow({ pos: frontZ, nz: 1 }, 5, 0.78, 4.75, 2.05, 5, true);
+    addContouredDouglasStrip(douglasX - 0.04, douglasX + 0.06, -6.05, 25.4, 0.72, 0, darkSpandrelMat, 36, 11.375, arch);
+    [
+      [20.6, 5.6, 5],
+      [12.8, 5.6, 5],
+      [4.8, 5.2, 5],
+      [-2.2, 4.2, 4]
+    ].forEach(([wz, ww, wbays]) => {
+      const localGround = getDouglasLocalGroundY(11.375, wz);
+      const winYBot = Math.min(1.68, 0.78 + localGround * 0.52);
+      const winH = Math.max(1.35, 2.83 - winYBot);
+      addRibbonWindow({ pos: douglasX, nx: 1 }, wz, winYBot, ww, winH, wbays, true);
+    });
+    addRibbonWindow({ pos: courtX, nx: -1 }, 13.8, 0.78, 2.2, 2.05, 2, true);
+    addRibbonWindow({ pos: courtX, nx: -1 }, 9.8, 0.98, 0.85, 1.65, 1, false);
+    addRibbonWindow({ pos: courtX, nx: -1 }, 7.8, 0.98, 0.85, 1.65, 1, false);
+    addRibbonWindow({ pos: courtX, nx: -1 }, 1.2, 0.78, 5.2, 2.05, 5, true);
+    addRibbonWindow({ pos: rearZ, nz: -1 }, -7.4, 0.78, 4.8, 2.05, 4, true);
+    addRibbonWindow({ pos: -10.29, nz: -1 }, 0.45, 0.78, 5.2, 2.05, 5, true);
+    addBox(20.6, 0.22, 1.05, whiteTrimMat, -1.55, 3.28, frontZ + 0.48);
+    addBox(0.95, 0.22, 32.15, whiteTrimMat, douglasX + 0.44, 3.28, 9.92);
+    addBox(0.85, 0.22, 8.1, whiteTrimMat, courtX - 0.38, 3.28, 21.95);
+    addBox(0.18, 0.2, 24.05, whiteTrimMat, courtX - 0.06, 3.26, 5.98);
+    addRibbonWindow({ pos: frontZ, nz: 1 }, -7.25, 5.05, 4.65, 1.5, 5, false);
+    addRibbonWindow({ pos: frontZ, nz: 1 }, -1.05, 5.05, 4.65, 1.5, 5, false);
+    addRibbonWindow({ pos: frontZ, nz: 1 }, 5.05, 5.05, 4.65, 1.5, 5, false);
+    addRibbonWindow({ pos: douglasX, nx: 1 }, 20.6, 5.05, 5.6, 1.5, 5, false);
+    addRibbonWindow({ pos: douglasX, nx: 1 }, 15.2, 5.35, 0.92, 1.15, 1, false);
+    addRibbonWindow({ pos: douglasX, nx: 1 }, 13, 5.35, 0.92, 1.15, 1, false);
+    addRibbonWindow({ pos: douglasX, nx: 1 }, 7.2, 5.05, 5.4, 1.5, 5, false);
+    addRibbonWindow({ pos: douglasX, nx: 1 }, -1.5, 5.05, 5.2, 1.5, 5, false);
+    addRibbonWindow({ pos: courtX, nx: -1 }, 12.2, 5.05, 5.4, 1.5, 5, false);
+    addRibbonWindow({ pos: courtX, nx: -1 }, 3.8, 5.05, 5.4, 1.5, 5, false);
+    addRibbonWindow({ pos: courtX, nx: -1 }, -2.8, 5.05, 4.2, 1.5, 4, false);
+    addRibbonWindow({ pos: rearZ, nz: -1 }, -7.4, 5.05, 4.8, 1.5, 4, false);
+    addRibbonWindow({ pos: -10.29, nz: -1 }, 0.45, 5.05, 5.2, 1.5, 5, false);
+    const sconceMat = new MeshStandardMaterial({
+      color: "#f7f8fa",
+      emissive: "#fff4d6",
+      emissiveIntensity: 0.22,
+      roughness: 0.35,
+      metalness: 0.1
+    });
+    [-9.25, -4.05, 1.15, 6.25].forEach((sx) => {
+      const sconce = new Mesh(new ConeGeometry(0.34, 0.56, 3), sconceMat);
+      sconce.position.set(sx, 7.22, frontZ + 0.12);
+      sconce.rotation.y = Math.PI;
+      sconce.castShadow = true;
+      arch.add(sconce);
+    });
+    [23.2, 18, 9.8, 1.2].forEach((sz) => {
+      const sconce = new Mesh(new ConeGeometry(0.34, 0.56, 3), sconceMat);
+      sconce.position.set(douglasX + 0.12, 7.22, sz);
+      sconce.rotation.y = -Math.PI * 0.5;
+      sconce.castShadow = true;
+      arch.add(sconce);
+    });
+    [21.8, 12.2, 3.8, -2.8].forEach((sz) => {
+      const sconce = new Mesh(new ConeGeometry(0.34, 0.56, 3), sconceMat);
+      sconce.position.set(courtX - 0.12, 7.22, sz);
+      sconce.rotation.y = Math.PI * 0.5;
+      sconce.castShadow = true;
+      arch.add(sconce);
+    });
+    addBox(3.82, 4.28, 7.26, grayCoreStuccoMat, -9.23, 10.54, 21.81);
+    addBox(3.96, 0.16, 7.4, whiteTrimMat, -9.23, 12.7, 21.81);
+    addBox(0.04, 4.26, 0.06, whiteTrimMat, -9.23, 10.525, frontZ + 0.06);
+    addBox(3.8, 0.04, 0.06, whiteTrimMat, -9.23, 10.35, frontZ + 0.06);
+    [21.8, 18.2, 13.6].forEach((jz) => {
+      addBox(0.08, 4.26, 0.04, whiteTrimMat, courtX - 0.04, 10.525, jz);
+    });
+    [21.8, 18.2, 13.6, 9, 4.4].forEach((jz) => {
+      addBox(0.06, 4.95, 0.04, darkSpandrelMat, courtX - 0.03, 5.85, jz);
+    });
+    addRibbonWindow({ pos: frontZ, nz: 1 }, 0.28, 8.48, 15.2, 1.3, 15, false);
+    addRibbonWindow({ pos: douglasX, nx: 1 }, 9.72, 8.48, 31.3, 1.3, 30, false);
+    addRibbonWindow({ pos: courtX, nx: -1 }, 14.65, 8.48, 1.05, 1.3, 1, true);
+    addRibbonWindow({ pos: courtX, nx: -1 }, 9, 8.48, 9.1, 1.3, 10, true);
+    addRibbonWindow({ pos: rearZ, nz: -1 }, -7.38, 8.48, 7.1, 1.3, 7, false);
+    addRibbonWindow({ pos: rearZ, nz: -1 }, 6.23, 8.48, 3.1, 1.3, 3, false);
+    addRibbonWindow({ pos: -10.29, nz: -1 }, 0.45, 8.48, 7.9, 1.3, 8, false);
+    addRibbonWindow({ pos: 4.56, nx: 1 }, -8.17, 8.48, 4, 1.3, 4, false);
+    addRibbonWindow({ pos: -3.66, nx: -1 }, -8.17, 8.48, 4, 1.3, 4, false);
+    const neLouverH = 2.74;
+    const neLouverY = 9.88 + neLouverH * 0.5;
+    const neLouverW = 15.25;
+    addBox(neLouverW, neLouverH, 0.28, copperLouverMat, 0.28, neLouverY, frontZ - 0.12);
+    for (let i = 0; i <= 5; i++) {
+      const px2 = -7.34 + i * (neLouverW / 5);
+      addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, px2, neLouverY, frontZ - 0.1);
+    }
+    const nwLouverL = 31.45;
+    addBox(0.28, neLouverH, nwLouverL, copperLouverMat, douglasX - 0.12, neLouverY, 9.68);
+    for (let i = 0; i <= 10; i++) {
+      const pz2 = 25.4 - i * (nwLouverL / 10);
+      addBox(0.34, neLouverH + 0.08, 0.11, copperFrameMat, douglasX - 0.1, neLouverY, pz2);
+    }
+    addBox(0.28, neLouverH, 4.6, grayCoreStuccoMat, courtX + 0.12, neLouverY, 15.9);
+    addBox(0.36, 0.16, 4.65, whiteTrimMat, courtX + 0.1, 12.7, 15.9);
+    addBox(0.28, neLouverH, 9.2, copperLouverMat, courtX + 0.12, neLouverY, 9);
+    [13.6, 9, 4.4].forEach((pz2) => {
+      addBox(0.34, neLouverH + 0.08, 0.11, copperFrameMat, courtX + 0.1, neLouverY, pz2);
+    });
+    addBox(0.28, 4.28, 10.45, grayCoreStuccoMat, courtX + 0.12, 10.54, -0.825);
+    addBox(0.36, 0.16, 10.5, whiteTrimMat, courtX + 0.1, 12.7, -0.825);
+    addBox(0.32, 1.35, 1.65, darkBronzeMat, courtX + 0.08, 11.15, -4.15);
+    addBox(7.44, neLouverH, 0.28, copperLouverMat, -7.38, neLouverY, rearZ + 0.12);
+    for (let i = 0; i <= 3; i++) {
+      addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, -11.1 + i * (7.44 / 3), neLouverY, rearZ + 0.1);
+    }
+    addBox(3.35, neLouverH, 0.28, copperLouverMat, 6.235, neLouverY, rearZ + 0.12);
+    addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, 4.56, neLouverY, rearZ + 0.1);
+    addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, 7.91, neLouverY, rearZ + 0.1);
+    addBox(8.22, neLouverH, 0.28, copperLouverMat, 0.45, neLouverY, -10.29 + 0.12);
+    for (let i = 0; i <= 3; i++) {
+      addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, -3.66 + i * (8.22 / 3), neLouverY, -10.29 + 0.1);
+    }
+    addBox(0.28, neLouverH, 4.24, copperLouverMat, -3.66 + 0.12, neLouverY, -8.17);
+    addBox(0.28, neLouverH, 4.24, copperLouverMat, 4.56 - 0.12, neLouverY, -8.17);
+    addBox(0.24, 1.4, 31.2, whiteTrimMat, douglasX - 0.36, 10.5, 9.72);
+    addBox(0.24, 1.4, 24, whiteTrimMat, courtX + 0.36, 10.5, 6.1);
+    addBox(7.2, 1.4, 0.24, whiteTrimMat, -7.38, 10.5, rearZ + 0.36);
+    addBox(3.15, 1.4, 0.24, whiteTrimMat, 6.23, 10.5, rearZ + 0.36);
+    addBox(8, 1.4, 0.24, whiteTrimMat, 0.45, 10.5, -10.29 + 0.36);
+    addBox(0.24, 1.4, 4.1, whiteTrimMat, -3.66 + 0.36, 10.5, -8.17);
+    addBox(0.24, 1.4, 4.1, whiteTrimMat, 4.56 - 0.36, 10.5, -8.17);
+    const pentBaseY = 9.8;
+    const pentWallH = 3.65;
+    const pentCrownH = 1.75;
+    addBox(7.6, pentWallH, 12.4, penthouseWallMat, -7, pentBaseY + pentWallH * 0.5, 12.2);
+    addBox(7.68, 0.14, 12.48, whiteTrimMat, -7, pentBaseY + pentWallH, 12.2);
+    addBox(7.6, pentCrownH, 12.4, silverLouverMat, -7, pentBaseY + pentWallH + pentCrownH * 0.5, 12.2);
+    addBox(7.72, 0.14, 12.52, galvSteelMat, -7, pentBaseY + pentWallH + pentCrownH + 0.05, 12.2);
+    addBox(13.6, pentWallH, 16.1, penthouseWallMat, -4, pentBaseY + pentWallH * 0.5, 2.45);
+    addBox(13.68, 0.14, 16.18, whiteTrimMat, -4, pentBaseY + pentWallH, 2.45);
+    addBox(13.6, pentCrownH, 16.1, silverLouverMat, -4, pentBaseY + pentWallH + pentCrownH * 0.5, 2.45);
+    addBox(13.72, 0.14, 16.22, galvSteelMat, -4, pentBaseY + pentWallH + pentCrownH + 0.05, 2.45);
+    for (let lxPos = -10.5; lxPos <= -3.3; lxPos += 3.5) {
+      addBox(0.1, pentCrownH + 0.1, 0.12, galvSteelMat, lxPos, pentBaseY + pentWallH + pentCrownH * 0.5, 18.42);
+    }
+    for (let lzPos = 18.2; lzPos >= 10.6; lzPos -= 2.5) {
+      addBox(0.12, pentCrownH + 0.1, 0.1, galvSteelMat, -3.18, pentBaseY + pentWallH + pentCrownH * 0.5, lzPos);
+    }
+    for (let lxPos = -3.1; lxPos <= 2.8; lxPos += 2.95) {
+      addBox(0.1, pentCrownH + 0.1, 0.12, galvSteelMat, lxPos, pentBaseY + pentWallH + pentCrownH * 0.5, 10.52);
+    }
+    addBox(0.08, 2.15, 1.82, yellowDoorMat, -3.18, pentBaseY + 1.12, 15.6);
+    addBox(0.1, 2.15, 0.04, darkBronzeMat, -3.18, pentBaseY + 1.12, 15.6);
+    addBox(0.12, 0.16, 0.18, darkBronzeMat, -3.16, pentBaseY + 1.15, 15.6);
+    const ladderX = -1.6;
+    const ladderZ = 10.62;
+    addBox(0.06, 6.2, 0.08, galvSteelMat, ladderX - 0.28, pentBaseY + 3.1, ladderZ);
+    addBox(0.06, 6.2, 0.08, galvSteelMat, ladderX + 0.28, pentBaseY + 3.1, ladderZ);
+    for (let ry = 0.4; ry <= 6; ry += 0.35) {
+      addBox(0.56, 0.04, 0.05, galvSteelMat, ladderX, pentBaseY + ry, ladderZ);
+    }
+    for (let cy = 2.2; cy <= 6.1; cy += 0.65) {
+      const hoop = new Mesh(
+        new CylinderGeometry(0.42, 0.42, 0.05, 12, 1, true),
+        galvSteelMat
+      );
+      hoop.position.set(ladderX, pentBaseY + cy, ladderZ + 0.32);
+      arch.add(hoop);
+    }
+    addBox(1.35, 2.35, 1.85, galvSteelMat, 3.35, pentBaseY + 3.25, 9.2);
+    const chillerX = 2.1;
+    const chillerZ = 14.8;
+    addBox(3.1, 0.16, 3.1, basementConcreteMat, chillerX, pentBaseY + 0.08, chillerZ);
+    [-1.2, 1.2].forEach((dx) => {
+      [-1.2, 1.2].forEach((dz) => {
+        addBox(0.16, 0.55, 0.16, darkBronzeMat, chillerX + dx, pentBaseY + 0.38, chillerZ + dz);
+      });
+    });
+    addBox(2.85, 1.95, 2.85, penthouseWallMat, chillerX, pentBaseY + 1.62, chillerZ);
+    [-0.65, 0.65].forEach((dx) => {
+      const cowl = new Mesh(new CylinderGeometry(0.55, 0.55, 0.18, 16), darkBronzeMat);
+      cowl.position.set(chillerX + dx, pentBaseY + 2.68, chillerZ);
+      arch.add(cowl);
+    });
+    [-0.22, 0, 0.22].forEach((px2) => {
+      addBox(0.11, 2.15, 0.11, whiteTrimMat, chillerX + px2, pentBaseY + 1.55, chillerZ + 1.48);
+    });
+    addBox(5.35, 0.12, 0.12, whiteTrimMat, -0.52, pentBaseY + 0.52, 13.65);
+    addBox(5.35, 0.12, 0.12, whiteTrimMat, -0.52, pentBaseY + 0.52, 13.9);
+    [-2.2, -0.5, 1.2].forEach((sx) => {
+      addBox(0.12, 0.5, 0.48, galvSteelMat, sx, pentBaseY + 0.25, 13.78);
+    });
+    addBox(0.18, 0.65, 3.1, galvSteelMat, -3.1, pentBaseY + 0.65, 12.6);
+  }
+
+  // js/foundry/buildings/building316/Building316GroundsAndSidewalks.js
+  function buildBuilding316GroundsAndSidewalks(ctx) {
+    const {
+      building,
+      groundArch,
+      getDouglasLocalGroundY,
+      addContouredDouglasStrip,
+      frontZ,
+      douglasX,
+      whiteTrimMat,
+      darkBronzeMat,
+      galvSteelMat
+    } = ctx;
+    const arch = groundArch;
+    const addBox = (w, h, d, mat, x, y, z, cast = true) => {
+      const m = new Mesh(new BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z);
+      m.castShadow = cast;
+      m.receiveShadow = true;
+      m.userData = { isSelectableBuilding: true, building };
+      groundArch.add(m);
+      return m;
+    };
+    const sidewalkConcreteMat = new MeshStandardMaterial({
+      color: "#d8d4cb",
+      roughness: 0.85,
+      metalness: 0.03
+    });
+    const sidewalkJointMat = new MeshStandardMaterial({
+      color: "#8c867a",
+      roughness: 0.92,
+      metalness: 0.02
+    });
+    const whitePebbleMat = new MeshStandardMaterial({
+      color: "#e8e5dd",
+      roughness: 0.95,
+      metalness: 0.01
+    });
+    const railPipeMat = new MeshStandardMaterial({
+      color: "#5c6166",
+      roughness: 0.45,
+      metalness: 0.68
+    });
+    const lawnMat = new MeshStandardMaterial({
+      color: "#4e7932",
+      roughness: 0.92,
+      metalness: 0.02
+    });
+    const shrubMat = new MeshStandardMaterial({
+      color: "#365c24",
+      roughness: 0.9,
+      metalness: 0.02
+    });
+    addBox(11.52, 0.28, 0.18, whitePebbleMat, 2.16, 0.29, frontZ + 0.09, false);
+    const walkW = 13.9;
+    const walkD = 1.72;
+    const walkCenterZ = frontZ + 1.04;
+    addBox(walkW, 0.28, walkD, sidewalkConcreteMat, 3.3, 0.28, walkCenterZ, false);
+    for (let jx = -3.65; jx <= 10.1; jx += 1.7) {
+      addBox(0.03, 0.29, walkD + 0.02, sidewalkJointMat, jx, 0.285, walkCenterZ, false);
+    }
+    addBox(7.48, 0.28, 1.9, sidewalkConcreteMat, -7.39, 0.28, frontZ + 0.95, false);
+    const railZ = frontZ + 1.84;
+    const railSpan = 15.3;
+    const railCenterX = 0.6;
+    const topRailGeo = new CylinderGeometry(0.026, 0.026, railSpan, 12);
+    topRailGeo.rotateZ(Math.PI * 0.5);
+    const topRailMesh = new Mesh(topRailGeo, railPipeMat);
+    topRailMesh.position.set(railCenterX, 1.28, railZ);
+    topRailMesh.castShadow = true;
+    arch.add(topRailMesh);
+    for (let rx = -7.05; rx <= 8.26; rx += 1.7) {
+      const postMesh = new Mesh(
+        new CylinderGeometry(0.024, 0.024, 0.9, 10),
+        railPipeMat
+      );
+      postMesh.position.set(rx, 0.83, railZ);
+      postMesh.castShadow = true;
+      arch.add(postMesh);
+    }
+    const lawnW = 23.7;
+    const lawnD = 2.25;
+    const lawnGeo = new BoxGeometry(lawnW, 0.22, lawnD);
+    const lawnMesh = new Mesh(lawnGeo, lawnMat);
+    lawnMesh.position.set(-1.6, 0.24, frontZ + 3.025);
+    lawnMesh.rotation.x = 0.065;
+    lawnMesh.receiveShadow = true;
+    arch.add(lawnMesh);
+    const hydGrp = new Group();
+    hydGrp.position.set(5.55, 0.34, frontZ + 3.05);
+    const hydYellowMat = new MeshStandardMaterial({ color: "#d8a818", roughness: 0.48, metalness: 0.22 });
+    const hydRedCapMat = new MeshStandardMaterial({ color: "#983b38", roughness: 0.62, metalness: 0.25 });
+    const hydPatinaMat = new MeshStandardMaterial({ color: "#567864", roughness: 0.58, metalness: 0.28 });
+    const hydBase = new Mesh(new CylinderGeometry(0.15, 0.17, 0.08, 14), hydYellowMat);
+    hydBase.position.y = 0.04;
+    hydGrp.add(hydBase);
+    const hydBarrel = new Mesh(new CylinderGeometry(0.125, 0.13, 0.52, 16), hydYellowMat);
+    hydBarrel.position.y = 0.3;
+    hydBarrel.castShadow = true;
+    hydGrp.add(hydBarrel);
+    [-1, 1].forEach((dir) => {
+      const noz = new Mesh(new CylinderGeometry(0.052, 0.052, 0.16, 12), hydYellowMat);
+      noz.rotation.z = Math.PI * 0.5;
+      noz.position.set(dir * 0.16, 0.38, 0);
+      hydGrp.add(noz);
+    });
+    const pumperNoz = new Mesh(new CylinderGeometry(0.075, 0.075, 0.16, 14), railPipeMat);
+    pumperNoz.rotation.x = Math.PI * 0.5;
+    pumperNoz.position.set(0, 0.33, 0.14);
+    hydGrp.add(pumperNoz);
+    const hydCollar = new Mesh(new CylinderGeometry(0.155, 0.155, 0.05, 16), hydRedCapMat);
+    hydCollar.position.y = 0.56;
+    hydGrp.add(hydCollar);
+    const hydBonnet = new Mesh(new SphereGeometry(0.13, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hydPatinaMat);
+    hydBonnet.position.y = 0.57;
+    hydGrp.add(hydBonnet);
+    const hydNut = new Mesh(new CylinderGeometry(0.032, 0.038, 0.06, 5), hydRedCapMat);
+    hydNut.position.y = 0.71;
+    hydGrp.add(hydNut);
+    arch.add(hydGrp);
+    const swWidth = 25.95;
+    const swDepth = 2.3;
+    const swCenterX = -0.475;
+    const swCenterZ = frontZ + 5.3;
+    addBox(swWidth, 0.26, swDepth, sidewalkConcreteMat, swCenterX, 0.21, swCenterZ, false);
+    addBox(swWidth, 0.27, 0.03, sidewalkJointMat, swCenterX, 0.215, swCenterZ, false);
+    for (let sx = -13.2; sx <= 12.25; sx += 1.75) {
+      addBox(0.03, 0.27, swDepth + 0.02, sidewalkJointMat, sx, 0.215, swCenterZ, false);
+    }
+    addBox(swWidth, 0.29, 0.16, whiteTrimMat, swCenterX, 0.225, frontZ + 6.37, false);
+    addContouredDouglasStrip(douglasX, douglasX + 0.18, -6.05, 25.4, 0.33, -0.08, whitePebbleMat, 40);
+    addContouredDouglasStrip(douglasX + 0.18, 10.25, -10.55, 25.4, 0.32, -0.08, lawnMat, 48);
+    addContouredDouglasStrip(4.56, douglasX + 0.18, -10.55, -6.05, 0.32, -0.08, lawnMat, 12);
+    const dougSwW = 2.25;
+    const dougSwCenterX = 10.25 + dougSwW * 0.5;
+    addContouredDouglasStrip(10.25, 12.5, -10.55, 29.55, 0.34, -0.1, sidewalkConcreteMat, 56);
+    addContouredDouglasStrip(dougSwCenterX - 0.015, dougSwCenterX + 0.015, -10.55, 29.55, 0.346, 0, sidewalkJointMat, 56);
+    for (let sz = -10; sz <= 29; sz += 1.75) {
+      const sampleSwY = (zVal) => Math.max(
+        getDouglasLocalGroundY(10.25, zVal),
+        getDouglasLocalGroundY(12.5, zVal),
+        getDouglasLocalGroundY(dougSwCenterX, zVal)
+      );
+      const yHere = sampleSwY(sz);
+      const yPrev = sampleSwY(sz - 0.35);
+      const yNext = sampleSwY(sz + 0.35);
+      const jMesh = addBox(dougSwW + 0.02, 0.04, 0.03, sidewalkJointMat, dougSwCenterX, yHere + 0.33, sz, false);
+      jMesh.rotation.x = Math.atan2(yPrev - yNext, 0.7);
+    }
+    addContouredDouglasStrip(12.34, 12.5, -10.55, 31.85, 0.37, -0.1, whiteTrimMat, 60);
+    const signGroundY = getDouglasLocalGroundY(8.85, frontZ + 2.35);
+    const streetSignMat = new MeshStandardMaterial({ color: "#1b6b3a", roughness: 0.45, metalness: 0.18 });
+    addBox(0.055, 2.35, 0.055, galvSteelMat, 8.85, signGroundY + 1.42, frontZ + 2.35);
+    addBox(0.78, 0.18, 0.03, streetSignMat, 8.85, signGroundY + 2.52, frontZ + 2.35);
+    addBox(0.03, 0.18, 0.72, streetSignMat, 8.85, signGroundY + 2.32, frontZ + 2.35);
+    const bollardGrp = new Group();
+    bollardGrp.position.set(5.75, 0.32, frontZ + 5.95);
+    const bollardFlange = new Mesh(new CylinderGeometry(0.13, 0.14, 0.03, 16), darkBronzeMat);
+    bollardFlange.position.y = 0.015;
+    bollardGrp.add(bollardFlange);
+    const bollardShaft = new Mesh(new CylinderGeometry(0.082, 0.082, 0.86, 16), darkBronzeMat);
+    bollardShaft.position.y = 0.44;
+    bollardShaft.castShadow = true;
+    bollardGrp.add(bollardShaft);
+    const bollardCap = new Mesh(new CylinderGeometry(0.088, 0.088, 0.04, 16), darkBronzeMat);
+    bollardCap.position.y = 0.87;
+    bollardGrp.add(bollardCap);
+    arch.add(bollardGrp);
+    addBox(0.05, 2.45, 0.05, galvSteelMat, -1.4, 1.45, frontZ + 6.18);
+    addBox(0.32, 0.46, 0.02, whiteTrimMat, -1.4, 2.35, frontZ + 6.18);
+    addBox(0.32, 0.38, 0.02, whiteTrimMat, -1.4, 1.88, frontZ + 6.18);
+  }
+
+  // js/foundry/buildings/building316/buildBuilding316.js
+  function buildPhotoRealisticBuilding316(foundry, group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
+    const ctx = createBuilding316Context(foundry, group, building, shape, terrainY, getTerrainHeightFn);
+    buildBuilding316Structure(ctx);
+    buildBuilding316GroundsAndSidewalks(ctx);
+  }
+
+  // js/foundry/buildings/building300/Building300Materials.js
+  function createBuilding300Context(foundry, group, building, shape) {
+    const brickCanvas = document.createElement("canvas");
+    brickCanvas.width = 512;
+    brickCanvas.height = 512;
+    const bCtx = brickCanvas.getContext("2d");
+    bCtx.fillStyle = "#8b8072";
+    bCtx.fillRect(0, 0, 512, 512);
+    const palette = [
+      "#c99f62",
+      // Warm gold/ochre brick
+      "#be9258",
+      // Tan-buff brick
+      "#a37548",
+      // Medium brown brick
+      "#865c3b",
+      // Dark russet brown brick
+      "#6c5344",
+      // Charcoal-brown accent brick
+      "#bfa382",
+      // Pale grey-buff base brick
+      "#d2ab6e"
+      // Honey gold brick
+    ];
+    for (let r = 0; r < 32; r++) {
+      const off = r % 2 * 16;
+      for (let c = -1; c <= 16; c++) {
+        const seed = Math.abs(Math.sin(r * 19.7 + c * 37.3) * 43758.5453);
+        const idx = Math.floor(seed % 1 * palette.length);
+        bCtx.fillStyle = palette[idx];
+        bCtx.fillRect(c * 32 + off + 2, r * 16 + 2, 29, 13);
+      }
+    }
+    const varBrickTex = new CanvasTexture(brickCanvas);
+    varBrickTex.wrapS = RepeatWrapping;
+    varBrickTex.wrapT = RepeatWrapping;
+    varBrickTex.repeat.set(2.5, 2);
+    varBrickTex.colorSpace = SRGBColorSpace;
+    const varBrickMat = new MeshStandardMaterial({
+      map: varBrickTex,
+      roughness: 0.84,
+      metalness: 0.04
+    });
+    const precastCanvas = document.createElement("canvas");
+    precastCanvas.width = 512;
+    precastCanvas.height = 512;
+    const pCtx = precastCanvas.getContext("2d");
+    pCtx.fillStyle = "#cbbba0";
+    pCtx.fillRect(0, 0, 512, 512);
+    for (let y = 0; y < 512; y += 64) {
+      for (let x = 0; x < 512; x += 128) {
+        const j = Math.sin(x * 13.7 + y * 29.3) * 43758.5 % 1 * 6 - 3;
+        pCtx.fillStyle = `rgb(${203 + j}, ${187 + j}, ${160 + j})`;
+        pCtx.fillRect(x + 2, y + 2, 124, 60);
+      }
+    }
+    pCtx.strokeStyle = "rgba(96, 84, 68, 0.42)";
+    pCtx.lineWidth = 3;
+    for (let x = 0; x <= 512; x += 128) {
+      pCtx.beginPath();
+      pCtx.moveTo(x, 0);
+      pCtx.lineTo(x, 512);
+      pCtx.stroke();
+    }
+    for (let y = 0; y <= 512; y += 64) {
+      pCtx.beginPath();
+      pCtx.moveTo(0, y);
+      pCtx.lineTo(512, y);
+      pCtx.stroke();
+    }
+    const precastTex = new CanvasTexture(precastCanvas);
+    precastTex.wrapS = RepeatWrapping;
+    precastTex.wrapT = RepeatWrapping;
+    precastTex.repeat.set(0.24, 0.24);
+    precastTex.colorSpace = SRGBColorSpace;
+    const tanPrecastMat = new MeshStandardMaterial({
+      map: precastTex,
+      roughness: 0.8,
+      metalness: 0.04
+    });
+    const plinthBeigeMat = new MeshStandardMaterial({
+      color: "#d4c6ac",
+      roughness: 0.85,
+      metalness: 0.03
+    });
+    const recCreamMat = new MeshStandardMaterial({
+      color: "#dedcd2",
+      roughness: 0.78,
+      metalness: 0.04
+    });
+    const silverFlashingMat = new MeshStandardMaterial({
+      color: "#d6dde4",
+      roughness: 0.3,
+      metalness: 0.72
+    });
+    const darkFasciaMat = new MeshStandardMaterial({
+      color: "#4e555c",
+      roughness: 0.52,
+      metalness: 0.45
+    });
+    const roofMembraneMat = new MeshStandardMaterial({
+      color: "#dcdad3",
+      roughness: 0.86,
+      metalness: 0.05
+    });
+    const gymRoofMat = new MeshStandardMaterial({
+      color: "#6b727a",
+      roughness: 0.65,
+      metalness: 0.3
+    });
+    const securityMeshMat = new MeshStandardMaterial({
+      color: "#1f2326",
+      roughness: 0.65,
+      metalness: 0.45
+    });
+    const slotGlassMat = new MeshStandardMaterial({
+      color: "#496b73",
+      roughness: 0.2,
+      metalness: 0.38
+    });
+    const whiteDoorMat = new MeshStandardMaterial({
+      color: "#e6e7e2",
+      roughness: 0.58,
+      metalness: 0.12
+    });
+    const blackIronMat = new MeshStandardMaterial({
+      color: "#222528",
+      roughness: 0.42,
+      metalness: 0.65
+    });
+    const bollardYellowMat = new MeshStandardMaterial({
+      color: "#e5b524",
+      roughness: 0.5,
+      metalness: 0.18
+    });
+    const plazaConcreteMat = new MeshStandardMaterial({ color: "#d8d4cb", roughness: 0.85, metalness: 0.03 });
+    const plazaJointMat = new MeshStandardMaterial({ color: "#8c867a", roughness: 0.92, metalness: 0.02 });
+    const pipeRailMat = new MeshStandardMaterial({ color: "#565b60", roughness: 0.42, metalness: 0.68 });
+    const hedgeGreenMat = new MeshStandardMaterial({ color: "#3b6228", roughness: 0.9, metalness: 0.02 });
+    const hedgeRedMat = new MeshStandardMaterial({ color: "#6e352c", roughness: 0.9, metalness: 0.02 });
+    const turfLawnMat = new MeshStandardMaterial({ color: "#4e7932", roughness: 0.92, metalness: 0.02 });
+    const arch = new Group();
+    arch.name = "Building300ArchitecturalDetails";
+    arch.rotation.y = Math.atan2(0.59621, -0.80283);
+    group.add(arch);
+    const addBox = (w, h, d, mat, x, y, z, cast = true) => {
+      const m = new Mesh(new BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z);
+      m.castShadow = cast;
+      m.receiveShadow = true;
+      m.userData = { isSelectableBuilding: true, building };
+      arch.add(m);
+      return m;
+    };
+    const smooth01 = (t) => {
+      const c = Math.max(0, Math.min(1, t));
+      return c * c * c * (c * (c * 6 - 15) + 10);
+    };
+    const getLawnGradeY = (lx, lz) => {
+      const baseY = 0.3;
+      let hNorthBerm = 0;
+      if (lz < 29.89 && lx <= 3) {
+        let wDist = 0;
+        if (lx >= -16.2) {
+          const zCrest = lx >= -2.89 ? 22.28 + 3.12 * smooth01((lx - -2.89) / (2.71 - -2.89)) : 22.28;
+          if (lz <= zCrest) {
+            wDist = 1;
+          } else {
+            const rampSpan = Math.max(0.5, 29.89 - zCrest);
+            wDist = 1 - smooth01((lz - zCrest) / rampSpan);
+          }
+        } else if (lz >= 14.6) {
+          const dx = (-16.2 - lx) / 7.98;
+          const dz = (lz - 14.6) / 7.68;
+          const rEll = Math.hypot(dx, dz);
+          const dEll = Math.max(0, (rEll - 1) * 7.68);
+          wDist = 1 - smooth01(dEll / 7.61);
+        } else {
+          const dWest = Math.max(0, -24.18 - lx);
+          wDist = 1 - smooth01(dWest / 4.2);
+        }
+        const rightBoost = 0.24 * smooth01((lx - -5.4) / (-2.89 - -5.4));
+        const westFade = smooth01((lx - -25.6) / (-19.5 - -25.6));
+        const southFade = smooth01((lz - 13) / (16.5 - 13));
+        hNorthBerm = (0.18 + rightBoost) * wDist * westFade * southFade;
+      }
+      let hOrondo = 0;
+      if (lz < 16.5 && lx < -2.89) {
+        const northBlend = 1 - smooth01((lz - 13) / (16.5 - 13));
+        const dWest = Math.max(0, -24.28 - lx);
+        const dSouth = Math.max(0, -25.6 - lz);
+        const dOrondo = Math.hypot(dWest, dSouth);
+        const wOrondo = 1 - smooth01(dOrondo / 3.4);
+        hOrondo = 0.1 * wOrondo * northBlend;
+      }
+      return baseY + hNorthBerm + hOrondo;
+    };
+    return {
+      foundry,
+      group,
+      building,
+      shape,
+      arch,
+      addBox,
+      smooth01,
+      getLawnGradeY,
+      varBrickMat,
+      tanPrecastMat,
+      plinthBeigeMat,
+      recCreamMat,
+      silverFlashingMat,
+      darkFasciaMat,
+      roofMembraneMat,
+      gymRoofMat,
+      securityMeshMat,
+      slotGlassMat,
+      whiteDoorMat,
+      blackIronMat,
+      bollardYellowMat,
+      plazaConcreteMat,
+      plazaJointMat,
+      pipeRailMat,
+      hedgeGreenMat,
+      hedgeRedMat,
+      turfLawnMat
+    };
+  }
+
+  // js/foundry/buildings/building300/Building300MainWingAndPavilion.js
+  function buildBuilding300MainWingAndPavilion(ctx) {
+    const {
+      foundry,
+      group,
+      building,
+      arch,
+      addBox,
+      varBrickMat,
+      tanPrecastMat,
+      plinthBeigeMat,
+      silverFlashingMat,
+      darkFasciaMat,
+      roofMembraneMat,
+      slotGlassMat,
+      whiteDoorMat,
+      blackIronMat,
+      hedgeRedMat
+    } = ctx;
+    const mainCoreShape = new Shape();
+    {
+      const cx0 = building.center[0];
+      const cz0 = building.center[1];
+      const corePts = [];
+      building.footprint.forEach((pt, idx) => {
+        if (idx >= 4 && idx <= 15) {
+        } else if (idx === 18) {
+          corePts.push([39.61, 53.55]);
+        } else if (idx === 19 || idx === 20) {
+        } else {
+          corePts.push(pt);
+        }
+      });
+      corePts.forEach((pt, idx) => {
+        const sx = pt[0] - cx0;
+        const sy = -(pt[1] - cz0);
+        if (idx === 0) mainCoreShape.moveTo(sx, sy);
+        else mainCoreShape.lineTo(sx, sy);
+      });
+      mainCoreShape.closePath();
+    }
+    const footingGeo = new ExtrudeGeometry(mainCoreShape, { depth: 5.5, bevelEnabled: false });
+    footingGeo.rotateX(-Math.PI / 2);
+    const footingMesh = new Mesh(footingGeo, plinthBeigeMat);
+    footingMesh.position.y = -5.5;
+    footingMesh.castShadow = true;
+    footingMesh.receiveShadow = true;
+    group.add(footingMesh);
+    const baseWallH = 4.55;
+    const mainBodyGeo = new ExtrudeGeometry(mainCoreShape, { depth: baseWallH, bevelEnabled: false });
+    mainBodyGeo.rotateX(-Math.PI / 2);
+    foundry._applyArchitecturalUVs(mainBodyGeo, baseWallH, 1.15);
+    const mainBodyMesh = new Mesh(mainBodyGeo, [roofMembraneMat, tanPrecastMat]);
+    mainBodyMesh.name = "Building300_SingleFloorHighCeilingBase";
+    mainBodyMesh.position.y = 0;
+    mainBodyMesh.castShadow = true;
+    mainBodyMesh.receiveShadow = true;
+    mainBodyMesh.userData = { isSelectableBuilding: true, building, floorLayer: 1 };
+    group.add(mainBodyMesh);
+    const baseBandGeo = new ExtrudeGeometry(mainCoreShape, {
+      depth: 0.72,
+      bevelEnabled: true,
+      bevelThickness: 0.03,
+      bevelSize: 0.05,
+      bevelSegments: 1
+    });
+    baseBandGeo.rotateX(-Math.PI / 2);
+    const baseBandMesh = new Mesh(baseBandGeo, plinthBeigeMat);
+    baseBandMesh.position.y = 0;
+    group.add(baseBandMesh);
+    addBox(9.08, 1.08, 0.34, plinthBeigeMat, 7.24, 4.19, 29.89);
+    addBox(9.16, 0.14, 0.46, plinthBeigeMat, 7.24, 4.78, 29.89);
+    addBox(0.54, 0.88, 0.34, plinthBeigeMat, 12.05, 4.09, 29.89);
+    addBox(0.46, 0.16, 0.48, silverFlashingMat, 12.05, 4.62, 29.92);
+    addBox(11.76, 1.08, 0.34, plinthBeigeMat, 18.2, 4.19, 29.89);
+    addBox(11.82, 0.14, 0.46, plinthBeigeMat, 18.2, 4.78, 29.89);
+    addBox(0.34, 1.08, 11.14, plinthBeigeMat, 2.7, 4.19, 24.32);
+    addBox(0.46, 0.14, 11.24, plinthBeigeMat, 2.7, 4.78, 24.32);
+    addBox(0.34, 1.08, 24.45, plinthBeigeMat, 24.06, 4.19, 17.67);
+    addBox(0.46, 0.14, 24.55, plinthBeigeMat, 24.06, 4.78, 17.67);
+    [16.5, 20.2, 24.4, 27.8].forEach((jz) => {
+      addBox(0.06, 4.65, 0.04, darkFasciaMat, 24.09, 2.32, jz);
+    });
+    addBox(0.06, 0.04, 14, darkFasciaMat, 24.09, 3.85, 22.8);
+    [22.8, 26.2].forEach((wz) => {
+      addBox(0.14, 1.75, 2.45, slotGlassMat, 24.08, 2.05, wz);
+      addBox(0.16, 0.08, 2.55, whiteDoorMat, 24.09, 2.92, wz);
+      addBox(0.16, 0.08, 2.55, whiteDoorMat, 24.09, 1.18, wz);
+    });
+    addBox(11.66, 0.52, 7.6, roofMembraneMat, 2.94, 4.81, 0);
+    addBox(11.66, 1.12, 0.36, plinthBeigeMat, 2.94, 5.11, 3.8);
+    addBox(11.76, 0.14, 0.48, silverFlashingMat, 2.94, 5.72, 3.8);
+    addBox(11.66, 0.96, 0.36, plinthBeigeMat, 2.94, 5.03, -3.8);
+    addBox(11.76, 0.14, 0.48, silverFlashingMat, 2.94, 5.56, -3.8);
+    addBox(0.34, 0.96, 6.56, plinthBeigeMat, -2.72, 5.03, -18.28);
+    addBox(0.72, 0.28, 0.72, silverFlashingMat, -1.1, 4.7, -17.8);
+    [
+      [-2.67, 6.2, 0],
+      // Ladder 1 on the N-S dividing parapet wall (facing +X lower roof)
+      [3.2, 4.02, Math.PI * 0.5]
+      // Ladder 2 on the E-W transverse parapet wall (facing +Z lower roof)
+    ].forEach(([lxPos, lzPos, lRot]) => {
+      const ladGrp = new Group();
+      ladGrp.position.set(lxPos, 4.55, lzPos);
+      ladGrp.rotation.y = lRot;
+      [-0.24, 0.24].forEach((ry) => {
+        const rail = new Mesh(new BoxGeometry(0.04, 1.75, 0.06), blackIronMat);
+        rail.position.set(0, 0.875, ry);
+        ladGrp.add(rail);
+        const topLoop = new Mesh(new BoxGeometry(0.38, 0.04, 0.04), blackIronMat);
+        topLoop.position.set(-0.17, 1.75, ry);
+        ladGrp.add(topLoop);
+        const rearLeg = new Mesh(new BoxGeometry(0.04, 0.58, 0.04), blackIronMat);
+        rearLeg.position.set(-0.34, 1.46, ry);
+        ladGrp.add(rearLeg);
+      });
+      for (let rY = 0.25; rY <= 1.2; rY += 0.26) {
+        const rung = new Mesh(new CylinderGeometry(0.015, 0.015, 0.48, 8), blackIronMat);
+        rung.rotation.x = Math.PI * 0.5;
+        rung.position.set(0, rY, 0);
+        ladGrp.add(rung);
+      }
+      arch.add(ladGrp);
+    });
+    for (let rz = 8.8; rz <= 28; rz += 2.6) {
+      const xStart = rz < 18.8 ? -2.7 : 2.85;
+      const seamW = 23.85 - xStart;
+      const seamCx = (xStart + 23.85) * 0.5;
+      addBox(seamW, 0.02, 0.04, darkFasciaMat, seamCx, 4.56, rz, false);
+    }
+    addBox(0.86, 0.28, 0.86, plinthBeigeMat, 15.85, 4.69, 24.8);
+    addBox(0.94, 0.06, 0.94, silverFlashingMat, 15.85, 4.85, 24.8);
+    const roofDome1 = new Mesh(new CylinderGeometry(0.34, 0.38, 0.26, 18), whiteDoorMat);
+    roofDome1.position.set(15.85, 5, 24.8);
+    arch.add(roofDome1);
+    const roofCap1 = new Mesh(new SphereGeometry(0.35, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), silverFlashingMat);
+    roofCap1.position.set(15.85, 5.1, 24.8);
+    arch.add(roofCap1);
+    addBox(0.76, 0.26, 0.76, silverFlashingMat, 21.4, 4.68, 15.6);
+    const roofDome2 = new Mesh(new CylinderGeometry(0.32, 0.26, 0.3, 16), silverFlashingMat);
+    roofDome2.position.set(21.4, 4.94, 15.6);
+    arch.add(roofDome2);
+    [
+      [8.2, 25.4, 4.55],
+      [12.6, 18.2, 4.55],
+      [17.8, 16.4, 4.55],
+      [20.5, 22.8, 4.55],
+      [-6.5, 14.2, 5.55],
+      [-9.8, 11.4, 5.55],
+      [-14.2, 8.6, 5.55],
+      [-16.5, 3.2, 5.55],
+      [-8.4, -6.5, 5.55],
+      [-13.5, -11.2, 5.55],
+      [-17.2, -15.8, 5.55]
+    ].forEach(([vx, vz, vy]) => {
+      const vPipe = new Mesh(new CylinderGeometry(0.045, 0.045, 0.52, 8), blackIronMat);
+      vPipe.position.set(vx, vy + 0.26, vz);
+      arch.add(vPipe);
+    });
+    addBox(17.89, 5.5, 4.16, plinthBeigeMat, 13.195, -2.75, 31.97);
+    addBox(17.99, 0.72, 4.24, plinthBeigeMat, 13.195, 0.36, 31.97);
+    addBox(17.89, 3.68, 4.16, varBrickMat, 13.195, 1.84, 31.97);
+    addBox(1.55, 3.68, 0.24, varBrickMat, 3.475, 1.84, 29.89);
+    addBox(17.55, 0.12, 3.92, roofMembraneMat, 13.195, 3.68, 31.97);
+    addBox(3.6, 0.26, 0.3, varBrickMat, 6.05, 3.81, 34.05);
+    addBox(3.72, 0.16, 0.44, plinthBeigeMat, 6.05, 4.02, 34.08);
+    addBox(0.3, 0.26, 4.2, varBrickMat, 4.25, 3.81, 31.97);
+    addBox(0.44, 0.16, 4.3, plinthBeigeMat, 4.25, 4.02, 31.97);
+    addBox(8.3, 0.16, 0.44, plinthBeigeMat, 12, 3.78, 34.08);
+    addBox(0.24, 0.32, 0.44, plinthBeigeMat, 7.85, 3.9, 34.08);
+    addBox(0.24, 0.32, 0.44, plinthBeigeMat, 16.15, 3.9, 34.08);
+    addBox(5.99, 0.26, 0.3, varBrickMat, 19.145, 3.81, 34.05);
+    addBox(6.12, 0.16, 0.44, plinthBeigeMat, 19.145, 4.02, 34.08);
+    addBox(0.3, 0.26, 4.2, varBrickMat, 22.14, 3.81, 31.97);
+    addBox(0.44, 0.16, 4.3, plinthBeigeMat, 22.14, 4.02, 31.97);
+    [[6.2, 31.6], [19.8, 31.6]].forEach(([px2, pz2]) => {
+      const pVent = new Mesh(new CylinderGeometry(0.04, 0.04, 0.38, 8), blackIronMat);
+      pVent.position.set(px2, 3.82, pz2);
+      arch.add(pVent);
+    });
+    addBox(0.32, 4.55, 11.14, tanPrecastMat, 2.71, 2.275, 24.32);
+    addBox(0.38, 0.72, 11.2, plinthBeigeMat, 2.71, 0.36, 24.32);
+    addBox(0.44, 0.14, 11.24, whiteDoorMat, 2.71, 4.62, 24.32);
+    [21.5, 25.2, 28.8].forEach((jz) => {
+      addBox(0.36, 4.55, 0.04, darkFasciaMat, 2.68, 2.275, jz);
+    });
+    addBox(0.36, 0.04, 11.14, darkFasciaMat, 2.68, 2.05, 24.32);
+    const leftWinZ = 31.9;
+    const leftWinW = 3.4;
+    addBox(0.18, 2.76, leftWinW, slotGlassMat, 4.22, 1.98, leftWinZ);
+    addBox(0.55, 0.24, leftWinW + 0.16, whiteDoorMat, 4.02, 3.44, leftWinZ);
+    addBox(0.6, 0.06, leftWinW + 0.22, silverFlashingMat, 4.02, 3.58, leftWinZ);
+    [0.62, 1.05, 2.42, 3.32].forEach((hy) => {
+      addBox(0.22, 0.075, leftWinW + 0.04, whiteDoorMat, 4.18, hy, leftWinZ);
+    });
+    [-1.65, -0.55, 0.55, 1.65].forEach((dz) => {
+      addBox(0.22, 2.76, 0.075, whiteDoorMat, 4.18, 1.98, leftWinZ + dz);
+    });
+    const buildCurvedTopIronFence = (x0, z0, x1, z1, fenceBaseY = 0.18, fenceH = 1.85) => {
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      const cx = (x0 + x1) * 0.5;
+      const cz = (z0 + z1) * 0.5;
+      const rotY = -Math.atan2(z1 - z0, x1 - x0);
+      const fGrp = new Group();
+      fGrp.position.set(cx, fenceBaseY, cz);
+      fGrp.rotation.y = rotY;
+      const topRail = new Mesh(new BoxGeometry(len, 0.055, 0.055), blackIronMat);
+      topRail.position.set(0, fenceH - 0.18, 0);
+      fGrp.add(topRail);
+      const botRail = new Mesh(new BoxGeometry(len, 0.055, 0.055), blackIronMat);
+      botRail.position.set(0, 0.16, 0);
+      fGrp.add(botRail);
+      const numPosts = Math.max(2, Math.round(len / 2.8) + 1);
+      for (let p = 0; p < numPosts; p++) {
+        const px2 = -len * 0.5 + p / (numPosts - 1) * len;
+        const post = new Mesh(new BoxGeometry(0.085, fenceH + 0.06, 0.085), blackIronMat);
+        post.position.set(px2, fenceH * 0.5, 0);
+        post.castShadow = true;
+        fGrp.add(post);
+      }
+      const numPickets = Math.floor(len / 0.18);
+      for (let k = 1; k < numPickets; k++) {
+        const kx = -len * 0.5 + k * 0.18;
+        const picket = new Mesh(new BoxGeometry(0.025, fenceH - 0.12, 0.025), blackIronMat);
+        picket.position.set(kx, (fenceH - 0.12) * 0.5 + 0.08, 0);
+        fGrp.add(picket);
+        const loop = new Mesh(new TorusGeometry(0.065, 0.013, 6, 10, Math.PI), blackIronMat);
+        loop.rotation.y = Math.PI * 0.5;
+        loop.position.set(kx, fenceH - 0.06, 0);
+        fGrp.add(loop);
+      }
+      arch.add(fGrp);
+    };
+    addBox(5.62, 0.72, 0.34, plinthBeigeMat, -0.09, 4.9, 18.78);
+    addBox(5.7, 0.14, 0.44, silverFlashingMat, -0.09, 5.32, 18.78);
+    addBox(0.54, 0.88, 0.42, plinthBeigeMat, -0.09, 4.88, 18.84);
+    addBox(0.05, 4.55, 0.08, darkFasciaMat, -0.09, 2.275, 18.78);
+    addBox(5.6, 0.04, 0.08, darkFasciaMat, -0.09, 2.08, 18.78);
+    addBox(5.6, 0.04, 0.08, darkFasciaMat, -0.09, 1.82, 18.78);
+    [-1.48, 1.3].forEach((wx) => {
+      addBox(1.42, 0.24, 0.16, whiteDoorMat, wx, 1.95, 18.8);
+      addBox(1.34, 0.16, 0.18, slotGlassMat, wx, 1.95, 18.82);
+    });
+    const bayW = 7.8;
+    const bayCenterX = 12;
+    const bayFrontZ = 35.22;
+    addBox(bayW + 0.16, 0.38, 1.26, plinthBeigeMat, bayCenterX, 0.19, 34.62);
+    addBox(bayW, 2.76, 1.18, slotGlassMat, bayCenterX, 1.72, 34.62);
+    addBox(bayW + 0.14, 0.1, 1.24, whiteDoorMat, bayCenterX, 3.04, 34.62);
+    addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.86, 34.62);
+    addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.38, 34.62);
+    [-3.9, 3.9].forEach((sx) => {
+      addBox(0.12, 2.76, 1.24, whiteDoorMat, bayCenterX + sx, 1.72, 34.62);
+      addBox(0.14, 0.08, 1.24, whiteDoorMat, bayCenterX + sx, 2.38, 34.62);
+    });
+    [-2.15, 2.15].forEach((dx) => {
+      addBox(0.09, 2.76, 0.16, whiteDoorMat, bayCenterX + dx, 1.72, bayFrontZ);
+    });
+    [-0.36, 0.36].forEach((cxOff) => {
+      addBox(0.16, 2.86, 0.26, whiteDoorMat, bayCenterX + cxOff, 1.76, bayFrontZ + 0.04);
+    });
+    [1.18, 1.48].forEach((hy) => {
+      addBox(0.72, 0.07, 0.22, whiteDoorMat, bayCenterX, hy, bayFrontZ + 0.03);
+    });
+    addBox(3.8, 0.22, 1.44, whiteDoorMat, 9.65, 3.2, 34.76);
+    addBox(3.88, 0.07, 1.5, silverFlashingMat, 9.65, 3.34, 34.76);
+    addBox(3.8, 0.22, 1.44, whiteDoorMat, 14.35, 3.2, 34.76);
+    addBox(3.88, 0.07, 1.5, silverFlashingMat, 14.35, 3.34, 34.76);
+    addBox(1.02, 0.24, 1.32, whiteDoorMat, bayCenterX, 3.24, 34.68);
+    addBox(1.08, 0.07, 1.38, silverFlashingMat, bayCenterX, 3.38, 34.68);
+    addBox(0.12, 0.14, 0.06, hedgeRedMat, bayCenterX, 3.24, 35.35);
+    [6.05, 18.25].forEach((cxPos) => {
+      const portGrp = new Group();
+      portGrp.position.set(cxPos, 1.68, 34.12);
+      const numVois = 16;
+      for (let v = 0; v < numVois; v++) {
+        const ang = v / numVois * Math.PI * 2;
+        const vBrick = new Mesh(new BoxGeometry(0.36, 0.22, 0.24), varBrickMat);
+        vBrick.position.set(Math.cos(ang) * 0.98, Math.sin(ang) * 0.98, 0.02);
+        vBrick.rotation.z = ang + Math.PI * 0.5;
+        portGrp.add(vBrick);
+      }
+      const revealRing = new Mesh(new TorusGeometry(0.86, 0.08, 12, 32), darkFasciaMat);
+      revealRing.position.z = 0.02;
+      portGrp.add(revealRing);
+      const glassDisc = new Mesh(new CylinderGeometry(0.84, 0.84, 0.08, 28), slotGlassMat);
+      glassDisc.rotation.x = Math.PI * 0.5;
+      glassDisc.position.z = -0.02;
+      portGrp.add(glassDisc);
+      const rimTorus = new Mesh(new TorusGeometry(0.82, 0.045, 10, 28), whiteDoorMat);
+      rimTorus.position.z = 0.03;
+      portGrp.add(rimTorus);
+      const hMul = new Mesh(new BoxGeometry(1.58, 0.055, 0.09), whiteDoorMat);
+      hMul.position.set(0, -0.18, 0.03);
+      portGrp.add(hMul);
+      [-0.24, 0.24].forEach((vx) => {
+        const vMul = new Mesh(new BoxGeometry(0.055, 1.54, 0.09), whiteDoorMat);
+        vMul.position.set(vx, 0, 0.03);
+        portGrp.add(vMul);
+      });
+      arch.add(portGrp);
+    });
+    const addr300Tex = foundry._createTextPlaqueTexture(
+      ["300", "WASHINGTON STREET"],
+      "#9c7552",
+      "#f4f5f7",
+      512,
+      160
+    );
+    const addr300Mat = new MeshStandardMaterial({ map: addr300Tex, roughness: 0.45, metalness: 0.32 });
+    addBox(2.45, 0.56, 0.05, addr300Mat, 20.15, 2.02, 34.18, false);
+    addBox(0.28, 3.1, 3.55, slotGlassMat, 22.08, 1.62, 31.8);
+    addBox(0.32, 0.09, 3.65, whiteDoorMat, 22.14, 3.12, 31.8);
+    addBox(0.32, 0.08, 3.65, whiteDoorMat, 22.14, 2.25, 31.8);
+    [-1.75, -0.88, 0, 0.88, 1.75].forEach((dz) => {
+      addBox(0.32, 3.1, 0.07, whiteDoorMat, 22.14, 1.62, 31.8 + dz);
+    });
+    addBox(1.85, 0.24, 4.18, whiteDoorMat, 23, 3.38, 31.97);
+    addBox(1.92, 0.08, 4.24, silverFlashingMat, 23, 3.52, 31.97);
+    addBox(1.94, 3.68, 0.24, varBrickMat, 23.11, 1.84, 29.89);
+    const jjcWallTex = foundry._createTextPlaqueTexture(
+      ["CHELAN COUNTY", "JUVENILE JUSTICE CENTER"],
+      "#9c7552",
+      "#f4f5f7",
+      512,
+      160
+    );
+    const jjcWallMat = new MeshStandardMaterial({ map: jjcWallTex, roughness: 0.45, metalness: 0.32 });
+    addBox(1.38, 0.42, 0.05, jjcWallMat, 23.38, 2.48, 30.03, false);
+    addBox(0.36, 0.44, 0.05, blackIronMat, 23.38, 1.82, 30.03);
+    addBox(0.34, 0.2, 0.22, blackIronMat, 23.38, 3.05, 30.08);
+    addBox(0.38, 0.58, 0.1, whiteDoorMat, 22.48, 1.68, 30.04);
+    addBox(0.28, 0.28, 0.12, slotGlassMat, 22.48, 1.76, 30.05);
+    addBox(6.6, 0.07, 0.07, blackIronMat, 27.38, 2.38, 29.35);
+    addBox(6.6, 0.07, 0.07, blackIronMat, 27.38, 0.3, 29.35);
+    for (let fx = 24.15; fx <= 30.6; fx += 0.28) {
+      addBox(0.04, 2.15, 0.04, blackIronMat, fx, 1.32, 29.35);
+    }
+  }
+
+  // js/foundry/buildings/building300/Building300GroundsAndGrading.js
+  function buildBuilding300GroundsAndGrading(ctx) {
+    const {
+      foundry,
+      arch,
+      addBox,
+      getLawnGradeY,
+      varBrickMat,
+      plinthBeigeMat,
+      silverFlashingMat,
+      whiteDoorMat,
+      blackIronMat,
+      plazaConcreteMat,
+      plazaJointMat,
+      pipeRailMat,
+      hedgeGreenMat,
+      hedgeRedMat,
+      turfLawnMat
+    } = ctx;
+    [
+      [1.65, 33.25, 2.45, 2.15, hedgeGreenMat],
+      [2.85, 34.15, 1.95, 1.75, hedgeGreenMat],
+      [0.85, 32.45, 1.45, 0.85, hedgeRedMat]
+    ].forEach(([bx, bz, bw, bh, bMat]) => {
+      const bush = new Mesh(new SphereGeometry(bw * 0.55, 12, 10), bMat);
+      bush.scale.set(1.15, bh / (bw * 1.1), 1.05);
+      bush.position.set(bx, getLawnGradeY(bx, bz) + bh * 0.4, bz);
+      bush.castShadow = true;
+      bush.receiveShadow = true;
+      arch.add(bush);
+    });
+    const eastPoleGradeY = getLawnGradeY(-3.85, 35.6);
+    addBox(0.42, 0.16, 0.42, plazaConcreteMat, -3.85, eastPoleGradeY + 0.03, 35.6);
+    const eastPole = new Mesh(new CylinderGeometry(0.09, 0.12, 8.2, 12), blackIronMat);
+    eastPole.position.set(-3.85, eastPoleGradeY + 4.1, 35.6);
+    eastPole.castShadow = true;
+    arch.add(eastPole);
+    addBox(1.15, 0.08, 0.12, blackIronMat, -3.35, eastPoleGradeY + 8.15, 35.6);
+    addBox(0.38, 0.12, 0.22, blackIronMat, -3.55, eastPoleGradeY + 5.85, 35.6);
+    addBox(0.05, 2.55, 0.05, silverFlashingMat, -4.65, 1.55, 36.65);
+    addBox(0.42, 0.48, 0.03, blackIronMat, -4.65, 2.45, 36.65);
+    addBox(0.36, 0.42, 0.03, whiteDoorMat, -4.65, 1.92, 36.65);
+    const landingY = 0.62;
+    addBox(8.55, landingY, 4.96, plazaConcreteMat, 26.375, landingY * 0.5, 32.37, false);
+    const medCx = 26.55;
+    const medCz = 32.35;
+    const innerDisk = new Mesh(new CylinderGeometry(1.05, 1.05, 0.02, 28), plazaConcreteMat);
+    innerDisk.position.set(medCx, landingY + 0.01, medCz);
+    arch.add(innerDisk);
+    [1.05, 1.95, 2.25, 3.15].forEach((rad) => {
+      const ringTorus = new Mesh(new TorusGeometry(rad, 0.02, 8, 36), plazaJointMat);
+      ringTorus.rotation.x = Math.PI * 0.5;
+      ringTorus.position.set(medCx, landingY + 0.013, medCz);
+      arch.add(ringTorus);
+    });
+    for (let r = 0; r < 8; r++) {
+      const ang = r * Math.PI / 4;
+      const ray = new Mesh(new BoxGeometry(2.1, 0.02, 0.024), plazaJointMat);
+      ray.rotation.y = -ang;
+      ray.position.set(medCx + Math.cos(ang) * 2.1, landingY + 0.013, medCz + Math.sin(ang) * 2.1);
+      arch.add(ray);
+    }
+    [-2.14, -2, -1.86, -1.72, -1.58, -1.44, -1.3].forEach((ang) => {
+      const bx = medCx + Math.cos(ang) * 3.22;
+      const bz = medCz + Math.sin(ang) * 2.85;
+      const bSeg = new Group();
+      bSeg.position.set(bx, landingY, bz);
+      bSeg.rotation.y = -ang + Math.PI * 0.5;
+      const bBase = new Mesh(new BoxGeometry(0.5, 0.44, 0.54), varBrickMat);
+      bBase.position.y = 0.22;
+      bSeg.add(bBase);
+      const bCap = new Mesh(new BoxGeometry(0.54, 0.08, 0.62), plinthBeigeMat);
+      bCap.position.y = 0.46;
+      bSeg.add(bCap);
+      arch.add(bSeg);
+    });
+    [-1.08, -0.97, -0.86, -0.75, -0.64, -0.53, -0.42].forEach((ang) => {
+      const bx = medCx + Math.cos(ang) * 3.28;
+      const bz = medCz + Math.sin(ang) * 2.85;
+      const bSeg = new Group();
+      bSeg.position.set(bx, landingY, bz);
+      bSeg.rotation.y = -ang + Math.PI * 0.5;
+      const bBase = new Mesh(new BoxGeometry(0.48, 0.44, 0.54), varBrickMat);
+      bBase.position.y = 0.22;
+      bSeg.add(bBase);
+      const bCap = new Mesh(new BoxGeometry(0.52, 0.08, 0.62), plinthBeigeMat);
+      bCap.position.y = 0.46;
+      bSeg.add(bCap);
+      arch.add(bSeg);
+    });
+    addBox(0.48, 0.68, 0.48, plinthBeigeMat, medCx + 0.82, landingY + 0.34, medCz - 2.65);
+    const backPlanter = new Mesh(new CylinderGeometry(0.32, 0.28, 0.48, 14), blackIronMat);
+    backPlanter.position.set(medCx + 1.55, landingY + 0.24, medCz - 2.85);
+    arch.add(backPlanter);
+    const poleMesh = new Mesh(new CylinderGeometry(0.09, 0.11, 7.8, 12), blackIronMat);
+    poleMesh.position.set(medCx + 1.25, landingY + 3.9, medCz - 2.75);
+    poleMesh.castShadow = true;
+    arch.add(poleMesh);
+    const stairX = 26.4;
+    const stairW = 3.85;
+    const numSteps = 7;
+    const stepDepth = 2.04 / numSteps;
+    const stepRise = (landingY - 0.2) / numSteps;
+    for (let st = 0; st < numSteps; st++) {
+      const stH = landingY - (st + 0.5) * stepRise;
+      const stZ = 34.85 + (st + 0.5) * stepDepth;
+      addBox(stairW, stH, stepDepth + 0.02, plazaConcreteMat, stairX, stH * 0.5, stZ, false);
+      addBox(stairW, 0.02, 0.025, plazaJointMat, stairX, stH + 5e-3, stZ + stepDepth * 0.5, false);
+    }
+    addBox(0.52, 0.96, 1.4, varBrickMat, 24.18, 0.48, 34.95);
+    addBox(0.6, 0.09, 1.48, plinthBeigeMat, 24.18, 1, 34.95);
+    addBox(0.52, 0.74, 1.45, varBrickMat, 24.18, 0.37, 36.32);
+    addBox(0.6, 0.09, 1.52, plinthBeigeMat, 24.18, 0.78, 36.32);
+    addBox(0.52, 0.98, 1.45, varBrickMat, 28.62, 0.49, 34.98);
+    addBox(0.6, 0.09, 1.54, plinthBeigeMat, 28.62, 1.02, 34.98);
+    addBox(0.52, 0.76, 1.45, varBrickMat, 28.62, 0.38, 36.38);
+    addBox(0.6, 0.09, 1.54, plinthBeigeMat, 28.62, 0.8, 36.38);
+    addBox(1.65, 0.96, 0.48, varBrickMat, 29.42, 0.48, 34.55);
+    addBox(1.74, 0.09, 0.56, plinthBeigeMat, 29.42, 1, 34.55);
+    addBox(0.58, 0.48, 0.58, plinthBeigeMat, 29.55, 0.38, 35.15);
+    addBox(0.46, 0.05, 0.46, hedgeRedMat, 29.55, 0.64, 35.15);
+    addBox(2.05, 0.22, 2.57, turfLawnMat, 29.645, 0.19, 35.835, false);
+    [24.58, 28.22].forEach((rx) => {
+      const rGrp = new Group();
+      rGrp.position.set(rx, 0, 35.85);
+      const railBar = new Mesh(new CylinderGeometry(0.024, 0.024, 2.38, 10), pipeRailMat);
+      railBar.rotation.x = Math.PI * 0.5 + 0.19;
+      railBar.position.set(0, 1.18, 0);
+      rGrp.add(railBar);
+      const postTop = new Mesh(new CylinderGeometry(0.022, 0.022, 0.82, 10), pipeRailMat);
+      postTop.position.set(0, landingY + 0.41, -0.95);
+      rGrp.add(postTop);
+      const postBot = new Mesh(new CylinderGeometry(0.022, 0.022, 0.82, 10), pipeRailMat);
+      postBot.position.set(0, 0.22 + 0.41, 0.95);
+      rGrp.add(postBot);
+      arch.add(rGrp);
+    });
+    addBox(1.45, 0.04, 0.04, pipeRailMat, 29.85, landingY + 0.88, 34.35);
+    addBox(0.04, 0.88, 0.04, pipeRailMat, 29.15, landingY + 0.44, 34.35);
+    addBox(0.04, 0.88, 0.04, pipeRailMat, 30.55, landingY + 0.44, 34.35);
+    {
+      const xCols = [
+        [-28.2, -2.89, 64],
+        [-2.89, 2.71, 24],
+        [2.71, 4.25, 8],
+        [4.25, 24.18, 40]
+      ];
+      const zRows = [
+        [-29.2, -25.6, 10],
+        [-25.6, 18.75, 76],
+        [18.75, 22.28, 14],
+        [22.28, 29.89, 32],
+        [29.89, 34.05, 16],
+        [34.05, 37.12, 12]
+      ];
+      const isCellActive = (c, r) => {
+        if (c === 0) return true;
+        if (c === 1) return r >= 2;
+        if (c === 2) return r >= 4;
+        if (c === 3) return r === 5;
+        return false;
+      };
+      const positions = [];
+      const normals = [];
+      const eps = 0.05;
+      const evalNormal = (x, z) => {
+        const dydx = (getLawnGradeY(x + eps, z) - getLawnGradeY(x - eps, z)) / (2 * eps);
+        const dydz = (getLawnGradeY(x, z + eps) - getLawnGradeY(x, z - eps)) / (2 * eps);
+        const nx = -dydx;
+        const ny = 1;
+        const nz = -dydz;
+        const len = Math.hypot(nx, ny, nz) || 1;
+        return [nx / len, ny / len, nz / len];
+      };
+      const pushSmoothTri = (x0, z0, x1, z1, x2, z2) => {
+        const y0 = getLawnGradeY(x0, z0);
+        const y1 = getLawnGradeY(x1, z1);
+        const y2 = getLawnGradeY(x2, z2);
+        const n0 = evalNormal(x0, z0);
+        const n1 = evalNormal(x1, z1);
+        const n2 = evalNormal(x2, z2);
+        positions.push(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+        normals.push(n0[0], n0[1], n0[2], n1[0], n1[1], n1[2], n2[0], n2[1], n2[2]);
+      };
+      const pushSkirtSegment = (xa, za, xb, zb, nx, nz) => {
+        const ya = getLawnGradeY(xa, za);
+        const yb = getLawnGradeY(xb, zb);
+        const botY = -0.35;
+        positions.push(xa, ya, za, xb, yb, zb, xb, botY, zb);
+        normals.push(nx, 0, nz, nx, 0, nz, nx, 0, nz);
+        positions.push(xa, ya, za, xb, botY, zb, xa, botY, za);
+        normals.push(nx, 0, nz, nx, 0, nz, nx, 0, nz);
+      };
+      for (let c = 0; c < xCols.length; c++) {
+        const [x0, x1, nxSteps] = xCols[c];
+        for (let r = 0; r < zRows.length; r++) {
+          if (!isCellActive(c, r)) continue;
+          const [z0, z1, nzSteps] = zRows[r];
+          for (let ix = 0; ix < nxSteps; ix++) {
+            const xa = x0 + ix / nxSteps * (x1 - x0);
+            const xb = x0 + (ix + 1) / nxSteps * (x1 - x0);
+            const xm = (xa + xb) * 0.5;
+            for (let iz = 0; iz < nzSteps; iz++) {
+              const za = z0 + iz / nzSteps * (z1 - z0);
+              const zb = z0 + (iz + 1) / nzSteps * (z1 - z0);
+              const zm = (za + zb) * 0.5;
+              if (c === 0 && xm > -20.2 && zm > -24.8 && zm < 21.6) continue;
+              pushSmoothTri(xa, za, xa, zb, xb, zb);
+              pushSmoothTri(xa, za, xb, zb, xb, za);
+            }
+          }
+          if (!isCellActive(c - 1, r)) {
+            for (let iz = 0; iz < nzSteps; iz++) {
+              const za = z0 + iz / nzSteps * (z1 - z0);
+              const zb = z0 + (iz + 1) / nzSteps * (z1 - z0);
+              pushSkirtSegment(x0, zb, x0, za, -1, 0);
+            }
+          }
+          if (!isCellActive(c + 1, r)) {
+            for (let iz = 0; iz < nzSteps; iz++) {
+              const za = z0 + iz / nzSteps * (z1 - z0);
+              const zb = z0 + (iz + 1) / nzSteps * (z1 - z0);
+              pushSkirtSegment(x1, za, x1, zb, 1, 0);
+            }
+          }
+          if (!isCellActive(c, r - 1)) {
+            for (let ix = 0; ix < nxSteps; ix++) {
+              const xa = x0 + ix / nxSteps * (x1 - x0);
+              const xb = x0 + (ix + 1) / nxSteps * (x1 - x0);
+              pushSkirtSegment(xa, z0, xb, z0, 0, -1);
+            }
+          }
+          if (!isCellActive(c, r + 1)) {
+            for (let ix = 0; ix < nxSteps; ix++) {
+              const xa = x0 + ix / nxSteps * (x1 - x0);
+              const xb = x0 + (ix + 1) / nxSteps * (x1 - x0);
+              pushSkirtSegment(xb, z1, xa, z1, 0, 1);
+            }
+          }
+        }
+      }
+      const lawnGeo = new BufferGeometry();
+      lawnGeo.setAttribute("position", new Float32BufferAttribute(positions, 3));
+      lawnGeo.setAttribute("normal", new Float32BufferAttribute(normals, 3));
+      const gradedLawnMesh = new Mesh(lawnGeo, turfLawnMat);
+      gradedLawnMesh.name = "Building300_GradedLawnAndBerm";
+      gradedLawnMesh.receiveShadow = true;
+      gradedLawnMesh.castShadow = false;
+      arch.add(gradedLawnMesh);
+    }
+    const bushCoords = [
+      [3.2, 34.8, 1.35, 1.25, hedgeGreenMat],
+      [4.8, 35, 1.45, 1.35, hedgeGreenMat],
+      [6.4, 35.1, 1.15, 0.95, hedgeRedMat],
+      [8, 35.5, 1.1, 0.82, hedgeGreenMat],
+      [9.8, 35.6, 1.15, 0.78, hedgeRedMat],
+      [11.6, 35.6, 1.2, 0.8, hedgeGreenMat],
+      [13.4, 35.6, 1.15, 0.78, hedgeGreenMat],
+      [15.2, 35.5, 1.2, 0.85, hedgeRedMat],
+      [16.8, 35.1, 1.35, 1.05, hedgeRedMat],
+      [18.6, 35, 1.45, 1.25, hedgeGreenMat],
+      [20.4, 35, 1.5, 1.32, hedgeGreenMat],
+      [22, 35.1, 1.35, 1.18, hedgeGreenMat]
+    ];
+    bushCoords.forEach(([bx, bz, bw, bh, bMat]) => {
+      const bush = new Mesh(new SphereGeometry(bw * 0.55, 10, 8), bMat);
+      bush.scale.set(1.15, bh / (bw * 1.1), 0.95);
+      bush.position.set(bx, getLawnGradeY(bx, bz) + bh * 0.4, bz);
+      bush.castShadow = true;
+      bush.receiveShadow = true;
+      arch.add(bush);
+    });
+    const sw300W = 56.6;
+    const sw300D = 2.3;
+    const sw300Cx = 0.1;
+    const sw300Cz = 38.27;
+    addBox(sw300W, 0.26, sw300D, plazaConcreteMat, sw300Cx, 0.21, sw300Cz, false);
+    addBox(sw300W, 0.27, 0.03, plazaJointMat, sw300Cx, 0.215, sw300Cz, false);
+    for (let sx = -27.65; sx <= 28.35; sx += 1.75) {
+      addBox(0.03, 0.27, sw300D + 0.02, plazaJointMat, sx, 0.215, sw300Cz, false);
+    }
+    addBox(sw300W, 0.29, 0.16, whiteDoorMat, sw300Cx, 0.225, 39.34, false);
+    const swaleMat = new MeshStandardMaterial({ color: "#6e655c", roughness: 0.95, metalness: 0.02 });
+    [
+      [-26.2, -21.8, 1.15, 5.2, -0.35],
+      [-24.4, -25.8, 1.15, 5.4, -0.85],
+      [-20.2, -27.6, 1.15, 5.6, -1.35],
+      [-10.5, -27.8, 3.4, 11.5, -1.57]
+    ].forEach(([sx, sz, sw, sd, sRot]) => {
+      const swaleSeg = new Mesh(new BoxGeometry(sw, 0.06, sd), swaleMat);
+      swaleSeg.position.set(sx, getLawnGradeY(sx, sz) - 0.01, sz);
+      swaleSeg.rotation.y = sRot;
+      swaleSeg.receiveShadow = true;
+      arch.add(swaleSeg);
+    });
+    const monSignGrp = new Group();
+    monSignGrp.position.set(-25.85, getLawnGradeY(-25.85, 24.05) - 0.02, 24.05);
+    monSignGrp.rotation.y = -Math.PI * 0.25;
+    const paverApron = new Mesh(new BoxGeometry(2.85, 0.08, 1.18), hedgeRedMat);
+    paverApron.position.set(0, 0.04, 0.16);
+    paverApron.receiveShadow = true;
+    monSignGrp.add(paverApron);
+    const monPlinth = new Mesh(new BoxGeometry(2.26, 0.28, 0.48), plinthBeigeMat);
+    monPlinth.position.set(0, 0.18, 0);
+    monSignGrp.add(monPlinth);
+    const monBrick = new Mesh(new BoxGeometry(2.18, 1.12, 0.42), varBrickMat);
+    monBrick.position.set(0, 0.88, 0);
+    monBrick.castShadow = true;
+    monBrick.receiveShadow = true;
+    monSignGrp.add(monBrick);
+    const monCap = new Mesh(new BoxGeometry(2.36, 0.12, 0.54), plinthBeigeMat);
+    monCap.position.set(0, 1.5, 0);
+    monCap.castShadow = true;
+    monSignGrp.add(monCap);
+    const monSignTex = foundry._createTextPlaqueTexture(
+      ["CHELAN COUNTY", "JUVENILE", "JUSTICE CENTER"],
+      "#8d6748",
+      "#f4f6f8",
+      512,
+      220
+    );
+    const monSignMat = new MeshStandardMaterial({ map: monSignTex, roughness: 0.42, metalness: 0.35 });
+    const monPlaque = new Mesh(new BoxGeometry(1.86, 0.82, 0.04), monSignMat);
+    monPlaque.position.set(0, 0.9, 0.205);
+    monSignGrp.add(monPlaque);
+    arch.add(monSignGrp);
+    [[-27.2, -10.5], [-27.2, 7.2], [-22.4, 24.8]].forEach(([px2, pz2]) => {
+      const pGradeY = getLawnGradeY(px2, pz2);
+      const oPole = new Mesh(new CylinderGeometry(0.07, 0.09, 6.2, 10), blackIronMat);
+      oPole.position.set(px2, pGradeY + 3.1, pz2);
+      oPole.castShadow = true;
+      arch.add(oPole);
+      addBox(0.36, 0.14, 0.24, blackIronMat, px2 + 0.18, pGradeY + 6.15, pz2);
+    });
+  }
+
+  // js/foundry/buildings/building300/Building300DetentionAndGym.js
+  function buildBuilding300DetentionAndGym(ctx) {
+    const {
+      foundry,
+      building,
+      arch,
+      addBox,
+      varBrickMat,
+      tanPrecastMat,
+      plinthBeigeMat,
+      recCreamMat,
+      silverFlashingMat,
+      darkFasciaMat,
+      roofMembraneMat,
+      gymRoofMat,
+      securityMeshMat,
+      slotGlassMat,
+      whiteDoorMat,
+      blackIronMat,
+      bollardYellowMat,
+      plazaConcreteMat,
+      plazaJointMat,
+      pipeRailMat,
+      hedgeGreenMat,
+      hedgeRedMat,
+      turfLawnMat
+    } = ctx;
+    const detRoofY = 5.55;
+    const detBrickTop = 4.65;
+    const detPolyPts = [
+      [-2.89, 22.28],
+      // 0: NE corner (steps 3.50m North of lz = 18.78m!)
+      [-16.2, 22.28],
+      // 1: North wall inner corner at North Rec Yard (pEnd)
+      [-20.1, 14.6],
+      // 2: North Rec Yard inner apex (pApex — straight +X from pStart!)
+      [-24.18, 14.6],
+      // 3: North Rec Yard Orondo (-X) corner (pStart)
+      [-24.18, 0.4],
+      // 4: North Pod South-West corner at Central Notch
+      [-20.96, 0.4],
+      // 5: Central Notch North inner corner
+      [-20.96, -3.65],
+      // 6: Central Notch South inner corner
+      [-24.38, -3.65],
+      // 7: South Pod North-West corner at Central Notch
+      [-24.38, -18],
+      // 8: South Rec Yard Orondo (-X) corner (pStart)
+      [-20.3, -18],
+      // 9: South Rec Yard inner apex (pApex — straight +X from pStart!)
+      [-16.2, -25.6],
+      // 10: South wall inner corner at South Rec Yard (pEnd)
+      [-2.89, -25.6]
+      // 11: SE corner (steps 4.04m South of lz = -21.56m!)
+    ];
+    const detWingShape = new Shape();
+    detPolyPts.forEach(([px2, pz2], idx) => {
+      if (idx === 0) detWingShape.moveTo(px2, -pz2);
+      else detWingShape.lineTo(px2, -pz2);
+    });
+    detWingShape.closePath();
+    const detPlinthGeo = new ExtrudeGeometry(detWingShape, { depth: 6.22, bevelEnabled: false });
+    detPlinthGeo.rotateX(-Math.PI / 2);
+    const detPlinthMesh = new Mesh(detPlinthGeo, plinthBeigeMat);
+    detPlinthMesh.position.y = -5.5;
+    detPlinthMesh.receiveShadow = true;
+    arch.add(detPlinthMesh);
+    const detGrayGeo = new ExtrudeGeometry(detWingShape, { depth: 0.16, bevelEnabled: false });
+    detGrayGeo.rotateX(-Math.PI / 2);
+    const detGrayMesh = new Mesh(detGrayGeo, plazaJointMat);
+    detGrayMesh.position.y = 0.72;
+    arch.add(detGrayMesh);
+    const detBrickGeo = new ExtrudeGeometry(detWingShape, { depth: detBrickTop - 0.88, bevelEnabled: false });
+    detBrickGeo.rotateX(-Math.PI / 2);
+    foundry._applyArchitecturalUVs(detBrickGeo, detBrickTop - 0.88, 1.15);
+    const detBrickMesh = new Mesh(detBrickGeo, varBrickMat);
+    detBrickMesh.position.y = 0.88;
+    detBrickMesh.castShadow = true;
+    detBrickMesh.receiveShadow = true;
+    detBrickMesh.userData = { isSelectableBuilding: true, building };
+    arch.add(detBrickMesh);
+    const detFriezeGeo = new ExtrudeGeometry(detWingShape, { depth: detRoofY - detBrickTop, bevelEnabled: false });
+    detFriezeGeo.rotateX(-Math.PI / 2);
+    foundry._applyArchitecturalUVs(detFriezeGeo, detRoofY - detBrickTop, 1);
+    const detFriezeMesh = new Mesh(detFriezeGeo, [roofMembraneMat, tanPrecastMat]);
+    detFriezeMesh.position.y = detBrickTop;
+    detFriezeMesh.castShadow = true;
+    detFriezeMesh.receiveShadow = true;
+    detFriezeMesh.userData = { isSelectableBuilding: true, building };
+    arch.add(detFriezeMesh);
+    const addEdgeParapetAndCornice = (x0, z0, x1, z1, includeCornice = true) => {
+      const len = Math.hypot(x1 - x0, z1 - z0) + 0.34;
+      const mx = (x0 + x1) * 0.5;
+      const mz = (z0 + z1) * 0.5;
+      const rotY = -Math.atan2(z1 - z0, x1 - x0);
+      const eGrp = new Group();
+      eGrp.position.set(mx, 0, mz);
+      eGrp.rotation.y = rotY;
+      const pWall = new Mesh(new BoxGeometry(len, 0.2, 0.34), plinthBeigeMat);
+      pWall.position.y = 5.62;
+      eGrp.add(pWall);
+      const pCap = new Mesh(new BoxGeometry(len + 0.06, 0.1, 0.42), silverFlashingMat);
+      pCap.position.y = 5.75;
+      eGrp.add(pCap);
+      if (includeCornice) {
+        const c1 = new Mesh(new BoxGeometry(len, 0.08, 0.38), plinthBeigeMat);
+        c1.position.y = 5.32;
+        eGrp.add(c1);
+        const c2 = new Mesh(new BoxGeometry(len + 0.04, 0.08, 0.44), plinthBeigeMat);
+        c2.position.y = 5.41;
+        eGrp.add(c2);
+        const c3 = new Mesh(new BoxGeometry(len + 0.08, 0.08, 0.5), plinthBeigeMat);
+        c3.position.y = 5.49;
+        eGrp.add(c3);
+      }
+      arch.add(eGrp);
+    };
+    for (let i = 0; i < detPolyPts.length; i++) {
+      const [x0, z0] = detPolyPts[i];
+      const [x1, z1] = detPolyPts[(i + 1) % detPolyPts.length];
+      addEdgeParapetAndCornice(x0, z0, x1, z1, i < detPolyPts.length - 1);
+    }
+    addEdgeParapetAndCornice(-2.89, 18.78, -2.89, 22.28, true);
+    addEdgeParapetAndCornice(-2.89, -25.6, -2.89, -21.56, true);
+    addBox(0.18, 4.65, 4.1, tanPrecastMat, -20.96, 2.395, -1.625);
+    [-3.05, -1.625, -0.2].forEach((jz) => {
+      addBox(0.22, 4.65, 0.03, plazaJointMat, -20.98, 2.395, jz);
+    });
+    [0.88, 2.08].forEach((jy) => {
+      addBox(0.22, 0.03, 4.05, plazaJointMat, -20.98, jy, -1.625);
+    });
+    addBox(0.26, 0.92, 0.48, plinthBeigeMat, -20.99, 5.08, -1.625);
+    addBox(0.3, 0.74, 0.04, plazaJointMat, -21.01, 5.08, -1.625);
+    [-2.45, -0.8].forEach((wz) => {
+      addBox(0.22, 0.24, 1.28, whiteDoorMat, -21, 1.92, wz);
+      addBox(0.24, 0.18, 1.2, slotGlassMat, -21.01, 1.92, wz);
+    });
+    const ventCyl = new Mesh(new CylinderGeometry(0.1, 0.1, 0.22, 12), blackIronMat);
+    ventCyl.rotation.z = Math.PI * 0.5;
+    ventCyl.position.set(-21, 3.55, -2.32);
+    arch.add(ventCyl);
+    addBox(0.45, 0.06, 0.45, plazaConcreteMat, -21.45, 0.03, -2.32, false);
+    addBox(18, 0.03, 0.12, plazaJointMat, -11.9, 5.56, -1.625, false);
+    for (let rz = -22; rz <= 19; rz += 3.8) {
+      addBox(13, 0.015, 0.04, plazaJointMat, -9.5, 5.555, rz, false);
+    }
+    addBox(0.85, 0.18, 1.25, darkFasciaMat, -9.6, 5.64, -10.8);
+    addBox(0.68, 0.2, 1.08, plinthBeigeMat, -9.6, 5.65, -10.8);
+    [
+      [-6.2, 11.8],
+      [-9.6, 16.4],
+      [-19.4, 7.8],
+      [-11.8, 0.4],
+      [-13.6, -1.8],
+      [-18.8, -11.8],
+      [-6.8, -16.8],
+      [-19.2, -15.8]
+    ].forEach(([vx, vz]) => {
+      [-0.22, 0.22].forEach((dz) => {
+        const vCap = new Mesh(new CylinderGeometry(0.14, 0.1, 0.28, 10), blackIronMat);
+        vCap.position.set(vx, 5.68, vz + dz);
+        arch.add(vCap);
+      });
+    });
+    const buildScoredSlotBay = (bx, bz, normalAxis = "-X", includeUpperClerestory = true) => {
+      const isX = normalAxis === "-X" || normalAxis === "+X";
+      const sign2 = normalAxis === "-X" || normalAxis === "-Z" ? -1 : 1;
+      if (isX) {
+        addBox(0.14, 1.82, 1.54, plinthBeigeMat, bx + sign2 * 0.04, 0.91, bz);
+        addBox(0.16, 1.8, 0.03, plazaJointMat, bx + sign2 * 0.05, 0.91, bz);
+        [0.48, 0.94, 1.38].forEach((jy) => {
+          addBox(0.16, 0.03, 1.52, plazaJointMat, bx + sign2 * 0.05, jy, bz);
+        });
+        addBox(0.16, 0.26, 1.48, whiteDoorMat, bx + sign2 * 0.06, 1.96, bz);
+        addBox(0.18, 0.18, 1.4, slotGlassMat, bx + sign2 * 0.07, 1.96, bz);
+        addBox(0.2, 0.18, 1.62, plinthBeigeMat, bx + sign2 * 0.07, 2.19, bz);
+        addBox(0.09, 2.38, 0.045, blackIronMat, bx + sign2 * 0.02, 3.46, bz);
+        if (includeUpperClerestory) {
+          addBox(0.18, 0.28, 1.36, whiteDoorMat, bx + sign2 * 0.07, 5.04, bz);
+          addBox(0.2, 0.2, 1.28, slotGlassMat, bx + sign2 * 0.08, 5.04, bz);
+        }
+      } else {
+        addBox(1.54, 1.82, 0.14, plinthBeigeMat, bx, 0.91, bz + sign2 * 0.04);
+        addBox(0.03, 1.8, 0.16, plazaJointMat, bx, 0.91, bz + sign2 * 0.05);
+        [0.48, 0.94, 1.38].forEach((jy) => {
+          addBox(1.52, 0.03, 0.16, plazaJointMat, bx, jy, bz + sign2 * 0.05);
+        });
+        addBox(1.48, 0.26, 0.16, whiteDoorMat, bx, 1.96, bz + sign2 * 0.06);
+        addBox(1.4, 0.18, 0.18, slotGlassMat, bx, 1.96, bz + sign2 * 0.07);
+        addBox(1.62, 0.18, 0.2, plinthBeigeMat, bx, 2.19, bz + sign2 * 0.07);
+        addBox(0.045, 2.38, 0.09, blackIronMat, bx, 3.46, bz + sign2 * 0.02);
+        if (includeUpperClerestory) {
+          addBox(1.36, 0.28, 0.18, whiteDoorMat, bx, 5.04, bz + sign2 * 0.07);
+          addBox(1.28, 0.2, 0.2, slotGlassMat, bx, 5.04, bz + sign2 * 0.08);
+        }
+      }
+    };
+    const buildOrondoFacadeBays = (xMin, zMin, zMax) => {
+      const d = zMax - zMin;
+      const numBays = 5;
+      const baySpan = (d - 1.4) / numBays;
+      for (let b = 0; b < numBays; b++) {
+        const bz = zMin + 0.7 + (b + 0.5) * baySpan;
+        buildScoredSlotBay(xMin, bz, "-X", true);
+        if (b < numBays - 1) {
+          const pilZ = bz + baySpan * 0.5;
+          addBox(0.22, 0.92, 0.48, plinthBeigeMat, xMin - 0.08, 5.08, pilZ);
+          addBox(0.28, 0.72, 0.32, plinthBeigeMat, xMin - 0.1, 5.08, pilZ);
+          addBox(0.3, 0.74, 0.04, plazaJointMat, xMin - 0.1, 5.08, pilZ);
+        }
+      }
+      [zMin + 0.32, zMax - 0.32].forEach((czPos) => {
+        addBox(0.24, 0.92, 0.58, plinthBeigeMat, xMin - 0.08, 5.08, czPos);
+        addBox(0.28, 0.74, 0.04, plazaJointMat, xMin - 0.09, 5.08, czPos);
+      });
+    };
+    buildOrondoFacadeBays(-24.18, 0.4, 14.6);
+    buildOrondoFacadeBays(-24.38, -18, -3.65);
+    [-13.5, -9.55, -5.6].forEach((bx) => {
+      buildScoredSlotBay(bx, 22.28, "+Z", true);
+    });
+    [-13.8, -10.65, -7.5, -4.35].forEach((bx) => {
+      buildScoredSlotBay(bx, -25.6, "-Z", true);
+    });
+    [
+      [detPolyPts[1], detPolyPts[2]],
+      [detPolyPts[2], detPolyPts[3]],
+      [detPolyPts[8], detPolyPts[9]],
+      [detPolyPts[9], detPolyPts[10]]
+    ].forEach(([[x0, z0], [x1, z1]]) => {
+      const mx = (x0 + x1) * 0.5;
+      const mz = (z0 + z1) * 0.5;
+      const rotY = -Math.atan2(z1 - z0, x1 - x0);
+      const cWinGrp = new Group();
+      cWinGrp.position.set(mx, 5.04, mz);
+      cWinGrp.rotation.y = rotY;
+      const wFrame = new Mesh(new BoxGeometry(1.56, 0.28, 0.38), whiteDoorMat);
+      cWinGrp.add(wFrame);
+      const wGlass = new Mesh(new BoxGeometry(1.46, 0.2, 0.4), slotGlassMat);
+      cWinGrp.add(wGlass);
+      arch.add(cWinGrp);
+    });
+    const buildChamferedCornerRecYard = (isNorth) => {
+      const pStart = isNorth ? [-24.18, 14.6] : [-24.38, -18];
+      const pApex = isNorth ? [-20.1, 14.6] : [-20.3, -18];
+      const pEnd = isNorth ? [-16.2, 22.28] : [-16.2, -25.6];
+      const centerArcX = pEnd[0];
+      const centerArcZ = pStart[1];
+      const rx = Math.abs(pStart[0] - centerArcX);
+      const rz = Math.abs(pEnd[1] - centerArcZ);
+      const segments = 8;
+      const arcPts = [];
+      for (let s = 0; s <= segments; s++) {
+        const u = s / segments;
+        const ang = isNorth ? Math.PI - u * Math.PI * 0.5 : Math.PI + u * Math.PI * 0.5;
+        const ax = centerArcX + Math.cos(ang) * rx;
+        const az = centerArcZ + Math.sin(ang) * rz;
+        arcPts.push([ax, az]);
+      }
+      const outZ = isNorth ? -1 : 1;
+      for (let s = 0; s < segments; s++) {
+        const [x0, z0] = arcPts[s];
+        const [x1, z1] = arcPts[s + 1];
+        const segW = Math.hypot(x1 - x0, z1 - z0) + 0.08;
+        const mx = (x0 + x1) * 0.5;
+        const mz = (z0 + z1) * 0.5;
+        const rotY = -Math.atan2(z1 - z0, x1 - x0);
+        const isDoorBay = s === 0 || s === segments - 1;
+        const bayGrp = new Group();
+        bayGrp.position.set(mx, 0, mz);
+        bayGrp.rotation.y = rotY;
+        if (isDoorBay) {
+          const frameM = new Mesh(new BoxGeometry(segW, 2.84, 0.36), recCreamMat);
+          frameM.position.y = 1.42;
+          bayGrp.add(frameM);
+          const doorLeaf = new Mesh(new BoxGeometry(0.96, 2.48, 0.38), whiteDoorMat);
+          doorLeaf.position.set(0, 1.26, outZ * 0.02);
+          bayGrp.add(doorLeaf);
+          const doorHood = new Mesh(new BoxGeometry(1.08, 0.1, 0.44), recCreamMat);
+          doorHood.position.set(0, 2.58, outZ * 0.04);
+          bayGrp.add(doorHood);
+        } else {
+          const plinthM = new Mesh(new BoxGeometry(segW, 0.68, 0.36), plinthBeigeMat);
+          plinthM.position.y = 0.34;
+          bayGrp.add(plinthM);
+          const grayBandM = new Mesh(new BoxGeometry(segW + 0.02, 0.14, 0.34), plazaJointMat);
+          grayBandM.position.y = 0.75;
+          bayGrp.add(grayBandM);
+          const brickM = new Mesh(new BoxGeometry(segW, 2, 0.32), varBrickMat);
+          brickM.position.y = 1.82;
+          brickM.castShadow = true;
+          brickM.receiveShadow = true;
+          bayGrp.add(brickM);
+          const brickJnt = new Mesh(new BoxGeometry(0.03, 2, 0.34), plazaJointMat);
+          brickJnt.position.set(-segW * 0.5 + 0.04, 1.82, outZ * 0.01);
+          bayGrp.add(brickJnt);
+        }
+        const sillLipM = new Mesh(new BoxGeometry(segW + 0.06, 0.08, 0.42), recCreamMat);
+        sillLipM.position.y = 2.84;
+        bayGrp.add(sillLipM);
+        const midBandM = new Mesh(new BoxGeometry(segW + 0.04, 0.5, 0.38), recCreamMat);
+        midBandM.position.y = 3.07;
+        bayGrp.add(midBandM);
+        const topBandM = new Mesh(new BoxGeometry(segW + 0.06, 0.32, 0.42), recCreamMat);
+        topBandM.position.y = 4.78;
+        bayGrp.add(topBandM);
+        const topFlashM = new Mesh(new BoxGeometry(segW + 0.1, 0.08, 0.46), silverFlashingMat);
+        topFlashM.position.y = 4.96;
+        bayGrp.add(topFlashM);
+        const meshM = new Mesh(new BoxGeometry(segW - 0.06, 1.3, 0.14), securityMeshMat);
+        meshM.position.y = 3.97;
+        bayGrp.add(meshM);
+        const subMul = new Mesh(new BoxGeometry(0.075, 1.3, 0.26), recCreamMat);
+        subMul.position.set(0, 3.97, outZ * 0.04);
+        bayGrp.add(subMul);
+        [3.75, 4.19].forEach((hy) => {
+          const hBar = new Mesh(new BoxGeometry(segW - 0.04, 0.07, 0.26), recCreamMat);
+          hBar.position.set(0, hy, outZ * 0.04);
+          bayGrp.add(hBar);
+        });
+        const finM = new Mesh(new BoxGeometry(0.11, 2.04, 0.48), recCreamMat);
+        finM.position.set(-segW * 0.5 + 0.04, 3.74, outZ * 0.07);
+        finM.castShadow = true;
+        bayGrp.add(finM);
+        arch.add(bayGrp);
+      }
+      const fanShape = new Shape();
+      fanShape.moveTo(pStart[0], -pStart[1]);
+      fanShape.lineTo(pApex[0], -pApex[1]);
+      fanShape.lineTo(pEnd[0], -pEnd[1]);
+      for (let s = segments - 1; s >= 1; s--) {
+        fanShape.lineTo(arcPts[s][0], -arcPts[s][1]);
+      }
+      fanShape.closePath();
+      const fanGeo = new ExtrudeGeometry(fanShape, { depth: 0.14, bevelEnabled: false });
+      fanGeo.rotateX(-Math.PI / 2);
+      const fanMat = new MeshStandardMaterial({ color: "#ece8dc", roughness: 0.52, metalness: 0.08 });
+      const fanMesh = new Mesh(fanGeo, fanMat);
+      fanMesh.position.y = 4.74;
+      fanMesh.receiveShadow = true;
+      arch.add(fanMesh);
+      const midArc = arcPts[4];
+      const seamLen = Math.hypot(midArc[0] - pApex[0], midArc[1] - pApex[1]) - 0.2;
+      const seamMx = (pApex[0] + midArc[0]) * 0.5;
+      const seamMz = (pApex[1] + midArc[1]) * 0.5;
+      const seamRot = -Math.atan2(midArc[1] - pApex[1], midArc[0] - pApex[0]);
+      const seamBar = new Mesh(new BoxGeometry(seamLen, 0.03, 0.06), plazaJointMat);
+      seamBar.position.set(seamMx, 4.89, seamMz);
+      seamBar.rotation.y = seamRot;
+      arch.add(seamBar);
+    };
+    buildChamferedCornerRecYard(true);
+    buildChamferedCornerRecYard(false);
+    const garZ = -0.3;
+    const garW = 5.4;
+    const garH = 3.05;
+    addBox(0.18, garH + 0.16, garW + 0.24, plinthBeigeMat, 27.14, garH * 0.5 + 0.04, garZ);
+    addBox(0.14, garH, garW, whiteDoorMat, 27.18, garH * 0.5 + 0.02, garZ);
+    for (let py2 = 0.5; py2 < garH; py2 += 0.5) {
+      addBox(0.18, 0.04, garW - 0.08, darkFasciaMat, 27.2, py2, garZ);
+    }
+    [-3.15, 3.15].forEach((dz) => {
+      const bol = new Mesh(new CylinderGeometry(0.1, 0.1, 1.05, 12), bollardYellowMat);
+      bol.position.set(27.85, 0.52, garZ + dz);
+      bol.castShadow = true;
+      arch.add(bol);
+    });
+    addBox(0.16, 2.25, 1.88, whiteDoorMat, 28.46, 1.15, -9.2);
+    addBox(0.18, 2.25, 0.04, darkFasciaMat, 28.47, 1.15, -9.2);
+    const fdcRedMat = new MeshStandardMaterial({ color: "#9e2a28", roughness: 0.5, metalness: 0.3 });
+    addBox(0.22, 0.28, 0.28, fdcRedMat, 28.5, 0.95, -6.4);
+    addBox(0.16, 0.62, 0.42, darkFasciaMat, 27.18, 0.55, 3.35);
+    addBox(0.16, 0.62, 0.42, darkFasciaMat, 28.47, 0.55, -5.2);
+    addBox(1.6, 2.45, 2.1, blackIronMat, 27.75, 1.25, -13.6);
+    addBox(0.16, 2.2, 0.96, whiteDoorMat, 27.2, 1.12, -13.6);
+    const coreShiftX = 4.572;
+    addBox(17.6, 2.8, 18.6, tanPrecastMat, 13 + coreShiftX, 5.95, -5.5);
+    addBox(17.78, 0.16, 18.78, plinthBeigeMat, 13 + coreShiftX, 7.38, -5.5);
+    addBox(17.2, 0.08, 18.2, roofMembraneMat, 13 + coreShiftX, 7.34, -5.5);
+    [-11.5, -7.8, -4.1, -0.4].forEach((jz) => {
+      addBox(0.06, 2.8, 0.04, darkFasciaMat, 4.18 + coreShiftX, 5.95, jz);
+    });
+    [7.5, 11.2, 14.9, 18.6].forEach((jx) => {
+      addBox(0.04, 2.8, 0.06, darkFasciaMat, jx + coreShiftX, 5.95, 3.82);
+    });
+    addBox(0.12, 0.56, 0.68, whiteDoorMat, 4.16 + coreShiftX, 6.28, 0.85);
+    addBox(0.14, 0.62, 0.42, silverFlashingMat, 4.15 + coreShiftX, 5.65, -5.8);
+    addBox(0.14, 0.62, 0.42, silverFlashingMat, 4.15 + coreShiftX, 5.65, -6.4);
+    addBox(1.85, 0.38, 1.15, silverFlashingMat, 8.8 + coreShiftX, 7.56, -3.2);
+    addBox(0.95, 0.48, 0.95, silverFlashingMat, 9.2 + coreShiftX, 7.62, -6.4);
+    addBox(0.16, 2.15, 1.65, whiteDoorMat, 21.82 + coreShiftX, 5.65, 0.8);
+    addBox(0.16, 0.85, 1.35, silverFlashingMat, 21.82 + coreShiftX, 6.35, -10.5);
+    addBox(1.4, 0.95, 8.8, silverFlashingMat, 27.25, 5.25, -4.8);
+    for (let dz = -8.8; dz <= -0.8; dz += 2) {
+      addBox(0.12, 1.25, 0.12, darkFasciaMat, 27.95, 5.18, dz);
+    }
+    const gymXMin = 0.59;
+    const gymXMax = 28.44;
+    const gymW = gymXMax - gymXMin;
+    const gymCenterX = (gymXMin + gymXMax) * 0.5;
+    const gymZMin = -35.94;
+    const gymZMax = -15;
+    const gymSpanZ = gymZMax - gymZMin;
+    const gymCenterZ = (gymZMin + gymZMax) * 0.5;
+    const gymEaveY = 8.4;
+    const gymArchRise = 2.25;
+    addBox(gymW, gymEaveY, gymSpanZ, tanPrecastMat, gymCenterX, gymEaveY * 0.5, gymCenterZ);
+    addBox(gymW + 0.1, 0.72, gymSpanZ + 0.1, plinthBeigeMat, gymCenterX, 0.36, gymCenterZ);
+    const archShape = new Shape();
+    const halfSpan = gymSpanZ * 0.5;
+    const archSteps = 24;
+    archShape.moveTo(-halfSpan, 0);
+    for (let i = 0; i <= archSteps; i++) {
+      const u = -1 + 2 * i / archSteps;
+      const zLocal = u * halfSpan;
+      const yLocal = gymArchRise * (1 - u * u);
+      archShape.lineTo(zLocal, yLocal);
+    }
+    archShape.lineTo(halfSpan, 0);
+    archShape.closePath();
+    const barrelGeo = new ExtrudeGeometry(archShape, { depth: gymW, bevelEnabled: false });
+    barrelGeo.rotateY(Math.PI * 0.5);
+    foundry._applyArchitecturalUVs(barrelGeo, gymArchRise, 0.6);
+    const barrelMesh = new Mesh(barrelGeo, tanPrecastMat);
+    barrelMesh.position.set(gymXMin, gymEaveY, gymCenterZ);
+    barrelMesh.castShadow = true;
+    barrelMesh.receiveShadow = true;
+    barrelMesh.userData = { isSelectableBuilding: true, building };
+    arch.add(barrelMesh);
+    for (let i = 0; i < archSteps; i++) {
+      const u0 = -1 + 2 * i / archSteps;
+      const u1 = -1 + 2 * (i + 1) / archSteps;
+      const z0 = gymCenterZ + u0 * halfSpan;
+      const z1 = gymCenterZ + u1 * halfSpan;
+      const y0 = gymEaveY + gymArchRise * (1 - u0 * u0);
+      const y1 = gymEaveY + gymArchRise * (1 - u1 * u1);
+      const segLen = Math.hypot(z1 - z0, y1 - y0) + 0.04;
+      const mz = (z0 + z1) * 0.5;
+      const my = (y0 + y1) * 0.5;
+      const tiltX = -Math.atan2(y1 - y0, z1 - z0);
+      const roofSeg = new Mesh(
+        new BoxGeometry(gymW + 0.36, 0.18, segLen),
+        gymRoofMat
+      );
+      roofSeg.position.set(gymCenterX, my + 0.08, mz);
+      roofSeg.rotation.x = tiltX;
+      roofSeg.castShadow = true;
+      roofSeg.receiveShadow = true;
+      arch.add(roofSeg);
+      [gymXMax + 0.14, gymXMin - 0.14].forEach((fx) => {
+        const fasciaSeg = new Mesh(
+          new BoxGeometry(0.24, 0.34, segLen + 0.02),
+          darkFasciaMat
+        );
+        fasciaSeg.position.set(fx, my - 0.02, mz);
+        fasciaSeg.rotation.x = tiltX;
+        arch.add(fasciaSeg);
+      });
+    }
+    const fluePipe = new Mesh(new CylinderGeometry(0.14, 0.14, 2.45, 14), silverFlashingMat);
+    fluePipe.position.set(gymXMax + 0.22, 10.15, gymCenterZ);
+    fluePipe.castShadow = true;
+    arch.add(fluePipe);
+    const flueCap = new Mesh(new CylinderGeometry(0.22, 0.22, 0.1, 14), silverFlashingMat);
+    flueCap.position.set(gymXMax + 0.22, 11.42, gymCenterZ);
+    arch.add(flueCap);
+    const gymSconce = new Mesh(new ConeGeometry(0.28, 0.46, 3), whiteDoorMat);
+    gymSconce.position.set(gymXMax + 0.1, 3.85, gymCenterZ);
+    gymSconce.rotation.y = -Math.PI * 0.5;
+    arch.add(gymSconce);
+    addBox(0.16, 1.35, 1.35, whiteDoorMat, gymXMax + 0.04, 1.95, -18.2);
+    addBox(0.18, 1.22, 1.22, slotGlassMat, gymXMax + 0.05, 1.95, -18.2);
+    addBox(0.16, 2.22, 1.05, whiteDoorMat, gymXMax + 0.04, 1.12, -29.6);
+    addBox(0.16, 2.22, 1.05, whiteDoorMat, gymXMin - 0.04, 1.12, -31.8);
+    addBox(0.18, 0.14, 0.24, whiteDoorMat, gymXMin - 0.06, 2.55, -24.8);
+    addBox(0.18, 0.14, 0.24, whiteDoorMat, gymXMin - 0.06, 2.55, -28.4);
+    addBox(0.18, 2.25, 2.85, silverFlashingMat, gymXMax + 0.05, 1.35, -33.2);
+    for (let ly = 0.35; ly <= 2.35; ly += 0.22) {
+      addBox(0.2, 0.05, 2.75, darkFasciaMat, gymXMax + 0.06, ly, -33.2);
+    }
+    addBox(1.55, 0.18, 31, plinthBeigeMat, 29.2, 0.09, -20.47, false);
+    [22.9, 25.9].forEach((lxPos) => {
+      addBox(2.45, 1.55, 0.18, silverFlashingMat, lxPos, 6.25, gymZMin - 0.05);
+      for (let ly = 5.6; ly <= 6.9; ly += 0.22) {
+        addBox(2.35, 0.05, 0.2, darkFasciaMat, lxPos, ly, gymZMin - 0.06);
+      }
+    });
+    addBox(2.45, 1.25, 0.18, silverFlashingMat, 25.9, 2.65, gymZMin - 0.05);
+  }
+
+  // js/foundry/buildings/building300/buildBuilding300.js
+  function buildPhotoRealisticBuilding300(foundry, group, building, shape, wallMat, trimMat) {
+    const ctx = createBuilding300Context(foundry, group, building, shape);
+    buildBuilding300MainWingAndPavilion(ctx);
+    buildBuilding300GroundsAndGrading(ctx);
+    buildBuilding300DetentionAndGym(ctx);
+  }
+
   // js/foundry/WallFoundry.js
   var WallFoundry = class {
     constructor(textureLoader = new TextureLoader()) {
@@ -32562,3098 +36492,259 @@ void main() {
      *   and rooftop AC condenser units
      */
     _buildPhotoRealisticBuilding400(group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
-      const storyH = 4.2;
-      const whiteRoofMat = new MeshStandardMaterial({
-        color: "#f1f3f5",
-        roughness: 0.78,
-        metalness: 0.04
-      });
-      const solidBrickCanvas = document.createElement("canvas");
-      solidBrickCanvas.width = 512;
-      solidBrickCanvas.height = 512;
-      const sbCtx = solidBrickCanvas.getContext("2d");
-      sbCtx.fillStyle = "#8b8374";
-      sbCtx.fillRect(0, 0, 512, 512);
-      const brickBumpCanvas = document.createElement("canvas");
-      brickBumpCanvas.width = 512;
-      brickBumpCanvas.height = 512;
-      const bbCtx = brickBumpCanvas.getContext("2d");
-      bbCtx.fillStyle = "#181818";
-      bbCtx.fillRect(0, 0, 512, 512);
-      const baseBrickCol = new Color(building.color || "#dfd5bc");
-      for (let r = 0; r < 32; r++) {
-        const off = r % 2 * 16;
-        for (let c = -1; c <= 16; c++) {
-          const jitter = Math.sin(r * 19.7 + c * 37.3) * 43758.5 % 1 * 0.045 - 0.022;
-          const bc = baseBrickCol.clone().offsetHSL(0, jitter * 0.25, jitter);
-          const bx = c * 32 + off + 2;
-          const by = r * 16 + 2;
-          sbCtx.fillStyle = `#${bc.getHexString()}`;
-          sbCtx.fillRect(bx, by, 29, 13);
-          sbCtx.fillStyle = "rgba(255,255,255,0.14)";
-          sbCtx.fillRect(bx, by, 29, 1.5);
-          sbCtx.fillStyle = "rgba(40,34,26,0.14)";
-          sbCtx.fillRect(bx, by + 11.5, 29, 1.5);
-          const bGray = Math.round(215 + jitter * 500);
-          bbCtx.fillStyle = `rgb(${bGray},${bGray},${bGray})`;
-          bbCtx.fillRect(bx, by, 29, 13);
-        }
-      }
-      const solidBrickTex = new CanvasTexture(solidBrickCanvas);
-      solidBrickTex.wrapS = RepeatWrapping;
-      solidBrickTex.wrapT = RepeatWrapping;
-      solidBrickTex.repeat.set(2.5, 2.5);
-      solidBrickTex.colorSpace = SRGBColorSpace;
-      const solidBrickBumpTex = new CanvasTexture(brickBumpCanvas);
-      solidBrickBumpTex.wrapS = RepeatWrapping;
-      solidBrickBumpTex.wrapT = RepeatWrapping;
-      solidBrickBumpTex.repeat.set(2.5, 2.5);
-      const creamBrickSolidMat = new MeshStandardMaterial({
-        map: solidBrickTex,
-        bumpMap: solidBrickBumpTex,
-        bumpScale: 0.14,
-        roughness: 0.82,
-        metalness: 0.04
-      });
-      const plinthConcreteMat = new MeshStandardMaterial({
-        color: "#d5d0c5",
-        roughness: 0.88,
-        metalness: 0.03,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1
-      });
-      const slateGableMat = new MeshStandardMaterial({
-        color: "#535961",
-        bumpMap: this.baseTextures.brickBump,
-        bumpScale: 0.06,
-        roughness: 0.82,
-        metalness: 0.08
-      });
-      const plazaConcreteMat = new MeshStandardMaterial({
-        color: "#e2dcd0",
-        roughness: 0.86,
-        metalness: 0.03,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1
-      });
-      const whiteCurbMat = new MeshStandardMaterial({
-        color: "#f2eee6",
-        roughness: 0.75,
-        metalness: 0.04
-      });
-      const turfMat = new MeshLambertMaterial({
-        color: "#4b8638"
-      });
-      const darkMetalMat = new MeshStandardMaterial({
-        color: "#1e2226",
-        roughness: 0.45,
-        metalness: 0.65
-      });
-      const galvSteelMat = new MeshStandardMaterial({
-        color: "#aeb6be",
-        roughness: 0.38,
-        metalness: 0.75
-      });
-      const blueTreadMat = new MeshStandardMaterial({
-        color: "#6e8294",
-        roughness: 0.7,
-        metalness: 0.25
-      });
-      const bronzePlaqueMat = new MeshStandardMaterial({
-        color: "#3d2f24",
-        roughness: 0.42,
-        metalness: 0.68
-      });
-      const globeMat = new MeshBasicMaterial({
-        color: "#fffdf5"
-      });
-      const glassMat = new MeshStandardMaterial({
-        color: "#1b2e40",
-        roughness: 0.2,
-        metalness: 0.35
-      });
-      const cosArch = 0.584197;
-      const sinArch = 0.811612;
-      const wallZ = 14.62;
-      const frontIndentZ = 0.48;
-      const frontWingZ = wallZ - frontIndentZ;
-      const bldg400LocalPts = [
-        [-3.24, frontWingZ],
-        // Front-left wing outer corner
-        [-0.35, frontWingZ],
-        // Front-left indentation inner corner
-        [-0.35, wallZ],
-        // Central front wall left corner (behind portico)
-        [9.35, wallZ],
-        // Central front wall right corner (behind portico)
-        [9.35, frontWingZ],
-        // Front-right indentation inner corner
-        [12.61, frontWingZ],
-        // Front-right wing outer corner (Washington St Front Pavilion)
-        [12.61, 7.3],
-        // Washington St Front Pavilion step-in
-        [12.25, 7.3],
-        // Washington St Central Bay front corner
-        [12.25, -11.2],
-        // Washington St Central Bay rear corner
-        [12.61, -11.2],
-        // Washington St Rear Pavilion step-out
-        [12.61, -16.64],
-        // Washington St Rear Pavilion rear corner
-        [-5.35, -16.64],
-        // SW Rear Box (Stair/Mechanical Tower) rear corner (+1m toward SW parking area)
-        [-5.35, -11.2],
-        // SW Rear Box front step-out corner (closes SW sunken lightwell trench)
-        [-2.86, -11.2],
-        // SW Central Bay rear corner
-        [-2.86, 7.3],
-        // SW Central Bay front corner
-        [-3.24, 7.3]
-        // SW Front Pavilion step-out
-      ];
-      const bldg400Shape = new Shape();
-      bldg400LocalPts.forEach(([lx, lz], idx) => {
-        const sx = lx * cosArch + lz * sinArch;
-        const sy = lx * sinArch - lz * cosArch;
-        if (idx === 0) bldg400Shape.moveTo(sx, sy);
-        else bldg400Shape.lineTo(sx, sy);
-      });
-      bldg400Shape.closePath();
-      const footingGeo = new ExtrudeGeometry(bldg400Shape, {
-        depth: 3.4,
-        bevelEnabled: false
-      });
-      footingGeo.rotateX(-Math.PI / 2);
-      const footingMesh = new Mesh(footingGeo, plinthConcreteMat);
-      footingMesh.position.y = -5.2;
-      footingMesh.receiveShadow = true;
-      group.add(footingMesh);
-      const layerSpecs = [
-        { idx: 1, name: "Layer1_Basement", y0: -3.6, h: 3.5, mat: creamBrickSolidMat },
-        { idx: 2, name: "Layer2_RoadLevel", y0: 0.1, h: 4.1, mat: creamBrickSolidMat },
-        { idx: 3, name: "Layer3_UpperLevel", y0: 4.22, h: 3.23, mat: creamBrickSolidMat }
-      ];
-      layerSpecs.forEach((spec) => {
-        const geo = new ExtrudeGeometry(bldg400Shape, {
-          depth: spec.h,
-          bevelEnabled: false
-        });
-        geo.rotateX(-Math.PI / 2);
-        this._applyArchitecturalUVs(geo, spec.h, 1);
-        const mesh = new Mesh(geo, [whiteRoofMat, spec.mat]);
-        mesh.name = spec.name;
-        mesh.position.y = spec.y0;
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        mesh.userData = { isSelectableBuilding: true, building, floorLayer: spec.idx };
-        group.add(mesh);
-      });
-      const brickEntablatureLocalPts = [
-        [-3.24, frontWingZ],
-        [-0.35, frontWingZ],
-        [-0.35, wallZ],
-        [9.35, wallZ],
-        [9.35, frontWingZ],
-        [12.61, frontWingZ],
-        [12.61, 7.3],
-        [12.25, 7.3],
-        [12.25, -11.2],
-        [12.61, -11.2],
-        [12.61, -16.64],
-        [11.2, -16.64],
-        [11.2, 7.3],
-        [-3.24, 7.3]
-      ];
-      const brickEntablatureShape = new Shape();
-      brickEntablatureLocalPts.forEach(([lx, lz], idx) => {
-        const sx = lx * cosArch + lz * sinArch;
-        const sy = lx * sinArch - lz * cosArch;
-        if (idx === 0) brickEntablatureShape.moveTo(sx, sy);
-        else brickEntablatureShape.lineTo(sx, sy);
-      });
-      brickEntablatureShape.closePath();
-      const beltBands = [
-        { y: -0.05, depth: 0.62, overhang: 0.08, mat: plinthConcreteMat, fullFootprint: true },
-        // Smooth concrete water-table plinth at road level
-        { y: 7.45, depth: 0.26, overhang: 0.22, mat: trimMat },
-        // Lower limestone architrave band
-        { y: 7.71, depth: 0.52, overhang: 0.12, mat: creamBrickSolidMat },
-        // Dentil brick frieze band
-        { y: 8.23, depth: 0.32, overhang: 0.46, mat: trimMat },
-        // Main projecting classical limestone cornice ledge
-        { y: 8.55, depth: 0.54, overhang: 0.14, mat: creamBrickSolidMat },
-        // Upper cream-brick roof parapet
-        { y: 9.09, depth: 0.18, overhang: 0.22, mat: whiteCurbMat }
-        // White limestone parapet coping
-      ];
-      beltBands.forEach((b) => {
-        const bGeo = new ExtrudeGeometry(b.fullFootprint ? bldg400Shape : brickEntablatureShape, {
-          depth: b.depth,
-          bevelEnabled: true,
-          bevelThickness: 0.06,
-          bevelSize: b.overhang,
-          bevelSegments: 2
-        });
-        bGeo.rotateX(-Math.PI / 2);
-        const bMesh = new Mesh(bGeo, b.mat);
-        bMesh.position.y = b.y;
-        bMesh.castShadow = true;
-        bMesh.receiveShadow = true;
-        group.add(bMesh);
-      });
-      const arch = new Group();
-      arch.name = "Building400_PhotoDetails";
-      arch.rotation.y = Math.atan2(0.8116, 0.5842);
-      group.add(arch);
-      const addBox = (w, h, d, mat, x, y, z, parent = arch, cast = true) => {
-        const m = new Mesh(new BoxGeometry(w, h, d), mat);
-        m.position.set(x, y, z);
-        m.castShadow = cast;
-        m.receiveShadow = true;
-        parent.add(m);
-        return m;
-      };
-      const portX = 4.5;
-      const portDepth = 2.95;
-      const portW = 9.8;
-      const deckY = 0.76;
-      for (let qy = 0.75; qy < 7.35; qy += 0.52) {
-        addBox(0.42, 0.28, 0.14, creamBrickSolidMat, -3.05, qy, frontWingZ + 0.04);
-        addBox(0.42, 0.28, 0.14, creamBrickSolidMat, 12.42, qy, frontWingZ + 0.04);
-      }
-      addBox(portW - 0.2, 0.6, portDepth, trimMat, portX, -0.3, wallZ + portDepth * 0.5);
-      const voluteCanvas = document.createElement("canvas");
-      voluteCanvas.width = 256;
-      voluteCanvas.height = 256;
-      const vCtx = voluteCanvas.getContext("2d");
-      vCtx.fillStyle = "#dcd5c7";
-      vCtx.fillRect(0, 0, 256, 256);
-      const cxV = 128;
-      const cyV = 128;
-      for (let pass = 0; pass < 2; pass++) {
-        vCtx.beginPath();
-        const maxSteps = 260;
-        for (let i = 0; i <= maxSteps; i++) {
-          const t = i / maxSteps * Math.PI * 5.5;
-          const r = 14 + t / (Math.PI * 5.5) * 102;
-          const x = cxV + Math.cos(t) * r;
-          const y = cyV + Math.sin(t) * r + (pass === 0 ? -3 : 2);
-          if (i === 0) vCtx.moveTo(x, y);
-          else vCtx.lineTo(x, y);
-        }
-        vCtx.strokeStyle = pass === 0 ? "#5c5549" : "#f7f3ea";
-        vCtx.lineWidth = pass === 0 ? 15 : 10;
-        vCtx.lineCap = "round";
-        vCtx.stroke();
-      }
-      vCtx.beginPath();
-      vCtx.arc(cxV, cyV, 16, 0, Math.PI * 2);
-      vCtx.fillStyle = "#ebe5d8";
-      vCtx.fill();
-      vCtx.lineWidth = 4;
-      vCtx.strokeStyle = "#6b6355";
-      vCtx.stroke();
-      const voluteTex = new CanvasTexture(voluteCanvas);
-      voluteTex.colorSpace = SRGBColorSpace;
-      const voluteFaceMat = new MeshStandardMaterial({
-        map: voluteTex,
-        bumpMap: voluteTex,
-        bumpScale: 0.06,
-        roughness: 0.76,
-        metalness: 0.04
-      });
-      const addSculptedIonicCapital = (cxPos, capBaseY, czPos, scaleX = 1, scaleZ = 1) => {
-        const capGroup = new Group();
-        capGroup.position.set(cxPos, capBaseY, czPos);
-        capGroup.scale.set(scaleX, 1, scaleZ);
-        const neckRing = new Mesh(new CylinderGeometry(0.405, 0.405, 0.055, 28), trimMat);
-        neckRing.position.set(0, -0.03, 0);
-        capGroup.add(neckRing);
-        const neckFillet = new Mesh(new CylinderGeometry(0.385, 0.395, 0.03, 28), plinthConcreteMat);
-        neckFillet.position.set(0, -0.065, 0);
-        capGroup.add(neckFillet);
-        const echinus = new Mesh(new CylinderGeometry(0.46, 0.38, 0.17, 28), trimMat);
-        echinus.position.set(0, 0.085, 0);
-        capGroup.add(echinus);
-        [-1, 1].forEach((zDir) => {
-          for (let e = -2; e <= 2; e++) {
-            const ex = e * 0.095;
-            const ez = zDir * Math.sqrt(Math.max(0.05, 0.44 * 0.44 - ex * ex));
-            const shell = new Mesh(new SphereGeometry(0.052, 10, 10), plinthConcreteMat);
-            shell.scale.set(0.92, 1.45, 0.72);
-            shell.position.set(ex, 0.11, ez);
-            capGroup.add(shell);
-            const egg = new Mesh(new SphereGeometry(0.038, 10, 10), trimMat);
-            egg.scale.set(0.82, 1.38, 0.88);
-            egg.position.set(ex, 0.115, ez + zDir * 0.014);
-            capGroup.add(egg);
-            if (e < 2) {
-              addBox(0.018, 0.11, 0.035, trimMat, ex + 0.0475, 0.11, ez + zDir * 8e-3, capGroup);
-            }
-          }
-        });
-        addBox(0.92, 0.13, 0.84, trimMat, 0, 0.21, 0, capGroup);
-        addBox(0.96, 0.045, 0.9, plinthConcreteMat, 0, 0.26, 0, capGroup);
-        [-0.43, 0.43].forEach((vx) => {
-          const signX = Math.sign(vx);
-          [-0.23, 0.23].forEach((bzHalf) => {
-            const halfBolster = new Mesh(
-              new CylinderGeometry(
-                bzHalf > 0 ? 0.185 : 0.145,
-                bzHalf > 0 ? 0.145 : 0.185,
-                0.46,
-                20
-              ),
-              trimMat
-            );
-            halfBolster.rotation.x = Math.PI * 0.5;
-            halfBolster.position.set(vx, 0.135, bzHalf);
-            halfBolster.castShadow = true;
-            capGroup.add(halfBolster);
-          });
-          for (let f = 0; f < 9; f++) {
-            const fang = -Math.PI * 0.35 + f / 8 * Math.PI * 1.15 * signX;
-            const flute = new Mesh(
-              new CylinderGeometry(0.024, 0.024, 0.92, 8),
-              f % 2 === 0 ? trimMat : plinthConcreteMat
-            );
-            flute.rotation.x = Math.PI * 0.5;
-            flute.position.set(vx + Math.cos(fang) * 0.162, 0.135 + Math.sin(fang) * 0.162, 0);
-            capGroup.add(flute);
-          }
-          const centerStrap = new Mesh(new CylinderGeometry(0.168, 0.168, 0.08, 18), trimMat);
-          centerStrap.rotation.x = Math.PI * 0.5;
-          centerStrap.position.set(vx, 0.135, 0);
-          capGroup.add(centerStrap);
-          [-0.048, 0.048].forEach((bz) => {
-            const cord = new Mesh(new CylinderGeometry(0.174, 0.174, 0.022, 18), plinthConcreteMat);
-            cord.rotation.x = Math.PI * 0.5;
-            cord.position.set(vx, 0.135, bz);
-            capGroup.add(cord);
-          });
-          [-0.46, 0.46].forEach((vz) => {
-            const signZ = Math.sign(vz);
-            const voluteDrum = new Mesh(
-              new CylinderGeometry(0.195, 0.195, 0.055, 24),
-              [trimMat, voluteFaceMat, voluteFaceMat]
-            );
-            voluteDrum.rotation.x = Math.PI * 0.5;
-            voluteDrum.position.set(vx, 0.135, vz);
-            capGroup.add(voluteDrum);
-            [
-              [0.182, 0.024, 0.022],
-              [0.128, 0.02, 0.032],
-              [0.076, 0.017, 0.04]
-            ].forEach(([rad, tube, zOff], idx) => {
-              const ring = new Mesh(new TorusGeometry(rad, tube, 10, 22), trimMat);
-              ring.position.set(
-                vx - idx * 0.01 * signX,
-                0.135 - idx * 8e-3,
-                vz + signZ * zOff
-              );
-              capGroup.add(ring);
-            });
-            const eyeBtn = new Mesh(new SphereGeometry(0.034, 10, 10), trimMat);
-            eyeBtn.scale.set(1, 1, 0.55);
-            eyeBtn.position.set(vx - 0.022 * signX, 0.12, vz + signZ * 0.045);
-            capGroup.add(eyeBtn);
-          });
-        });
-        addBox(0.92, 0.075, 0.92, plinthConcreteMat, 0, 0.295, 0, capGroup);
-        addBox(1.02, 0.075, 1.02, trimMat, 0, 0.365, 0, capGroup);
-        arch.add(capGroup);
-      };
-      [0.25, 8.75].forEach((px2) => {
-        addBox(0.92, 0.48, 0.34, trimMat, px2, deckY + 0.24, wallZ + 0.17);
-        addBox(0.84, 0.14, 0.3, trimMat, px2, deckY + 0.55, wallZ + 0.15);
-        addBox(0.76, 6.32, 0.22, creamBrickSolidMat, px2, deckY + 0.62 + 3.16, wallZ + 0.11);
-        addSculptedIonicCapital(px2, deckY + 6.82, wallZ + 0.16, 0.94, 0.46);
-      });
-      const colXs = [0.25, 3.08, 5.92, 8.75];
-      const colH = 6.22;
-      const colZ = wallZ + portDepth - 0.48;
-      colXs.forEach((cxPos) => {
-        addBox(1.1, 0.46, 1.1, plinthConcreteMat, cxPos, deckY + 0.23, colZ);
-        addBox(1.02, 0.12, 1.02, trimMat, cxPos, deckY + 0.52, colZ);
-        const lowerTorus = new Mesh(new CylinderGeometry(0.49, 0.52, 0.12, 24), trimMat);
-        lowerTorus.position.set(cxPos, deckY + 0.64, colZ);
-        arch.add(lowerTorus);
-        const upperTorus = new Mesh(new CylinderGeometry(0.44, 0.47, 0.1, 24), trimMat);
-        upperTorus.position.set(cxPos, deckY + 0.74, colZ);
-        arch.add(upperTorus);
-        const shaftBaseY = deckY + 0.78;
-        const shaft = new Mesh(new CylinderGeometry(0.365, 0.425, colH, 28), trimMat);
-        shaft.position.set(cxPos, shaftBaseY + colH * 0.5, colZ);
-        shaft.castShadow = true;
-        shaft.receiveShadow = true;
-        arch.add(shaft);
-        for (let d = 1; d <= 4; d++) {
-          const frac = d / 5;
-          const drumR = 0.425 - frac * (0.425 - 0.365) + 4e-3;
-          const jointRing = new Mesh(new CylinderGeometry(drumR, drumR, 0.022, 24), plinthConcreteMat);
-          jointRing.position.set(cxPos, shaftBaseY + frac * colH, colZ);
-          arch.add(jointRing);
-        }
-        addSculptedIonicCapital(cxPos, shaftBaseY + colH, colZ, 1, 1);
-      });
-      const addSaggingChain = (x0, z0, x1, z1, yEnds = deckY + 0.78, sag = 0.16) => {
-        const segs = 10;
-        for (let i = 0; i < segs; i++) {
-          const t0 = i / segs;
-          const t1 = (i + 1) / segs;
-          const tm = (t0 + t1) * 0.5;
-          const px0 = x0 + (x1 - x0) * t0;
-          const pz0 = z0 + (z1 - z0) * t0;
-          const py0 = yEnds - 4 * sag * t0 * (1 - t0);
-          const px1 = x0 + (x1 - x0) * t1;
-          const pz1 = z0 + (z1 - z0) * t1;
-          const py1 = yEnds - 4 * sag * t1 * (1 - t1);
-          const segLen = Math.hypot(px1 - px0, py1 - py0, pz1 - pz0) + 0.01;
-          const link = addBox(
-            segLen,
-            0.032,
-            0.032,
-            darkMetalMat,
-            x0 + (x1 - x0) * tm,
-            (py0 + py1) * 0.5,
-            z0 + (z1 - z0) * tm
-          );
-          link.rotation.z = Math.atan2(py1 - py0, Math.hypot(px1 - px0, pz1 - pz0));
-          link.rotation.y = -Math.atan2(pz1 - pz0, px1 - px0);
-        }
-      };
-      [
-        [0.25, 3.08],
-        [5.92, 8.75]
-      ].forEach(([x0, x1]) => {
-        const p0x = x0 + 0.56;
-        const p1x = x1 - 0.56;
-        addBox(0.055, 0.88, 0.055, darkMetalMat, p0x, deckY + 0.44, colZ);
-        addBox(0.055, 0.88, 0.055, darkMetalMat, p1x, deckY + 0.44, colZ);
-        addSaggingChain(p0x, colZ, p1x, colZ, deckY + 0.82, 0.15);
-      });
-      [0.25, 8.75].forEach((cxPos) => {
-        addBox(0.05, 0.88, 0.05, darkMetalMat, cxPos, deckY + 0.44, colZ - 0.58);
-        addSaggingChain(cxPos, wallZ + 0.35, cxPos, colZ - 0.58, deckY + 0.82, 0.12);
-      });
-      const entabW = portW + 0.36;
-      const entabH = 1.12;
-      const entabD = portDepth + 0.26;
-      const entabY = 8.08;
-      addBox(portW, 0.08, portDepth, trimMat, portX, entabY - entabH * 0.5 + 0.02, wallZ + portDepth * 0.5);
-      addBox(portW - 1.55, 0.06, portDepth - 1.35, plinthConcreteMat, portX, entabY - entabH * 0.5 + 0.07, wallZ + portDepth * 0.5);
-      const archBaseY = entabY - entabH * 0.5;
-      addBox(entabW + 0.16, 0.11, entabD + 0.16, trimMat, portX, archBaseY + 0.055, wallZ + entabD * 0.5);
-      addBox(entabW + 0.24, 0.11, entabD + 0.24, trimMat, portX, archBaseY + 0.165, wallZ + entabD * 0.5);
-      addBox(entabW + 0.34, 0.09, entabD + 0.32, trimMat, portX, archBaseY + 0.265, wallZ + entabD * 0.5);
-      addBox(entabW, 0.62, entabD, creamBrickSolidMat, portX, entabY + 0.02, wallZ + entabD * 0.5);
-      const friezeCanvas = document.createElement("canvas");
-      friezeCanvas.width = 1024;
-      friezeCanvas.height = 160;
-      const fCtx = friezeCanvas.getContext("2d");
-      fCtx.fillStyle = "#c8be9e";
-      fCtx.fillRect(0, 0, 1024, 160);
-      for (let i = 0; i < 700; i++) {
-        fCtx.fillStyle = i % 2 === 0 ? "rgba(85,76,60,0.07)" : "rgba(250,245,232,0.07)";
-        fCtx.fillRect(i * 73 % 1024, i * 41 % 160, 14, 5);
-      }
-      fCtx.strokeStyle = "rgba(80,72,58,0.45)";
-      fCtx.lineWidth = 5;
-      fCtx.strokeRect(10, 10, 1004, 140);
-      fCtx.font = 'bold 82px "Times New Roman", Georgia, serif';
-      fCtx.textAlign = "center";
-      fCtx.textBaseline = "middle";
-      fCtx.fillStyle = "#5e5645";
-      fCtx.fillText("CHELAN COUNTY", 509, 79);
-      fCtx.fillStyle = "#ece5d2";
-      fCtx.fillText("CHELAN COUNTY", 515, 85);
-      fCtx.fillStyle = "#8b816b";
-      fCtx.fillText("CHELAN COUNTY", 512, 82);
-      const friezeTex = new CanvasTexture(friezeCanvas);
-      friezeTex.colorSpace = SRGBColorSpace;
-      const friezeMat = new MeshStandardMaterial({
-        map: friezeTex,
-        bumpMap: friezeTex,
-        bumpScale: -0.05,
-        roughness: 0.84
-      });
-      addBox(7.82, 0.56, 0.05, trimMat, portX, entabY + 0.02, wallZ + entabD + 0.02);
-      const friezePlaque = new Mesh(new BoxGeometry(7.68, 0.5, 0.06), friezeMat);
-      friezePlaque.position.set(portX, entabY + 0.02, wallZ + entabD + 0.035);
-      arch.add(friezePlaque);
-      const dentilY = entabY + 0.38;
-      const numFrontDentils = 46;
-      const dentilSpanX = entabW + 0.24;
-      for (let d = 0; d < numFrontDentils; d++) {
-        const dx = portX - dentilSpanX * 0.5 + (d + 0.5) * (dentilSpanX / numFrontDentils);
-        addBox(0.11, 0.13, 0.14, trimMat, dx, dentilY, wallZ + entabD + 0.1);
-      }
-      for (let dz = wallZ + 0.2; dz < wallZ + entabD; dz += 0.22) {
-        addBox(0.14, 0.13, 0.11, trimMat, portX - entabW * 0.5 - 0.1, dentilY, dz);
-        addBox(0.14, 0.13, 0.11, trimMat, portX + entabW * 0.5 + 0.1, dentilY, dz);
-      }
-      for (let wx = -3.15; wx <= 12.5; wx += 0.22) {
-        if (wx < -0.42 || wx > 9.42) {
-          addBox(0.11, 0.13, 0.14, trimMat, wx, 8.15, frontWingZ + 0.12);
-        }
-      }
-      for (let rz = frontWingZ + 0.12; rz <= wallZ + 0.05; rz += 0.2) {
-        addBox(0.14, 0.13, 0.11, trimMat, -0.42, 8.15, rz);
-        addBox(0.14, 0.13, 0.11, trimMat, 9.42, 8.15, rz);
-      }
-      addBox(entabW + 0.56, 0.2, entabD + 0.44, trimMat, portX, entabY + entabH * 0.5 - 0.04, wallZ + entabD * 0.5);
-      const pedBaseY = entabY + entabH * 0.5 + 0.04;
-      const pedW = entabW + 0.44;
-      const pedH = 2.05;
-      const pedShape = new Shape();
-      pedShape.moveTo(-pedW * 0.5, 0);
-      pedShape.lineTo(pedW * 0.5, 0);
-      pedShape.lineTo(0, pedH);
-      pedShape.closePath();
-      const pedGeo = new ExtrudeGeometry(pedShape, {
-        depth: entabD + 0.08,
-        bevelEnabled: false
-      });
-      const pedMesh = new Mesh(pedGeo, creamBrickSolidMat);
-      pedMesh.position.set(portX, pedBaseY, wallZ - 0.05);
-      pedMesh.castShadow = true;
-      pedMesh.receiveShadow = true;
-      arch.add(pedMesh);
-      addBox(9.7, 1.55, 1.18, creamBrickSolidMat, portX, pedBaseY + 0.72, wallZ - 0.58);
-      addBox(9.92, 0.18, 1.32, whiteCurbMat, portX, pedBaseY + 1.55, wallZ - 0.58);
-      const slopeLen = Math.hypot(pedW * 0.5 + 0.28, pedH) + 0.18;
-      const slopeAngle = Math.atan2(pedH, pedW * 0.5);
-      [-1, 1].forEach((dir) => {
-        const rakingGroup = new Group();
-        rakingGroup.position.set(
-          portX + dir * (pedW * 0.25 + 0.04),
-          pedBaseY + pedH * 0.5 - 0.04,
-          wallZ + entabD * 0.5
-        );
-        rakingGroup.rotation.z = -dir * slopeAngle;
-        addBox(slopeLen, 0.2, entabD + 0.42, trimMat, 0, 0.06, 0.04, rakingGroup);
-        addBox(slopeLen - 0.35, 0.12, 0.24, trimMat, 0, -0.14, entabD * 0.5 + 0.04, rakingGroup);
-        const rakingDentilCount = 22;
-        const rakingSpan = slopeLen - 0.55;
-        for (let rd = 0; rd < rakingDentilCount; rd++) {
-          const rdx = -rakingSpan * 0.5 + (rd + 0.5) * (rakingSpan / rakingDentilCount);
-          addBox(0.1, 0.12, 0.16, trimMat, rdx, -0.06, entabD * 0.5 + 0.12, rakingGroup);
-        }
-        addBox(slopeLen + 0.12, 0.15, entabD + 0.5, slateGableMat, 0, 0.21, 0.04, rakingGroup);
-        arch.add(rakingGroup);
-      });
-      addBox(0.32, 0.14, entabD + 0.52, trimMat, portX, pedBaseY + pedH + 0.22, wallZ + entabD * 0.5 + 0.04);
-      addBox(portW - 0.4, 0.14, 1.35, plazaConcreteMat, portX, deckY + 0.07, wallZ + 0.68);
-      const doorBaseY = deckY + 0.14;
-      addBox(2.68, 4.75, 0.22, trimMat, portX, doorBaseY + 2.38, wallZ + 0.06);
-      addBox(2.34, 4.52, 0.18, whiteCurbMat, portX, doorBaseY + 2.26, wallZ + 0.08);
-      [-0.54, 0.54].forEach((dx) => {
-        addBox(0.98, 2.38, 0.14, whiteCurbMat, portX + dx, doorBaseY + 1.19, wallZ + 0.11);
-        addBox(0.74, 1.24, 0.16, glassMat, portX + dx, doorBaseY + 1.62, wallZ + 0.12);
-        addBox(0.74, 0.58, 0.12, plinthConcreteMat, portX + dx, doorBaseY + 0.48, wallZ + 0.12);
-        addBox(0.035, 0.34, 0.06, darkMetalMat, portX + dx * 0.22, doorBaseY + 1.05, wallZ + 0.18);
-      });
-      addBox(0.1, 2.42, 0.2, whiteCurbMat, portX, doorBaseY + 1.21, wallZ + 0.13);
-      addBox(2.28, 0.16, 0.22, whiteCurbMat, portX, doorBaseY + 2.46, wallZ + 0.13);
-      addBox(2.08, 1.38, 0.16, glassMat, portX, doorBaseY + 3.28, wallZ + 0.11);
-      addBox(2.1, 0.055, 0.2, whiteCurbMat, portX, doorBaseY + 3.28, wallZ + 0.13);
-      for (let m = -2; m <= 2; m++) {
-        addBox(0.048, 1.38, 0.2, whiteCurbMat, portX + m * 0.345, doorBaseY + 3.28, wallZ + 0.13);
-      }
-      addBox(2.82, 0.18, 0.42, trimMat, portX, doorBaseY + 4.58, wallZ + 0.21);
-      addBox(3.02, 0.22, 0.54, trimMat, portX, doorBaseY + 4.76, wallZ + 0.27);
-      [-1.24, 1.24].forEach((bx) => {
-        addBox(0.24, 0.68, 0.36, trimMat, portX + bx, doorBaseY + 4.18, wallZ + 0.18);
-        const topRoll = new Mesh(new CylinderGeometry(0.14, 0.14, 0.26, 14), trimMat);
-        topRoll.rotation.z = Math.PI * 0.5;
-        topRoll.position.set(portX + bx, doorBaseY + 4.38, wallZ + 0.32);
-        arch.add(topRoll);
-        const botRoll = new Mesh(new CylinderGeometry(0.1, 0.1, 0.26, 14), trimMat);
-        botRoll.rotation.z = Math.PI * 0.5;
-        botRoll.position.set(portX + bx, doorBaseY + 3.92, wallZ + 0.24);
-        arch.add(botRoll);
-      });
-      [2.98, 6.02].forEach((sx) => {
-        addBox(0.14, 0.34, 0.06, darkMetalMat, sx, doorBaseY + 2.38, wallZ + 0.05);
-        addBox(0.06, 0.08, 0.28, darkMetalMat, sx, doorBaseY + 2.34, wallZ + 0.16);
-        const sconceGlobe = new Mesh(new SphereGeometry(0.17, 14, 14), globeMat);
-        sconceGlobe.position.set(sx, doorBaseY + 2.58, wallZ + 0.26);
-        arch.add(sconceGlobe);
-        const sconceRing = new Mesh(new CylinderGeometry(0.185, 0.185, 0.03, 14), darkMetalMat);
-        sconceRing.position.set(sx, doorBaseY + 2.58, wallZ + 0.26);
-        arch.add(sconceRing);
-        const finial = new Mesh(new ConeGeometry(0.08, 0.12, 10), darkMetalMat);
-        finial.position.set(sx, doorBaseY + 2.78, wallZ + 0.26);
-        arch.add(finial);
-      });
-      addBox(0.26, 0.32, 0.16, whiteCurbMat, 3.06, doorBaseY + 1.42, wallZ + 0.1);
-      addBox(0.18, 0.06, 0.18, darkMetalMat, 3.06, doorBaseY + 1.5, wallZ + 0.11);
-      const alarmBell = new Mesh(
-        new SphereGeometry(0.11, 12, 12),
-        new MeshStandardMaterial({ color: "#b91c1c", roughness: 0.4, metalness: 0.3 })
-      );
-      alarmBell.scale.set(1, 1, 0.55);
-      alarmBell.position.set(2.58, doorBaseY + 4.55, wallZ + 0.07);
-      arch.add(alarmBell);
-      [1.65, 7.35].forEach((sx) => {
-        addBox(1.52, 3.35, 0.18, trimMat, sx, doorBaseY + 1.67, wallZ + 0.05);
-        addBox(1.28, 3.18, 0.16, whiteCurbMat, sx, doorBaseY + 1.59, wallZ + 0.07);
-        addBox(0.88, 1.32, 0.18, glassMat, sx, doorBaseY + 2.18, wallZ + 0.09);
-        addBox(0.88, 0.82, 0.18, glassMat, sx, doorBaseY + 0.78, wallZ + 0.09);
-        addBox(1.66, 0.26, 0.26, trimMat, sx, doorBaseY + 3.42, wallZ + 0.11);
-      });
-      addBox(1.48, 0.11, 0.52, trimMat, -2.28, 0.48, frontWingZ + 0.48);
-      addBox(1.42, 0.05, 0.46, plinthConcreteMat, -2.28, 0.41, frontWingZ + 0.48);
-      [-2.78, -1.78].forEach((legX) => {
-        addBox(0.26, 0.1, 0.46, trimMat, legX, 0.05, frontWingZ + 0.48);
-        addBox(0.2, 0.28, 0.38, trimMat, legX, 0.24, frontWingZ + 0.48);
-        addBox(0.25, 0.08, 0.44, trimMat, legX, 0.38, frontWingZ + 0.48);
-      });
-      addBox(0.58, 0.74, 0.05, bronzePlaqueMat, -1.82, 1.72, frontWingZ + 0.04);
-      addBox(0.5, 0.66, 0.06, new MeshStandardMaterial({ color: "#5c4736", roughness: 0.35, metalness: 0.75 }), -1.82, 1.72, frontWingZ + 0.045);
-      addBox(0.16, 0.2, 0.08, new MeshBasicMaterial({ color: "#dc2626" }), -2.68, 1.78, frontWingZ + 0.05);
-      const addrTex = this._createTextPlaqueTexture(["400", "DOUGLAS STREET"], "#dfd5bc", "#1a1917", 512, 160);
-      const addrMat = new MeshStandardMaterial({ map: addrTex, roughness: 0.8 });
-      const addrSign = new Mesh(new PlaneGeometry(2.25, 0.72), addrMat);
-      addrSign.position.set(10.85, 2.55, frontWingZ + 0.06);
-      arch.add(addrSign);
-      const adaPlaque = new Mesh(
-        new PlaneGeometry(0.4, 0.48),
-        new MeshBasicMaterial({ color: "#1d4ed8" })
-      );
-      adaPlaque.position.set(10.85, 1.68, frontWingZ + 0.06);
-      arch.add(adaPlaque);
-      addBox(0.48, 0.32, 0.06, whiteCurbMat, 11.85, 0.08, frontWingZ + 0.06);
-      for (let lv = -2; lv <= 2; lv++) {
-        addBox(0.42, 0.025, 0.08, plinthConcreteMat, 11.85, 0.08 + lv * 0.055, frontWingZ + 0.07);
-      }
-      const lowerPlazaY = -0.51;
-      const lowerNumSteps = 3;
-      const lowerStepRise = 0.17;
-      const lowerStepRun = 0.42;
-      const cosT = 0.5842;
-      const sinT = 0.8116;
-      const getConcreteTopY = (lx, lz) => {
-        if (!getTerrainHeightFn) return lowerPlazaY;
-        const wx = building.center[0] + lx * cosT + lz * sinT;
-        const wz = building.center[1] - lx * sinT + lz * cosT;
-        return getTerrainHeightFn(wx, wz) - terrainY + 0.06;
-      };
-      addBox(14.05, 0.51, 4.73, plazaConcreteMat, 3.625, -0.255, frontWingZ + 2.365, arch, false);
-      {
-        const plazaW = 21;
-        const plazaD = 8.8;
-        const plazaCX = 6;
-        const plazaCZ = wallZ + 7.8;
-        const plazaGeo = new BoxGeometry(plazaW, 0.32, plazaD, 60, 1, 30);
-        const pPos = plazaGeo.attributes.position;
-        for (let i = 0; i < pPos.count; i++) {
-          const vx = pPos.getX(i);
-          const vy = pPos.getY(i);
-          const vz = pPos.getZ(i);
-          const lx = plazaCX + vx;
-          const lz = plazaCZ + vz;
-          const topY = getConcreteTopY(lx, lz);
-          pPos.setY(i, vy > 0 ? topY : topY - 0.32);
-        }
-        pPos.needsUpdate = true;
-        plazaGeo.computeVertexNormals();
-        const plazaMesh = new Mesh(plazaGeo, plazaConcreteMat);
-        plazaMesh.position.set(plazaCX, 0, plazaCZ);
-        plazaMesh.receiveShadow = true;
-        arch.add(plazaMesh);
-      }
-      const numSteps = 4;
-      const stepRise = deckY / numSteps;
-      const stepRunX = 0.36;
-      const stepRunZ = 1.3 / 3;
-      const deckLeftX = -0.32;
-      const deckRightX = 9.28;
-      const deckFrontZ = wallZ + portDepth;
-      const blueBayZEnd = wallZ + 1.9;
-      const weatheredStepMat = new MeshStandardMaterial({
-        color: "#c8c2b6",
-        roughness: 0.88,
-        metalness: 0.03
-      });
-      for (let s = 0; s < numSteps; s++) {
-        const stepsOut = numSteps - 1 - s;
-        const sy = (s + 0.5) * stepRise;
-        const xLeft = deckLeftX - stepsOut * stepRunX;
-        const frontLeftX = -0.25;
-        const xRight = deckRightX + stepsOut * 0.16;
-        const zFront = deckFrontZ + stepsOut * stepRunZ;
-        const blueStripW = stepRunX;
-        const blueStripX = xLeft + blueStripW * 0.5;
-        const rearDepth = blueBayZEnd - wallZ;
-        const rearCenterZ = wallZ + rearDepth * 0.5;
-        addBox(blueStripW, stepRise, rearDepth, blueTreadMat, blueStripX, sy, rearCenterZ);
-        const rearMidX0 = xLeft + blueStripW;
-        const rearMidX1 = 6.6;
-        addBox(
-          rearMidX1 - rearMidX0,
-          stepRise,
-          rearDepth,
-          plazaConcreteMat,
-          (rearMidX0 + rearMidX1) * 0.5,
-          sy,
-          rearCenterZ
-        );
-        const rearRightX1 = xRight - 0.06;
-        addBox(
-          rearRightX1 - rearMidX1,
-          stepRise,
-          rearDepth,
-          weatheredStepMat,
-          (rearMidX1 + rearRightX1) * 0.5,
-          sy,
-          rearCenterZ
-        );
-        const frontTreadZ0 = zFront - stepRunZ;
-        if (frontTreadZ0 > blueBayZEnd + 0.01) {
-          const midDepth = frontTreadZ0 - blueBayZEnd;
-          const fullW = xRight - frontLeftX;
-          addBox(fullW, stepRise, midDepth, plazaConcreteMat, frontLeftX + fullW * 0.5, sy, blueBayZEnd + midDepth * 0.5);
-        }
-        const frontStripZ = zFront - stepRunZ * 0.5;
-        const cBayX0 = 3.12;
-        const cBayX1 = 5.88;
-        addBox(cBayX0 - frontLeftX, stepRise, stepRunZ, plazaConcreteMat, (frontLeftX + cBayX0) * 0.5, sy, frontStripZ);
-        addBox(cBayX1 - cBayX0, stepRise, stepRunZ, blueTreadMat, (cBayX0 + cBayX1) * 0.5, sy, frontStripZ);
-        addBox(xRight - cBayX1, stepRise, stepRunZ, plazaConcreteMat, (cBayX1 + xRight) * 0.5, sy, frontStripZ);
-      }
-      const lowerStairX0 = -0.25;
-      const lowerStairX1 = 9.76;
-      const lowerStairW = lowerStairX1 - lowerStairX0;
-      const lowerStairCenterX = (lowerStairX0 + lowerStairX1) * 0.5;
-      const upperTerraceFrontZ = wallZ + 4.25;
-      const stairBaseY = lowerPlazaY - 0.15;
-      for (let ls = 0; ls < lowerNumSteps; ls++) {
-        const stepTopY = -ls * lowerStepRise;
-        const stepH = stepTopY - stairBaseY;
-        const stepZ = upperTerraceFrontZ + (ls + 0.5) * lowerStepRun;
-        addBox(lowerStairW, stepH, lowerStepRun + 0.02, plazaConcreteMat, lowerStairCenterX, stairBaseY + stepH * 0.5, stepZ);
-      }
-      const rightStairZ0 = frontWingZ;
-      const rightStairZ1 = wallZ + 1.85;
-      const rightStairDepth = rightStairZ1 - rightStairZ0;
-      const rightStairCenterZ = (rightStairZ0 + rightStairZ1) * 0.5;
-      const rightNumSteps = 4;
-      const rightStepRise = Math.abs(lowerPlazaY) / (rightNumSteps + 1);
-      const rightStepRunX = 0.49;
-      const rightStairStartX = 12.61 - rightNumSteps * rightStepRunX;
-      for (let rs = 0; rs < rightNumSteps; rs++) {
-        const rTopY = -(rs + 1) * rightStepRise;
-        const rH = rTopY - stairBaseY;
-        const rx = rightStairStartX + (rs + 0.5) * rightStepRunX;
-        addBox(rightStepRunX, rH, rightStairDepth, plazaConcreteMat, rx, stairBaseY + rH * 0.5, rightStairCenterZ);
-      }
-      const upperStairSpanZ = (numSteps - 1) * stepRunZ;
-      const upperStairEndZ = deckFrontZ + upperStairSpanZ;
-      const lowerStairEndZ = upperTerraceFrontZ + lowerNumSteps * lowerStepRun;
-      [3.16, 5.84].forEach((rx) => {
-        const uLen = Math.hypot(upperStairSpanZ, deckY) + 0.12;
-        const uRail = addBox(0.042, 0.042, uLen, darkMetalMat, rx, deckY * 0.5 + 0.82, deckFrontZ + upperStairSpanZ * 0.5);
-        uRail.rotation.x = Math.atan2(deckY, upperStairSpanZ);
-        addBox(0.038, 0.84, 0.038, darkMetalMat, rx, deckY + 0.42, deckFrontZ + 0.04);
-        addBox(0.038, 0.84, 0.038, darkMetalMat, rx, 0.42, upperStairEndZ);
-        addBox(0.042, 0.042, 0.22, darkMetalMat, rx, 0.82, upperStairEndZ + 0.1);
-        if (rx <= 6) {
-          const lSpanZ = lowerNumSteps * lowerStepRun;
-          const lDropY = Math.abs(lowerPlazaY);
-          const lLen = Math.hypot(lSpanZ, lDropY) + 0.12;
-          const lRail = addBox(
-            0.042,
-            0.042,
-            lLen,
-            darkMetalMat,
-            rx,
-            -lDropY * 0.5 + 0.82,
-            upperTerraceFrontZ + lSpanZ * 0.5
-          );
-          lRail.rotation.x = Math.atan2(lDropY, lSpanZ);
-          addBox(0.038, 0.84, 0.038, darkMetalMat, rx, 0.42, upperTerraceFrontZ + 0.04);
-          addBox(0.038, 0.84, 0.038, darkMetalMat, rx, lowerPlazaY + 0.42, lowerStairEndZ);
-          addBox(0.042, 0.042, 0.18, darkMetalMat, rx, lowerPlazaY + 0.82, lowerStairEndZ + 0.08);
-          addBox(0.042, 0.18, 0.042, darkMetalMat, rx, lowerPlazaY + 0.73, lowerStairEndZ + 0.16);
-          addBox(0.042, 0.042, 0.18, darkMetalMat, rx, lowerPlazaY + 0.64, lowerStairEndZ + 0.08);
-        }
-      });
-      const weatheredWallCanvas = document.createElement("canvas");
-      weatheredWallCanvas.width = 512;
-      weatheredWallCanvas.height = 128;
-      const wwCtx = weatheredWallCanvas.getContext("2d");
-      wwCtx.fillStyle = "#ede8de";
-      wwCtx.fillRect(0, 0, 512, 128);
-      for (let i = 0; i < 900; i++) {
-        wwCtx.fillStyle = i % 2 === 0 ? "rgba(120,114,104,0.08)" : "rgba(255,253,248,0.08)";
-        wwCtx.fillRect(i * 67 % 512, i * 29 % 128, 12, 6);
-      }
-      wwCtx.strokeStyle = "rgba(95,88,78,0.45)";
-      wwCtx.lineWidth = 2;
-      wwCtx.beginPath();
-      wwCtx.moveTo(0, 58);
-      wwCtx.lineTo(512, 62);
-      wwCtx.moveTo(180, 4);
-      wwCtx.lineTo(196, 52);
-      wwCtx.lineTo(215, 124);
-      wwCtx.stroke();
-      const weatheredWallTex = new CanvasTexture(weatheredWallCanvas);
-      weatheredWallTex.wrapS = RepeatWrapping;
-      weatheredWallTex.wrapT = RepeatWrapping;
-      weatheredWallTex.colorSpace = SRGBColorSpace;
-      const rightLawnWallMat = new MeshStandardMaterial({
-        map: weatheredWallTex,
-        bumpMap: weatheredWallTex,
-        bumpScale: 0.03,
-        roughness: 0.85,
-        metalness: 0.03
-      });
-      const createRightPlanterShape = (inset = 0) => {
-        const xBackLeft = 10.55 + inset;
-        const xFrontLeft = 9.76 + inset;
-        const xRight = 14.7 - inset;
-        const zBack = wallZ + 1.85 + inset;
-        const zStep = wallZ + 4.15 + inset;
-        const zFront = wallZ + 7.05 - inset;
-        const r = Math.max(0.2, 1.45 - inset);
-        const s = new Shape();
-        s.moveTo(xBackLeft, -zBack);
-        s.lineTo(xRight, -zBack);
-        s.lineTo(xRight, -(zFront - r));
-        s.absarc(xRight - r, -(zFront - r), r, 0, -Math.PI * 0.5, true);
-        s.lineTo(xFrontLeft, -zFront);
-        s.lineTo(xFrontLeft, -zStep);
-        s.lineTo(xBackLeft, -zStep);
-        s.closePath();
-        return s;
-      };
-      const rightLawnBaseY = lowerPlazaY - 0.3;
-      const rightLawnWallH = 0.85;
-      const outerPlanterShape = createRightPlanterShape(0);
-      const outerPlanterGeo = new ExtrudeGeometry(outerPlanterShape, {
-        depth: rightLawnWallH,
-        bevelEnabled: true,
-        bevelThickness: 0.02,
-        bevelSize: 0.02,
-        bevelSegments: 2
-      });
-      outerPlanterGeo.rotateX(-Math.PI / 2);
-      const outerPlanterMesh = new Mesh(outerPlanterGeo, rightLawnWallMat);
-      outerPlanterMesh.position.set(0, rightLawnBaseY, 0);
-      outerPlanterMesh.castShadow = true;
-      outerPlanterMesh.receiveShadow = true;
-      arch.add(outerPlanterMesh);
-      const innerTurfGeo = new ExtrudeGeometry(createRightPlanterShape(0.18), {
-        depth: rightLawnWallH + 0.025,
-        bevelEnabled: false
-      });
-      innerTurfGeo.rotateX(-Math.PI / 2);
-      const innerTurfMesh = new Mesh(innerTurfGeo, turfMat);
-      innerTurfMesh.position.set(0, rightLawnBaseY, 0);
-      innerTurfMesh.receiveShadow = true;
-      arch.add(innerTurfMesh);
-      const stampTex = this._createTextPlaqueTexture(["DOUGLAS ST"], "#e2dcd0", "#8f887b", 512, 96);
-      const stampMat = new MeshStandardMaterial({ map: stampTex, roughness: 0.88 });
-      const stampMesh = new Mesh(new PlaneGeometry(1.45, 0.26), stampMat);
-      stampMesh.rotation.x = -Math.PI * 0.5;
-      stampMesh.rotation.z = -0.35;
-      stampMesh.position.set(13.85, getConcreteTopY(13.85, wallZ + 7.45) + 0.015, wallZ + 7.45);
-      arch.add(stampMesh);
-      addBox(3.15, 0.78, 2.8, whiteCurbMat, -1.85, lowerPlazaY + 0.15, wallZ + 5.65);
-      addBox(2.85, 0.8, 2.55, turfMat, -1.92, lowerPlazaY + 0.16, wallZ + 5.62);
-      const soilMat = new MeshLambertMaterial({ color: "#3b332a" });
-      [3.08, 5.92].forEach((px2) => {
-        const pz2 = wallZ + 6.55;
-        const pSize = 0.96;
-        const pWall = 0.1;
-        const pH = 0.62;
-        const pBaseY = getConcreteTopY(px2, pz2);
-        const py2 = pBaseY + pH * 0.5;
-        addBox(pSize, pH, pWall, whiteCurbMat, px2, py2, pz2 + (pSize - pWall) * 0.5);
-        addBox(pSize, pH, pWall, whiteCurbMat, px2, py2, pz2 - (pSize - pWall) * 0.5);
-        addBox(pWall, pH, pSize - pWall * 2, whiteCurbMat, px2 - (pSize - pWall) * 0.5, py2, pz2);
-        addBox(pWall, pH, pSize - pWall * 2, whiteCurbMat, px2 + (pSize - pWall) * 0.5, py2, pz2);
-        addBox(pSize - pWall * 2, pH - 0.14, pSize - pWall * 2, soilMat, px2, pBaseY + (pH - 0.14) * 0.5, pz2);
-      });
-      const addCagedGlobeLamp = (lx, ly, lz, poleH = 2.55, pedH2 = 0.68) => {
-        if (pedH2 > 0) {
-          addBox(0.44, pedH2, 0.44, whiteCurbMat, lx, ly + pedH2 * 0.5, lz);
-          addBox(0.46, 0.09, 0.46, darkMetalMat, lx, ly + pedH2 + 0.045, lz);
-        }
-        const baseTop = ly + pedH2 + 0.09;
-        const post = new Mesh(new CylinderGeometry(0.055, 0.075, poleH, 12), darkMetalMat);
-        post.position.set(lx, baseTop + poleH * 0.5, lz);
-        post.castShadow = true;
-        arch.add(post);
-        const globeY = baseTop + poleH + 0.22;
-        const globe = new Mesh(new SphereGeometry(0.23, 14, 14), globeMat);
-        globe.position.set(lx, globeY, lz);
-        arch.add(globe);
-        const eqRing = new Mesh(new CylinderGeometry(0.25, 0.25, 0.04, 16), darkMetalMat);
-        eqRing.position.set(lx, globeY, lz);
-        arch.add(eqRing);
-        addBox(0.5, 0.3, 0.03, darkMetalMat, lx, globeY - 0.08, lz);
-        addBox(0.03, 0.3, 0.5, darkMetalMat, lx, globeY - 0.08, lz);
-      };
-      addCagedGlobeLamp(9.8, lowerPlazaY, wallZ + 4.35, 2.55, 1.05);
-      addCagedGlobeLamp(-0.3, lowerPlazaY, wallZ + 4.35, 2.55, 1.05);
-      addCagedGlobeLamp(-4.65, getConcreteTopY(-4.65, wallZ + 1.85), wallZ + 1.85, 2.75, 0.12);
-      addCagedGlobeLamp(-4.65, getConcreteTopY(-4.65, -3.5), -3.5, 2.75, 0.12);
-      addCagedGlobeLamp(-4.65, getConcreteTopY(-4.65, -11.5), -11.5, 2.75, 0.12);
-      addBox(0.05, 1.35, 0.05, galvSteelMat, -0.32, 0.68, wallZ + 3.15);
-      addBox(0.32, 0.44, 0.03, whiteCurbMat, -0.32, 1.25, wallZ + 3.17);
-      addBox(0.05, 1.45, 0.05, galvSteelMat, -3.55, 0.72, wallZ + 1.45);
-      addBox(0.32, 0.42, 0.03, new MeshBasicMaterial({ color: "#2563eb" }), -3.55, 1.32, wallZ + 1.47);
-      const hydrant = new Mesh(new CylinderGeometry(0.12, 0.14, 0.78, 10), new MeshStandardMaterial({ color: "#dc2626", roughness: 0.5 }));
-      hydrant.position.set(-1.35, getConcreteTopY(-1.35, wallZ + 7.55) + 0.39, wallZ + 7.55);
-      arch.add(hydrant);
-      const streetPoleX = 15.2;
-      const streetPoleZ = wallZ + 6.95;
-      const streetPoleBaseY = getConcreteTopY(streetPoleX, streetPoleZ);
-      const poleBaseCollar = new Mesh(new CylinderGeometry(0.14, 0.21, 0.24, 8), galvSteelMat);
-      poleBaseCollar.position.set(streetPoleX, streetPoleBaseY + 0.12, streetPoleZ);
-      arch.add(poleBaseCollar);
-      const mainPole = new Mesh(new CylinderGeometry(0.095, 0.14, 8.4, 16), galvSteelMat);
-      mainPole.position.set(streetPoleX, streetPoleBaseY + 4.2, streetPoleZ);
-      mainPole.castShadow = true;
-      arch.add(mainPole);
-      const handHole = new Mesh(new CylinderGeometry(0.065, 0.065, 0.03, 14), galvSteelMat);
-      handHole.scale.set(1, 1.65, 1);
-      handHole.rotation.x = Math.PI * 0.5;
-      handHole.position.set(streetPoleX, streetPoleBaseY + 0.48, streetPoleZ + 0.13);
-      arch.add(handHole);
-      const mastArm = addBox(0.08, 0.08, 2.8, galvSteelMat, streetPoleX - 0.6, streetPoleBaseY + 8.35, streetPoleZ + 1.1);
-      mastArm.rotation.y = -0.45;
-      mastArm.rotation.x = -0.15;
-      addBox(0.45, 0.1, 0.26, globeMat, streetPoleX - 1.2, streetPoleBaseY + 8.52, streetPoleZ + 2.2);
-      const diamondSign = addBox(
-        0.65,
-        0.65,
-        0.04,
-        new MeshStandardMaterial({ color: "#eab308", roughness: 0.4 }),
-        streetPoleX - 0.12,
-        streetPoleBaseY + 2.55,
-        streetPoleZ + 0.12
-      );
-      diamondSign.rotation.z = Math.PI * 0.25;
-      const addMonumentalArchedWindow = (wx, wy, wz, sideDir = 1, hasBalcony = false) => {
-        const wGroup = new Group();
-        wGroup.position.set(wx, wy, wz);
-        wGroup.rotation.y = sideDir > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
-        const winW = 1.68;
-        const rectH = 2.65;
-        const archR = winW * 0.5;
-        addBox(winW + 0.28, rectH, 0.1, creamBrickSolidMat, 0, rectH * 0.5, 0.02, wGroup);
-        addBox(winW + 0.16, rectH, 0.14, whiteCurbMat, 0, rectH * 0.5, 0.03, wGroup);
-        addBox(winW, rectH - 0.12, 0.18, glassMat, 0, rectH * 0.5, 0.045, wGroup);
-        addBox(winW - 0.08, rectH * 0.42, 0.17, plinthConcreteMat, 0, rectH * 0.74, 0.042, wGroup);
-        addBox(winW + 0.12, 0.1, 0.24, whiteCurbMat, 0, rectH - 0.03, 0.07, wGroup);
-        const archDisc = new Mesh(
-          new CylinderGeometry(archR + 0.16, archR + 0.16, 0.15, 24, 1, false, 0, Math.PI),
-          creamBrickSolidMat
-        );
-        archDisc.rotation.z = Math.PI * 0.5;
-        archDisc.rotation.y = Math.PI * 0.5;
-        archDisc.position.set(0, rectH, 0.03);
-        wGroup.add(archDisc);
-        const sashDisc = new Mesh(
-          new CylinderGeometry(archR + 0.06, archR + 0.06, 0.17, 22, 1, false, 0, Math.PI),
-          whiteCurbMat
-        );
-        sashDisc.rotation.z = Math.PI * 0.5;
-        sashDisc.rotation.y = Math.PI * 0.5;
-        sashDisc.position.set(0, rectH, 0.04);
-        wGroup.add(sashDisc);
-        const glassDisc = new Mesh(
-          new CylinderGeometry(archR - 0.02, archR - 0.02, 0.2, 20, 1, false, 0, Math.PI),
-          glassMat
-        );
-        glassDisc.rotation.z = Math.PI * 0.5;
-        glassDisc.rotation.y = Math.PI * 0.5;
-        glassDisc.position.set(0, rectH, 0.05);
-        wGroup.add(glassDisc);
-        addBox(0.28, 0.44, 0.26, trimMat, 0, rectH + archR + 0.08, 0.08, wGroup);
-        addBox(0.34, 0.16, 0.28, trimMat, 0, rectH + archR + 0.24, 0.09, wGroup);
-        if (hasBalcony) {
-          addBox(2.36, 0.16, 0.48, trimMat, 0, -0.08, 0.2, wGroup);
-          addBox(2.22, 0.1, 0.42, plinthConcreteMat, 0, -0.21, 0.17, wGroup);
-          addBox(2.08, 0.46, 0.34, trimMat, 0, -0.49, 0.14, wGroup);
-          addBox(1.82, 0.3, 0.36, plinthConcreteMat, 0, -0.49, 0.15, wGroup);
-          addBox(2.24, 0.12, 0.42, trimMat, 0, -0.78, 0.17, wGroup);
-          addBox(2.4, 0.16, 0.5, trimMat, 0, -0.92, 0.21, wGroup);
-          addBox(2.18, 0.08, 0.38, plinthConcreteMat, 0, -1.04, 0.15, wGroup);
-        } else {
-          addBox(winW + 0.34, 0.15, 0.26, trimMat, 0, -0.075, 0.09, wGroup);
-          addBox(winW - 0.12, 0.58, 0.03, plinthConcreteMat, 0, -0.44, 0.015, wGroup);
-          addBox(winW - 0.16, 0.52, 0.04, creamBrickSolidMat, 0, -0.44, 0.02, wGroup);
-          [-winW * 0.5 - 0.04, winW * 0.5 + 0.04].forEach((bx) => {
-            addBox(0.18, 0.64, 0.09, creamBrickSolidMat, bx, -0.44, 0.045, wGroup);
-          });
-          addBox(winW + 0.26, 0.11, 0.1, creamBrickSolidMat, 0, -0.78, 0.05, wGroup);
-        }
-        arch.add(wGroup);
-      };
-      const washX = 12.25;
-      addBox(0.08, 6.85, 0.42, creamBrickSolidMat, washX + 0.38, 4, frontWingZ - 0.21);
-      const frontPavLen = frontWingZ - 7.3;
-      const frontPavMidZ = (frontWingZ + 7.3) * 0.5;
-      addBox(0.14, 2.25, frontPavLen + 0.04, plinthConcreteMat, washX + 0.36, lowerPlazaY + 0.425, frontPavMidZ);
-      addBox(0.18, 0.08, frontPavLen + 0.08, trimMat, washX + 0.38, lowerPlazaY + 1.56, frontPavMidZ);
-      addBox(0.14, 2.25, 5.48, plinthConcreteMat, washX + 0.36, lowerPlazaY + 0.425, -13.92);
-      addBox(0.18, 0.08, 5.52, trimMat, washX + 0.38, lowerPlazaY + 1.56, -13.92);
-      [11.85, 9.05].forEach((vz) => {
-        addBox(0.08, 0.28, 0.52, whiteCurbMat, washX + 0.41, lowerPlazaY + 0.36, vz);
-        for (let lv = -2; lv <= 2; lv++) {
-          addBox(0.1, 0.025, 0.46, plinthConcreteMat, washX + 0.42, lowerPlazaY + 0.36 + lv * 0.05, vz);
-        }
-      });
-      const stuccoCanvas = document.createElement("canvas");
-      stuccoCanvas.width = 256;
-      stuccoCanvas.height = 256;
-      const stCtx = stuccoCanvas.getContext("2d");
-      stCtx.fillStyle = "#d7ceb8";
-      stCtx.fillRect(0, 0, 256, 256);
-      for (let x = 0; x < 256; x += 2) {
-        const streak = Math.sin(x * 0.23) * 6 + Math.cos(x * 0.71) * 4;
-        stCtx.fillStyle = streak > 0 ? `rgba(245,240,228,${streak * 0.012})` : `rgba(95,88,74,${-streak * 0.016})`;
-        stCtx.fillRect(x, 0, 2, 256);
-      }
-      const weatheredStuccoTex = new CanvasTexture(stuccoCanvas);
-      weatheredStuccoTex.wrapS = RepeatWrapping;
-      weatheredStuccoTex.wrapT = RepeatWrapping;
-      weatheredStuccoTex.repeat.set(3, 2);
-      weatheredStuccoTex.colorSpace = SRGBColorSpace;
-      const weatheredStuccoMat = new MeshStandardMaterial({
-        map: weatheredStuccoTex,
-        roughness: 0.88,
-        metalness: 0.02
-      });
-      const rearBoxStuccoMat = new MeshStandardMaterial({
-        map: weatheredStuccoTex,
-        color: "#ebe6d8",
-        roughness: 0.86,
-        metalness: 0.02
-      });
-      for (let dz = -16.5; dz <= frontWingZ - 0.1; dz += 0.24) {
-        const isPavilionZ = dz > 7.25 || dz < -11.15;
-        const dentilOutX = isPavilionZ ? washX + 0.46 : washX + 0.12;
-        addBox(0.14, 0.13, 0.11, trimMat, dentilOutX, 8.15, dz);
-        if (dz > 7.25) {
-          addBox(0.14, 0.13, 0.11, trimMat, -3.34, 8.15, dz);
-        }
-      }
-      addBox(0.14, 12.45, 18.52, weatheredStuccoMat, -2.84, 2.625, -1.95);
-      addBox(0.22, 0.1, 18.56, trimMat, -2.86, 8.88, -1.95);
-      addMonumentalArchedWindow(washX + 0.36, 2.55, 10.72, 1, true);
-      [5.3, 2.2, -0.9, -4, -7.1, -10].forEach((wz) => {
-        addMonumentalArchedWindow(washX, 2.55, wz, 1, false);
-      });
-      addMonumentalArchedWindow(washX + 0.36, 2.55, -13.92, 1, true);
-      addMonumentalArchedWindow(-3.24, 2.55, 10.72, -1, true);
-      [4.8, 1.2, -2.4, -6, -9.6].forEach((wz) => {
-        addMonumentalArchedWindow(-2.86, 2.55, wz, -1, false);
-        addBox(0.16, 0.78, 2.15, weatheredStuccoMat, -2.86, 2.08, wz);
-        addBox(0.18, 1.05, 1.22, whiteCurbMat, -2.88, -0.52, wz);
-        addBox(0.22, 0.88, 1.04, glassMat, -2.9, -0.52, wz);
-      });
-      const rearRoofTopY = 8.42 + 1.76;
-      const rearBoxW = 5;
-      const rearBoxD = 5.48;
-      const rearBoxX = -2.85;
-      const rearBoxZ = -13.92;
-      const rearBoxH = rearRoofTopY - -3.6;
-      const rearBoxCenterY = (-3.6 + rearRoofTopY) * 0.5;
-      addBox(rearBoxW, rearBoxH, rearBoxD, rearBoxStuccoMat, rearBoxX, rearBoxCenterY, rearBoxZ);
-      addBox(rearBoxW + 0.1, 0.08, rearBoxD + 0.1, darkMetalMat, rearBoxX, rearRoofTopY - 0.02, rearBoxZ);
-      addBox(rearBoxW - 0.2, 0.06, rearBoxD - 0.2, whiteRoofMat, rearBoxX, rearRoofTopY + 0.01, rearBoxZ);
-      addBox(0.98, 2.12, 0.1, whiteCurbMat, -3.55, -1.06, -11.14);
-      addBox(0.88, 2.02, 0.12, new MeshStandardMaterial({ color: "#e5e2d9", roughness: 0.7 }), -3.55, -1.06, -11.13);
-      addBox(0.08, 0.05, 0.16, darkMetalMat, -3.22, -1.05, -11.11);
-      addBox(1.02, 1.08, 0.06, whiteCurbMat, -3.65, 2.85, -11.15);
-      addBox(0.055, 10.8, 0.055, galvSteelMat, -5.05, 5.2, -11.13);
-      addBox(0.065, 6.8, 0.065, galvSteelMat, -3.02, 7.15, -11.13);
-      addBox(1.1, 0.04, 0.04, galvSteelMat, -4.05, 1.55, -11.13);
-      const scupperHood = addBox(0.55, 0.32, 0.45, galvSteelMat, -2.98, 8.92, -11.08);
-      scupperHood.rotation.z = -0.22;
-      addBox(0.05, 1.85, 0.05, galvSteelMat, -2.96, 9.85, -11.12);
-      const gravelMat = new MeshStandardMaterial({ color: "#6e685c", roughness: 0.96, metalness: 0.02 });
-      addBox(1.42, 0.16, 18.5, gravelMat, -3.55, -2.18, -1.95, arch, false);
-      addBox(0.3, 2.25, 18.5, plinthConcreteMat, -4.25, -1.08, -1.95, arch, false);
-      const boulderGeo = new DodecahedronGeometry(0.46, 2);
-      boulderGeo.scale(0.95, 0.68, 1.45);
-      const boulderMesh = new Mesh(
-        boulderGeo,
-        new MeshStandardMaterial({ color: "#847e70", roughness: 0.92, metalness: 0.02 })
-      );
-      boulderMesh.position.set(-3.88, -1.92, -6.35);
-      boulderMesh.rotation.y = 0.25;
-      boulderMesh.receiveShadow = true;
-      boulderMesh.castShadow = true;
-      arch.add(boulderMesh);
-      [-15.65, -14.35].forEach((wz) => {
-        addBox(0.12, 1.42, 0.96, whiteCurbMat, -5.36, 7.3, wz);
-        addBox(0.14, 1.26, 0.82, glassMat, -5.37, 7.3, wz);
-      });
-      const utilPadY = getConcreteTopY(-6.6, -12.6);
-      addBox(2.45, 0.24, 4.1, plinthConcreteMat, -6.58, utilPadY + 0.12, -12.65);
-      addBox(0.82, 2.05, 1.75, new MeshStandardMaterial({ color: "#e4e8ec", roughness: 0.5, metalness: 0.3 }), -5.82, utilPadY + 1.24, -13.35);
-      const greenBoxMat = new MeshStandardMaterial({ color: "#4d5940", roughness: 0.65, metalness: 0.25 });
-      addBox(1.12, 1.52, 1.38, greenBoxMat, -6.75, utilPadY + 0.98, -11.65);
-      const chainMeshMat = new MeshStandardMaterial({
-        color: "#22262a",
-        roughness: 0.5,
-        metalness: 0.6,
-        transparent: true,
-        opacity: 0.38,
-        side: DoubleSide
-      });
-      const fH = 1.95;
-      const fY = utilPadY + 0.2 + fH * 0.5;
-      addBox(2.4, fH, 0.02, chainMeshMat, -6.55, fY, -10.65, arch, false);
-      addBox(0.02, fH, 4, chainMeshMat, -7.75, fY, -12.65, arch, false);
-      addBox(2.4, fH, 0.02, chainMeshMat, -6.55, fY, -14.65, arch, false);
-      [utilPadY + 0.22, utilPadY + 0.2 + fH].forEach((ry) => {
-        addBox(2.42, 0.04, 0.04, darkMetalMat, -6.55, ry, -10.65);
-        addBox(0.04, 0.04, 4.02, darkMetalMat, -7.75, ry, -12.65);
-        addBox(2.42, 0.04, 0.04, darkMetalMat, -6.55, ry, -14.65);
-      });
-      [
-        [-5.4, -10.65],
-        [-6.55, -10.65],
-        [-7.75, -10.65],
-        [-7.75, -12.65],
-        [-7.75, -14.65],
-        [-5.4, -14.65]
-      ].forEach(([px2, pz2]) => {
-        addBox(0.055, fH + 0.12, 0.055, darkMetalMat, px2, fY, pz2);
-      });
-      addBox(11.55, 12.25, 0.18, weatheredStuccoMat, 5.425, 2.525, -16.62);
-      const blueReflGlassMat = new MeshStandardMaterial({ color: "#3b6e8c", roughness: 0.15, metalness: 0.45 });
-      [-4.45, -2.55].forEach((wx) => {
-        addBox(1.36, 1.58, 0.12, weatheredStuccoMat, wx, 7.35, -16.68);
-        addBox(1.24, 1.44, 0.14, blueReflGlassMat, wx, 7.35, -16.69);
-        addBox(1.42, 0.1, 0.18, trimMat, wx, 6.54, -16.71);
-      });
-      const fanDrum = new Mesh(new CylinderGeometry(0.5, 0.5, 0.58, 24), galvSteelMat);
-      fanDrum.rotation.x = Math.PI * 0.5;
-      fanDrum.position.set(-4.45, 5.18, -16.96);
-      fanDrum.castShadow = true;
-      arch.add(fanDrum);
-      const fanCap = new Mesh(new CylinderGeometry(0.36, 0.48, 0.16, 24), galvSteelMat);
-      fanCap.rotation.x = Math.PI * 0.5;
-      fanCap.position.set(-4.45, 5.18, -17.3);
-      arch.add(fanCap);
-      [-4.45, -2.55].forEach((wx) => {
-        addBox(1.32, 1.48, 0.06, rearBoxStuccoMat, wx, 3.35, -16.68);
-        addBox(1.38, 0.06, 0.09, whiteCurbMat, wx, 2.6, -16.69);
-      });
-      [3.15, 5.45].forEach((wx) => {
-        addBox(1.32, 1.42, 0.06, rearBoxStuccoMat, wx, 6.35, -16.68);
-        addBox(1.32, 1.48, 0.06, rearBoxStuccoMat, wx, 3.35, -16.68);
-        addBox(0.92, 1.05, 0.06, rearBoxStuccoMat, wx, 1.1, -16.68);
-      });
-      addBox(0.96, 1.32, 0.08, whiteCurbMat, -2.45, 0.92, -16.68);
-      for (let ly = 0.36; ly <= 1.48; ly += 0.14) {
-        addBox(0.84, 0.04, 0.1, darkMetalMat, -2.45, ly, -16.69);
-      }
-      [-2.82, -2.12].forEach((bx) => {
-        const bollard = new Mesh(new CylinderGeometry(0.055, 0.055, 1.15, 12), whiteCurbMat);
-        bollard.position.set(bx, 0.55, -17.02);
-        arch.add(bollard);
-      });
-      addBox(0.74, 0.06, 0.06, whiteCurbMat, -2.47, 0.85, -17.02);
-      const tiltedHatch = addBox(0.56, 0.42, 0.06, whiteCurbMat, -3.55, 0.42, -16.68);
-      tiltedHatch.rotation.z = -0.22;
-      [-4.05, -4.28, -4.5, -4.72].forEach((bx) => {
-        addBox(0.16, 0.42, 0.1, galvSteelMat, bx, 0.28, -16.69);
-      });
-      const woodPoleMat = new MeshStandardMaterial({ color: "#3d2b1f", roughness: 0.9, metalness: 0.02 });
-      const utilPole = new Mesh(new CylinderGeometry(0.14, 0.19, 11.4, 14), woodPoleMat);
-      utilPole.position.set(-5.52, 5.5, -16.82);
-      utilPole.castShadow = true;
-      arch.add(utilPole);
-      const poleRiser = new Mesh(new CylinderGeometry(0.045, 0.045, 4.8, 10), galvSteelMat);
-      poleRiser.position.set(-5.42, 2.2, -16.92);
-      arch.add(poleRiser);
-      const addContouredSlab = (w, h, d, mat, cx, cz, topOffset = 0, segsX = 8, segsZ = 24) => {
-        const geo = new BoxGeometry(w, h, d, segsX, 1, segsZ);
-        const pos = geo.attributes.position;
-        for (let i = 0; i < pos.count; i++) {
-          const vx = pos.getX(i);
-          const vy = pos.getY(i);
-          const vz = pos.getZ(i);
-          const topY = getConcreteTopY(cx + vx, cz + vz) + topOffset;
-          pos.setY(i, vy > 0 ? topY : topY - h);
-        }
-        pos.needsUpdate = true;
-        geo.computeVertexNormals();
-        const mesh = new Mesh(geo, mat);
-        mesh.position.set(cx, 0, cz);
-        mesh.receiveShadow = true;
-        arch.add(mesh);
-        return mesh;
-      };
-      addContouredSlab(3.2, 0.22, 30, plazaConcreteMat, -4.5, 1, 0, 8, 36);
-      const railMinZ = -12.2;
-      const railMaxZ = frontWingZ + 0.1;
-      const railLenSW = railMaxZ - railMinZ;
-      const railMidZ = (railMinZ + railMaxZ) * 0.5;
-      const railOuterX = -4.25;
-      for (let r = 1; r <= 6; r++) {
-        const ry = r * 0.17;
-        addBox(0.04, 0.04, railLenSW, galvSteelMat, railOuterX, ry, railMidZ);
-        addBox(1.02, 0.04, 0.04, galvSteelMat, -3.74, ry, railMaxZ);
-      }
-      for (let pz2 = railMinZ; pz2 <= railMaxZ + 0.1; pz2 += 2.65) {
-        addBox(0.05, 1.08, 0.05, galvSteelMat, railOuterX, 0.54, pz2);
-      }
-      addBox(0.05, 1.08, 0.05, galvSteelMat, -3.26, 0.54, railMaxZ);
-      addContouredSlab(2.35, 0.24, 4.2, plazaConcreteMat, washX + 1.15, 12.15, 0, 6, 10);
-      addContouredSlab(2.35, 0.24, 5.6, plazaConcreteMat, washX + 1.15, -13.9, 0, 6, 12);
-      addBox(2.35, 0.2, 21.4, plinthConcreteMat, washX + 1.15, -2.45, -0.5, arch, false);
-      const door1LandingY = lowerPlazaY - 0.64;
-      addBox(2.15, 1.35, 2.5, plazaConcreteMat, washX + 1.1, door1LandingY - 0.675, 6.6, arch, false);
-      for (let fs = 0; fs < 4; fs++) {
-        const fTopY = lowerPlazaY - (fs + 1) * 0.16;
-        const fz = 10 - (fs + 0.5) * 0.52;
-        addBox(2.1, 0.36, 0.54, plazaConcreteMat, washX + 1.1, fTopY - 0.18, fz, arch, false);
-      }
-      const frontStairRail = addBox(0.04, 0.04, 2.25, darkMetalMat, washX + 0.44, lowerPlazaY + 0.42, 8.95);
-      frontStairRail.rotation.x = -0.3;
-      addBox(0.035, 0.72, 0.035, darkMetalMat, washX + 0.44, lowerPlazaY + 0.05, 7.9);
-      for (let rs = 0; rs < 5; rs++) {
-        const rTopY = lowerPlazaY - (rs + 1) * 0.28;
-        const rz = -11.3 + (rs + 0.5) * 0.34;
-        addBox(2.1, 0.4, 0.36, plazaConcreteMat, washX + 1.1, rTopY - 0.2, rz, arch, false);
-      }
-      const rearStairRail = addBox(0.04, 0.04, 1.95, darkMetalMat, washX + 0.44, lowerPlazaY + 0.22, -10.45);
-      rearStairRail.rotation.x = 0.55;
-      const washEntryTopY = getConcreteTopY(washX + 2.22, 4.3);
-      addBox(2.2, 1.85, 2.2, plazaConcreteMat, washX + 1.1, washEntryTopY - 0.925, 4.3, arch, false);
-      const rampSpanZ = 11.6;
-      const rampEndTopY = -1.95;
-      const rampDropY = Math.max(0.4, washEntryTopY - rampEndTopY);
-      const rampMidY = (washEntryTopY + rampEndTopY) * 0.5;
-      const rampLen = Math.hypot(rampSpanZ, rampDropY);
-      const adaRamp = addBox(2.15, 0.22, rampLen, plazaConcreteMat, washX + 1.1, rampMidY - 0.1, -2.6, arch, false);
-      adaRamp.rotation.x = -Math.atan2(rampDropY, rampSpanZ);
-      const wallHandrail = addBox(0.045, 0.045, rampLen + 0.4, darkMetalMat, washX + 0.12, rampMidY + 0.82, -2.6);
-      wallHandrail.rotation.x = -Math.atan2(rampDropY, rampSpanZ);
-      addContouredSlab(2.9, 0.26, 33.5, plazaConcreteMat, washX + 3.65, -1, 0, 8, 44);
-      addBox(0.32, 2.2, 21.4, whiteCurbMat, washX + 2.22, -1.4, -0.5, arch, false);
-      [
-        { dz: 6.35, by: door1LandingY, sideOffset: -0.52 },
-        { dz: -9.45, by: -2.05, sideOffset: 0.52 }
-      ].forEach(({ dz, by, sideOffset }) => {
-        const doorZ = dz - sideOffset * 0.52;
-        const sideZ = dz + sideOffset * 0.86;
-        addBox(0.16, 2.32, 1.72, whiteCurbMat, washX + 0.04, by + 1.16, dz);
-        addBox(0.2, 0.96, 0.78, glassMat, washX + 0.06, by + 1.56, doorZ);
-        addBox(0.2, 0.52, 0.78, glassMat, washX + 0.06, by + 0.56, doorZ);
-        addBox(0.22, 0.22, 0.84, whiteCurbMat, washX + 0.07, by + 0.96, doorZ);
-        addBox(0.23, 0.05, 0.42, new MeshBasicMaterial({ color: "#dc2626" }), washX + 0.08, by + 1.12, doorZ);
-        for (let p = 0; p < 4; p++) {
-          addBox(0.2, 0.44, 0.36, glassMat, washX + 0.06, by + 0.36 + p * 0.52, sideZ);
-        }
-      });
-      const sideBell = new Mesh(
-        new SphereGeometry(0.11, 12, 12),
-        new MeshBasicMaterial({ color: "#b91c1c" })
-      );
-      sideBell.scale.set(0.55, 1, 1);
-      sideBell.position.set(washX + 0.06, door1LandingY + 2.38, 7.08);
-      arch.add(sideBell);
-      addBox(0.14, 0.24, 0.22, whiteCurbMat, washX + 0.06, door1LandingY + 1.48, 5.38);
-      [
-        [3.5, -0.05],
-        [0.4, -0.22],
-        [-2.6, -0.38],
-        [-5.6, -0.52]
-      ].forEach(([winZ, winY]) => {
-        addBox(0.16, 1.08, 1.18, whiteCurbMat, washX + 0.04, winY, winZ);
-        addBox(0.2, 0.9, 1, glassMat, washX + 0.06, winY, winZ);
-        addBox(0.24, 0.1, 1.28, trimMat, washX + 0.08, winY - 0.56, winZ);
-      });
-      const fenceX = washX + 2.22;
-      const pierSpecs = [
-        { z: 10.2, hasLamp: false },
-        // Pier 1: Front-left pier on sidewalk outside Front Pavilion stairs (19a77a6c.jpg)
-        { z: 7.8, hasLamp: true },
-        // Pier 2: Lamp 1 (left of Door 1, 19a77a6c.jpg)
-        { z: 5.4, hasLamp: true },
-        // Pier 3: Lamp 2 + brick/picket return wall on left of open entry walk (19a77a6c.jpg)
-        { z: 3.2, hasLamp: true },
-        // Pier 4: Lamp 3 on right of open entry walk (19a77a6c.jpg)
-        { z: 0.4, hasLamp: false },
-        // Pier 5: Mid-left pier
-        { z: -2.5, hasLamp: false },
-        // Pier 6: Mid pier
-        { z: -5.4, hasLamp: true },
-        // Pier 7: Lamp 4 (mid-right pier, adc547e2.jpg)
-        { z: -8.2, hasLamp: true },
-        // Pier 8: Lamp 5 (left of Door 2, adc547e2.jpg)
-        { z: -10.8, hasLamp: true },
-        // Pier 9: Lamp 6 (right of Door 2, adc547e2.jpg)
-        { z: -12.1, hasLamp: false }
-        // Pier 10: Far-right end pier at Rear Pavilion stairs (adc547e2.jpg)
-      ];
-      [5.4, -12.1].forEach((rz) => {
-        const rBaseY = getConcreteTopY(fenceX, rz);
-        addBox(2.15, 0.56, 0.3, creamBrickSolidMat, washX + 1.12, rBaseY + 0.28, rz);
-        addBox(2.2, 0.07, 0.36, whiteCurbMat, washX + 1.12, rBaseY + 0.59, rz);
-        addBox(2.1, 0.04, 0.06, darkMetalMat, washX + 1.12, rBaseY + 1.04, rz);
-        addBox(2.1, 0.04, 0.06, darkMetalMat, washX + 1.12, rBaseY + 0.68, rz);
-        for (let pkx = washX + 0.2; pkx <= washX + 2; pkx += 0.16) {
-          addBox(0.03, 0.4, 0.03, darkMetalMat, pkx, rBaseY + 0.86, rz);
-        }
-      });
-      pierSpecs.forEach((p, idx) => {
-        const pz2 = p.z;
-        const pBaseY = getConcreteTopY(fenceX, pz2);
-        addBox(0.46, 0.92, 0.46, creamBrickSolidMat, fenceX, pBaseY + 0.46, pz2);
-        addBox(0.54, 0.09, 0.54, whiteCurbMat, fenceX, pBaseY + 0.96, pz2);
-        if (p.hasLamp) {
-          addCagedGlobeLamp(fenceX, pBaseY + 1, pz2, 1.65, 0);
-        }
-        if (idx < pierSpecs.length - 1 && idx !== 2) {
-          const nextZ = pierSpecs[idx + 1].z;
-          const span = Math.abs(pz2 - nextZ) - 0.44;
-          const midZ = (pz2 + nextZ) * 0.5;
-          const midBaseY = getConcreteTopY(fenceX, midZ);
-          addBox(0.32, 0.56, span, creamBrickSolidMat, fenceX, midBaseY + 0.28, midZ);
-          addBox(0.38, 0.07, span, whiteCurbMat, fenceX, midBaseY + 0.59, midZ);
-          addBox(0.06, 0.04, span, darkMetalMat, fenceX, midBaseY + 1.04, midZ);
-          addBox(0.06, 0.04, span, darkMetalMat, fenceX, midBaseY + 0.68, midZ);
-          const numPickets = Math.max(4, Math.floor(span / 0.16));
-          for (let pk = 0; pk < numPickets; pk++) {
-            const pkz = Math.min(pz2, nextZ) + 0.26 + (pk + 0.5) * ((span - 0.08) / numPickets);
-            addBox(0.03, 0.4, 0.03, darkMetalMat, fenceX, midBaseY + 0.86, pkz);
-          }
-        }
-      });
-      const sign15Y = getConcreteTopY(fenceX + 0.35, 5.95);
-      addBox(0.05, 2.35, 0.05, galvSteelMat, fenceX + 0.35, sign15Y + 1.18, 5.95);
-      const speedDiamond = addBox(
-        0.52,
-        0.52,
-        0.03,
-        new MeshStandardMaterial({ color: "#eab308", roughness: 0.4 }),
-        fenceX + 0.38,
-        sign15Y + 2.15,
-        5.95
-      );
-      speedDiamond.rotation.y = Math.PI * 0.5;
-      speedDiamond.rotation.z = Math.PI * 0.25;
-      addBox(
-        0.03,
-        0.36,
-        0.28,
-        new MeshStandardMaterial({ color: "#eab308", roughness: 0.4 }),
-        fenceX + 0.38,
-        sign15Y + 1.55,
-        5.95
-      );
-      [8.4, 1.2, -4.5, -10.2].forEach((tz) => {
-        const pitY = getConcreteTopY(washX + 3.95, tz);
-        addBox(1.15, 0.04, 1.15, soilMat, washX + 3.95, pitY + 0.01, tz, arch, false);
-      });
-      const roofBaseY = 8.42;
-      const pentRoomX = 4.25;
-      const pentRoomZ = 10.42;
-      const pentRoomW = 9.2;
-      const pentRoomD = 6.25;
-      const pentRoomH = 1.48;
-      addBox(pentRoomW, pentRoomH, pentRoomD, whiteCurbMat, pentRoomX, roofBaseY + pentRoomH * 0.5, pentRoomZ);
-      addBox(pentRoomW - 0.48, 0.08, pentRoomD - 0.48, plinthConcreteMat, pentRoomX, roofBaseY + pentRoomH + 0.02, pentRoomZ);
-      const cricketSlab = addBox(pentRoomW - 0.65, 0.09, pentRoomD * 0.46, whiteCurbMat, pentRoomX, roofBaseY + pentRoomH + 0.08, pentRoomZ + 1.2);
-      cricketSlab.rotation.x = -0.04;
-      const frameT = 0.26;
-      const frameH = 0.36;
-      const frameY = roofBaseY + pentRoomH + frameH * 0.5;
-      addBox(pentRoomW + 0.12, frameH, frameT, whiteCurbMat, pentRoomX, frameY, pentRoomZ + pentRoomD * 0.5 - frameT * 0.5);
-      addBox(pentRoomW + 0.12, frameH, frameT, whiteCurbMat, pentRoomX, frameY, pentRoomZ - pentRoomD * 0.5 + frameT * 0.5);
-      addBox(frameT, frameH, pentRoomD, whiteCurbMat, pentRoomX - pentRoomW * 0.5 + frameT * 0.5, frameY, pentRoomZ);
-      addBox(frameT, frameH, pentRoomD, whiteCurbMat, pentRoomX + pentRoomW * 0.5 - frameT * 0.5, frameY, pentRoomZ);
-      addBox(pentRoomW + 0.22, 0.06, frameT + 0.08, whiteRoofMat, pentRoomX, frameY + frameH * 0.5 + 0.02, pentRoomZ + pentRoomD * 0.5 - frameT * 0.5);
-      addBox(pentRoomW + 0.22, 0.06, frameT + 0.08, whiteRoofMat, pentRoomX, frameY + frameH * 0.5 + 0.02, pentRoomZ - pentRoomD * 0.5 + frameT * 0.5);
-      addBox(frameT + 0.08, 0.06, pentRoomD + 0.12, whiteRoofMat, pentRoomX - pentRoomW * 0.5 + frameT * 0.5, frameY + frameH * 0.5 + 0.02, pentRoomZ);
-      addBox(frameT + 0.08, 0.06, pentRoomD + 0.12, whiteRoofMat, pentRoomX + pentRoomW * 0.5 - frameT * 0.5, frameY + frameH * 0.5 + 0.02, pentRoomZ);
-      const aFrameHalfW = 5.45;
-      const aFrameEaveH = 0.67;
-      const aFramePeakH = 1.76;
-      const aFrameLen = 23.99;
-      const aFrameZ0 = -16.64;
-      const aFrameShape = new Shape();
-      aFrameShape.moveTo(-aFrameHalfW, 0);
-      aFrameShape.lineTo(aFrameHalfW, 0);
-      aFrameShape.lineTo(aFrameHalfW, aFrameEaveH);
-      aFrameShape.lineTo(0, aFramePeakH);
-      aFrameShape.lineTo(-aFrameHalfW, aFrameEaveH);
-      aFrameShape.closePath();
-      const aFrameGeo = new ExtrudeGeometry(aFrameShape, {
-        depth: aFrameLen,
-        bevelEnabled: false
-      });
-      const aFrameMesh = new Mesh(aFrameGeo, [weatheredStuccoMat, whiteRoofMat]);
-      aFrameMesh.position.set(4.5, roofBaseY, aFrameZ0);
-      aFrameMesh.castShadow = true;
-      aFrameMesh.receiveShadow = true;
-      arch.add(aFrameMesh);
-      const aSlopeLen = Math.hypot(aFrameHalfW, aFramePeakH - aFrameEaveH) + 0.12;
-      const aSlopeAng = Math.atan2(aFramePeakH - aFrameEaveH, aFrameHalfW);
-      [-1, 1].forEach((dir) => {
-        const rakeTrim = addBox(
-          aSlopeLen,
-          0.14,
-          0.26,
-          trimMat,
-          4.5 + dir * aFrameHalfW * 0.5,
-          roofBaseY + (aFrameEaveH + aFramePeakH) * 0.5 + 0.04,
-          aFrameZ0 + 0.06
-        );
-        rakeTrim.rotation.z = -dir * aSlopeAng;
-      });
-      addBox(0.38, 0.1, aFrameLen + 0.1, whiteCurbMat, 4.5, roofBaseY + aFramePeakH + 0.03, aFrameZ0 + aFrameLen * 0.5);
-      const addRoofCupola = (cxPos, cyPos, czPos, size = 0.82, h = 0.92) => {
-        addBox(size, h, size, whiteCurbMat, cxPos, cyPos + h * 0.5, czPos);
-        const cap = new Mesh(new ConeGeometry(size * 0.84, 0.36, 4), galvSteelMat);
-        cap.rotation.y = Math.PI * 0.25;
-        cap.position.set(cxPos, cyPos + h + 0.18, czPos);
-        arch.add(cap);
-      };
-      addRoofCupola(8.35, roofBaseY + pentRoomH + 0.12, 7.55, 0.88, 0.98);
-      addRoofCupola(9.55, roofBaseY + aFrameEaveH, 1.8, 0.78, 0.88);
-      addRoofCupola(9.55, roofBaseY + aFrameEaveH, -7.8, 0.78, 0.88);
-      addRoofCupola(-0.55, roofBaseY + aFrameEaveH, 1.8, 0.78, 0.88);
-      addRoofCupola(-0.55, roofBaseY + aFrameEaveH, -7.8, 0.78, 0.88);
-      const hvacMat = new MeshStandardMaterial({ color: "#8a857e", roughness: 0.55, metalness: 0.35 });
-      addBox(1.1, 0.1, 1.1, plinthConcreteMat, 10.2, roofBaseY + 0.05, 6.55);
-      addBox(0.88, 0.92, 0.88, darkMetalMat, 10.2, roofBaseY + 0.51, 6.55);
-      addBox(0.22, 0.42, 0.16, whiteCurbMat, 8.68, roofBaseY + 0.85, 7.25);
-      addBox(1.05, 0.1, 1.05, plinthConcreteMat, 10.3, roofBaseY + 0.05, -1.6);
-      addBox(0.85, 0.88, 0.85, darkMetalMat, 10.3, roofBaseY + 0.49, -1.6);
-      addBox(0.2, 0.55, 0.16, whiteCurbMat, 9.75, roofBaseY + 0.72, -1.1);
-      addBox(1.45, 0.96, 2.35, hvacMat, 10.45, roofBaseY + 0.48, -5.2);
-      addBox(1.48, 0.72, 1.1, darkMetalMat, 10.45, roofBaseY + 0.46, -5.75);
-      [-4.65, -5.7].forEach((fz) => {
-        const fanRing = new Mesh(new CylinderGeometry(0.42, 0.42, 0.05, 18), darkMetalMat);
-        fanRing.position.set(10.45, roofBaseY + 0.97, fz);
-        arch.add(fanRing);
-      });
-      addBox(0.92, 1.18, 1.25, darkMetalMat, 9.65, roofBaseY + 0.59, -9.8);
-      addBox(0.9, 0.85, 0.9, hvacMat, -0.55, roofBaseY + 0.45, -2.2);
-      addBox(1.3, 0.88, 2.1, hvacMat, -0.55, roofBaseY + 0.46, -5.4);
+      buildPhotoRealisticBuilding400(this, group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
     }
-    /**
-     * Photo-realistic 4-Level Architectural Reconstruction of Building 316 (316 Washington St — Community Development & Public Works)
-     * Modeled directly from the 5 aerial/street reference photographs:
-     * - Floor 1 (Basement: y = -4.2m..0.0m) below Washington St grade
-     * - Level 2 (Washington St Level: y = 0.0m..4.2m) with left-hand tan-brown running-bond brick entry pier,
-     *   silver "316 / WASHINGTON STREET" signage & dark directory box, recessed white-framed glass storefront entry
-     *   with open right-hand glass door leaf, bronze dedication plaque, two 5-bay horizontal ribbon windows on Washington St
-     *   + Douglas St ribbon windows, continuous white projecting entry/perimeter canopy, and front concrete ADA walk + black handrail + lawn strip
-     * - Level 3 (Office Story: y = 4.2m..8.4m) in warm tan/beige architectural precast concrete panels with grid reveal joints,
-     *   darker khaki-taupe spandrel band, three 5-bay horizontal ribbon windows on Washington St + Douglas St windows,
-     *   and signature white 3D triangular/pyramid architectural wall sconce uplights above the 3rd-floor windows
-     * - Level 4 (Clerestory & Recessed Mechanical Roof Court: y = 8.4m..12.65m) with East-side medium-gray stucco core tower bay,
-     *   continuous white-mullioned clerestory strip window wrapping NE & NW facades, 5-bay copper/terracotta horizontal louvered
-     *   screen wall on NE (Washington St) & 9-bay copper louvered screen wall on NW (Douglas St), recessed gray membrane roof deck,
-     *   tall L-shaped light-beige mechanical/elevator penthouse crowned with silver horizontal louvers, pale-yellow double service doors,
-     *   caged vertical roof ladder, 2-fan cooling tower/chiller on steel dunnage, and white insulated chilled-water piping across the roof deck
-     */
     _buildPhotoRealisticBuilding316(group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
-      const storyH = 4.2;
-      const precastCanvas = document.createElement("canvas");
-      precastCanvas.width = 512;
-      precastCanvas.height = 512;
-      const pCtx = precastCanvas.getContext("2d");
-      pCtx.fillStyle = "#c8bca6";
-      pCtx.fillRect(0, 0, 512, 512);
-      for (let y = 0; y < 512; y += 64) {
-        for (let x = 0; x < 512; x += 128) {
-          const j = Math.sin(x * 12.3 + y * 27.1) * 43758.5 % 1 * 6 - 3;
-          pCtx.fillStyle = `rgb(${200 + j}, ${188 + j}, ${166 + j})`;
-          pCtx.fillRect(x + 2, y + 2, 124, 60);
-        }
-      }
-      pCtx.strokeStyle = "rgba(92, 84, 70, 0.42)";
-      pCtx.lineWidth = 3;
-      for (let x = 0; x <= 512; x += 128) {
-        pCtx.beginPath();
-        pCtx.moveTo(x, 0);
-        pCtx.lineTo(x, 512);
-        pCtx.stroke();
-      }
-      for (let y = 0; y <= 512; y += 64) {
-        pCtx.beginPath();
-        pCtx.moveTo(0, y);
-        pCtx.lineTo(512, y);
-        pCtx.stroke();
-      }
-      const precastTex = new CanvasTexture(precastCanvas);
-      precastTex.wrapS = RepeatWrapping;
-      precastTex.wrapT = RepeatWrapping;
-      precastTex.repeat.set(0.22, 0.22);
-      precastTex.colorSpace = SRGBColorSpace;
-      const tanPrecastMat = new MeshStandardMaterial({
-        map: precastTex,
-        roughness: 0.82,
-        metalness: 0.04
-      });
-      const darkSpandrelMat = new MeshStandardMaterial({
-        color: "#9e917b",
-        roughness: 0.84,
-        metalness: 0.04
-      });
-      const basementConcreteMat = new MeshStandardMaterial({
-        color: "#a79c88",
-        roughness: 0.88,
-        metalness: 0.03
-      });
-      const whiteTrimMat = new MeshStandardMaterial({
-        color: "#f0eee9",
-        roughness: 0.65,
-        metalness: 0.08
-      });
-      const grayCoreStuccoMat = new MeshStandardMaterial({
-        color: "#8c908d",
-        roughness: 0.8,
-        metalness: 0.05
-      });
-      const roofMembraneMat = new MeshStandardMaterial({
-        color: "#6e7378",
-        roughness: 0.88,
-        metalness: 0.05
-      });
-      const penthouseWallMat = new MeshStandardMaterial({
-        color: "#b8b3a8",
-        roughness: 0.8,
-        metalness: 0.05
-      });
-      const copperCanvas = document.createElement("canvas");
-      copperCanvas.width = 256;
-      copperCanvas.height = 256;
-      const cCtx = copperCanvas.getContext("2d");
-      cCtx.fillStyle = "#733d20";
-      cCtx.fillRect(0, 0, 256, 256);
-      for (let y = 0; y < 256; y += 8) {
-        cCtx.fillStyle = "#c4794e";
-        cCtx.fillRect(0, y, 256, 4);
-        cCtx.fillStyle = "#a45d36";
-        cCtx.fillRect(0, y + 4, 256, 2);
-        cCtx.fillStyle = "#582c15";
-        cCtx.fillRect(0, y + 6, 256, 2);
-      }
-      const copperLouverTex = new CanvasTexture(copperCanvas);
-      copperLouverTex.wrapS = RepeatWrapping;
-      copperLouverTex.wrapT = RepeatWrapping;
-      copperLouverTex.colorSpace = SRGBColorSpace;
-      const copperLouverMat = new MeshStandardMaterial({
-        map: copperLouverTex,
-        roughness: 0.52,
-        metalness: 0.32
-      });
-      const copperFrameMat = new MeshStandardMaterial({
-        color: "#b56c43",
-        roughness: 0.48,
-        metalness: 0.36
-      });
-      const silverCanvas = document.createElement("canvas");
-      silverCanvas.width = 256;
-      silverCanvas.height = 256;
-      const sCtx = silverCanvas.getContext("2d");
-      sCtx.fillStyle = "#686e75";
-      sCtx.fillRect(0, 0, 256, 256);
-      for (let y = 0; y < 256; y += 8) {
-        sCtx.fillStyle = "#d3d8de";
-        sCtx.fillRect(0, y, 256, 4);
-        sCtx.fillStyle = "#aeb5bd";
-        sCtx.fillRect(0, y + 4, 256, 2);
-        sCtx.fillStyle = "#5c6268";
-        sCtx.fillRect(0, y + 6, 256, 2);
-      }
-      const silverLouverTex = new CanvasTexture(silverCanvas);
-      silverLouverTex.wrapS = RepeatWrapping;
-      silverLouverTex.wrapT = RepeatWrapping;
-      silverLouverTex.colorSpace = SRGBColorSpace;
-      const silverLouverMat = new MeshStandardMaterial({
-        map: silverLouverTex,
-        roughness: 0.42,
-        metalness: 0.55
-      });
-      const brickCanvas = document.createElement("canvas");
-      brickCanvas.width = 256;
-      brickCanvas.height = 256;
-      const bCtx = brickCanvas.getContext("2d");
-      bCtx.fillStyle = "#7c6e5f";
-      bCtx.fillRect(0, 0, 256, 256);
-      const baseBrick = new Color("#a87c5f");
-      for (let r = 0; r < 16; r++) {
-        const off = r % 2 * 16;
-        for (let c = -1; c <= 8; c++) {
-          const j = Math.sin(r * 17.3 + c * 31.7) * 43758.5 % 1 * 0.06 - 0.03;
-          const col = baseBrick.clone().offsetHSL(0, j * 0.3, j);
-          bCtx.fillStyle = `#${col.getHexString()}`;
-          bCtx.fillRect(c * 32 + off + 2, r * 16 + 2, 29, 13);
-        }
-      }
-      const entryBrickTex = new CanvasTexture(brickCanvas);
-      entryBrickTex.wrapS = RepeatWrapping;
-      entryBrickTex.wrapT = RepeatWrapping;
-      entryBrickTex.repeat.set(2, 2);
-      entryBrickTex.colorSpace = SRGBColorSpace;
-      const entryBrickMat = new MeshStandardMaterial({
-        map: entryBrickTex,
-        roughness: 0.84,
-        metalness: 0.04
-      });
-      const officeGlassMat = new MeshStandardMaterial({
-        color: "#4e6e6a",
-        roughness: 0.18,
-        metalness: 0.35
-      });
-      const sageBlindGlassMat = new MeshStandardMaterial({
-        color: "#9eb8ad",
-        roughness: 0.28,
-        metalness: 0.18
-      });
-      const darkBronzeMat = new MeshStandardMaterial({
-        color: "#26282a",
-        roughness: 0.42,
-        metalness: 0.62
-      });
-      const yellowDoorMat = new MeshStandardMaterial({
-        color: "#d9c574",
-        roughness: 0.65,
-        metalness: 0.08
-      });
-      const galvSteelMat = new MeshStandardMaterial({
-        color: "#b8bfc6",
-        roughness: 0.42,
-        metalness: 0.62
-      });
-      const footingGeo = new ExtrudeGeometry(shape, { depth: 2.35, bevelEnabled: false });
-      footingGeo.rotateX(-Math.PI / 2);
-      const footingMesh = new Mesh(footingGeo, basementConcreteMat);
-      footingMesh.position.y = -6.5;
-      group.add(footingMesh);
-      const bsmtGeo = new ExtrudeGeometry(shape, { depth: storyH, bevelEnabled: false });
-      bsmtGeo.rotateX(-Math.PI / 2);
-      const bsmtMesh = new Mesh(bsmtGeo, basementConcreteMat);
-      bsmtMesh.name = "Layer1_Basement_BelowRoad";
-      bsmtMesh.position.y = -storyH;
-      bsmtMesh.castShadow = true;
-      bsmtMesh.receiveShadow = true;
-      bsmtMesh.userData = { isSelectableBuilding: true, building, floorLayer: 1 };
-      group.add(bsmtMesh);
-      const mainBodyGeo = new ExtrudeGeometry(shape, { depth: 9.85, bevelEnabled: false });
-      mainBodyGeo.rotateX(-Math.PI / 2);
-      this._applyArchitecturalUVs(mainBodyGeo, 9.85, 2.35);
-      const mainBodyMesh = new Mesh(mainBodyGeo, [roofMembraneMat, tanPrecastMat]);
-      mainBodyMesh.name = "Layer2_3_4_MainPrecastBody";
-      mainBodyMesh.position.y = 0;
-      mainBodyMesh.castShadow = true;
-      mainBodyMesh.receiveShadow = true;
-      mainBodyMesh.userData = { isSelectableBuilding: true, building, floorLayer: 2 };
-      group.add(mainBodyMesh);
-      const addFootprintBand = (yStart, bandH, overhang, mat) => {
-        const bGeo = new ExtrudeGeometry(shape, {
-          depth: bandH,
-          bevelEnabled: true,
-          bevelThickness: 0.03,
-          bevelSize: overhang,
-          bevelSegments: 1
-        });
-        bGeo.rotateX(-Math.PI / 2);
-        const bMesh = new Mesh(bGeo, mat);
-        bMesh.position.y = yStart;
-        bMesh.castShadow = true;
-        bMesh.receiveShadow = true;
-        group.add(bMesh);
-      };
-      addFootprintBand(0, 0.72, 0.05, darkSpandrelMat);
-      addFootprintBand(3.35, 0.97, 0.04, darkSpandrelMat);
-      addFootprintBand(4.92, 0.12, 0.06, darkSpandrelMat);
-      addFootprintBand(6.55, 0.12, 0.06, darkSpandrelMat);
-      addFootprintBand(8.32, 0.18, 0.16, whiteTrimMat);
-      addFootprintBand(9.76, 0.14, 0.16, whiteTrimMat);
-      addFootprintBand(12.56, 0.12, 0.14, copperFrameMat);
-      const arch = new Group();
-      arch.name = "Building316ArchitecturalDetails";
-      arch.rotation.y = Math.atan2(0.59621, -0.80283);
-      group.add(arch);
-      const addBox = (w, h, d, mat, x, y, z, cast = true) => {
-        const m = new Mesh(new BoxGeometry(w, h, d), mat);
-        m.position.set(x, y, z);
-        m.castShadow = cast;
-        m.receiveShadow = true;
-        m.userData = { isSelectableBuilding: true, building };
-        arch.add(m);
-        return m;
-      };
-      const bldgCx316 = building.center[0];
-      const bldgCz316 = building.center[1];
-      const sinT316 = 0.59621006;
-      const cosT316 = -0.80282848;
-      const getDouglasLocalGroundY = (lx, lz) => {
-        if (typeof getTerrainHeightFn !== "function" || lz >= 25.4) return 0;
-        const blend = MathUtils.smoothstep(25.4 - lz, 0, 4);
-        const wx = bldgCx316 + lx * cosT316 + lz * sinT316;
-        const wz = bldgCz316 - lx * sinT316 + lz * cosT316;
-        return Math.max(0, (getTerrainHeightFn(wx, wz) - terrainY) * blend);
-      };
-      const addContouredDouglasStrip = (xMin, xMax, zMin, zMax, topOffset, minBotY, mat, zSteps = 48, sampleX = 11.375) => {
-        const positions = [];
-        const pushQuad = (ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) => {
-          positions.push(ax, ay, az, bx, by, bz, cx, cy, cz);
-          positions.push(ax, ay, az, cx, cy, cz, dx, dy, dz);
-        };
-        for (let i = 0; i < zSteps; i++) {
-          const z0 = zMin + i / zSteps * (zMax - zMin);
-          const z1 = zMin + (i + 1) / zSteps * (zMax - zMin);
-          const g0 = Math.max(
-            getDouglasLocalGroundY(xMin, z0),
-            getDouglasLocalGroundY(xMax, z0),
-            getDouglasLocalGroundY(sampleX, z0)
-          );
-          const g1 = Math.max(
-            getDouglasLocalGroundY(xMin, z1),
-            getDouglasLocalGroundY(xMax, z1),
-            getDouglasLocalGroundY(sampleX, z1)
-          );
-          const yTop0 = g0 + topOffset;
-          const yTop1 = g1 + topOffset;
-          const yBot0 = Math.min(minBotY, yTop0 - 0.34);
-          const yBot1 = Math.min(minBotY, yTop1 - 0.34);
-          pushQuad(xMin, yTop0, z0, xMin, yTop1, z1, xMax, yTop1, z1, xMax, yTop0, z0);
-          pushQuad(xMax, yTop0, z0, xMax, yTop1, z1, xMax, yBot1, z1, xMax, yBot0, z0);
-          pushQuad(xMin, yTop1, z1, xMin, yTop0, z0, xMin, yBot0, z0, xMin, yBot1, z1);
-          if (i === 0) {
-            pushQuad(xMin, yTop0, z0, xMax, yTop0, z0, xMax, yBot0, z0, xMin, yBot0, z0);
-          }
-          if (i === zSteps - 1) {
-            pushQuad(xMax, yTop1, z1, xMin, yTop1, z1, xMin, yBot1, z1, xMax, yBot1, z1);
-          }
-        }
-        const geo = new BufferGeometry();
-        geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
-        geo.computeVertexNormals();
-        const mesh = new Mesh(geo, mat);
-        mesh.receiveShadow = true;
-        mesh.userData = { isSelectableBuilding: true, building };
-        arch.add(mesh);
-        return mesh;
-      };
-      const addRibbonWindow = (wallAxis, centerCoord, yBot, totalW, totalH, numBays, hasLowerHopper = true) => {
-        const winGrp = new Group();
-        const isZWall = Math.abs(wallAxis.nz) > 0.5;
-        if (isZWall) {
-          winGrp.position.set(centerCoord, yBot + totalH * 0.5, wallAxis.pos + wallAxis.nz * 0.05);
-          if (wallAxis.nz < 0) winGrp.rotation.y = Math.PI;
-        } else {
-          winGrp.position.set(wallAxis.pos + wallAxis.nx * 0.05, yBot + totalH * 0.5, centerCoord);
-          winGrp.rotation.y = wallAxis.nx > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
-        }
-        const frameD = 0.12;
-        const frameT = 0.07;
-        const topBar = new Mesh(new BoxGeometry(totalW + 0.08, frameT, frameD), whiteTrimMat);
-        topBar.position.set(0, totalH * 0.5 - frameT * 0.5, 0);
-        winGrp.add(topBar);
-        const botBar = new Mesh(new BoxGeometry(totalW + 0.12, frameT + 0.02, frameD + 0.04), whiteTrimMat);
-        botBar.position.set(0, -totalH * 0.5 + frameT * 0.5, 0.02);
-        winGrp.add(botBar);
-        const bayW = totalW / numBays;
-        for (let b = 0; b < numBays; b++) {
-          const bx = -totalW * 0.5 + (b + 0.5) * bayW;
-          const useBlind = b === 0 || b === 2 || b === numBays - 1;
-          const pane = new Mesh(
-            new BoxGeometry(bayW - 0.04, totalH - frameT * 2, 0.04),
-            useBlind ? sageBlindGlassMat : officeGlassMat
-          );
-          pane.position.set(bx, 0, -0.01);
-          winGrp.add(pane);
-        }
-        for (let b = 0; b <= numBays; b++) {
-          const mx = -totalW * 0.5 + b * bayW;
-          const mul = new Mesh(new BoxGeometry(0.055, totalH, frameD), whiteTrimMat);
-          mul.position.set(mx, 0, 0.01);
-          winGrp.add(mul);
-        }
-        if (hasLowerHopper) {
-          const hBar = new Mesh(new BoxGeometry(totalW, 0.05, frameD), whiteTrimMat);
-          hBar.position.set(0, -totalH * 0.22, 0.015);
-          winGrp.add(hBar);
-        }
-        arch.add(winGrp);
-      };
-      const frontZ = 25.4;
-      const douglasX = 7.91;
-      const courtX = -11.1;
-      const rearZ = -6.05;
-      addBox(3.68, 3.32, 0.24, entryBrickMat, -9.28, 1.66, frontZ + 0.04);
-      addBox(0.24, 3.32, 7.26, entryBrickMat, courtX - 0.04, 1.66, 21.81);
-      addBox(0.14, 0.16, 0.24, copperFrameMat, courtX - 0.16, 3.02, 23.8);
-      const addrTex = this._createTextPlaqueTexture(
-        ["316", "WASHINGTON STREET"],
-        "#a2775b",
-        "#f2f4f7",
-        512,
-        160
-      );
-      const addrMat = new MeshStandardMaterial({ map: addrTex, roughness: 0.45, metalness: 0.35 });
-      addBox(2.35, 0.58, 0.05, addrMat, -9.28, 2.68, frontZ + 0.17, false);
-      addBox(1.68, 0.88, 0.1, darkBronzeMat, -9.28, 1.65, frontZ + 0.18);
-      addBox(1.52, 0.72, 0.03, officeGlassMat, -9.28, 1.65, frontZ + 0.23, false);
-      const entryCenterX = -5.55;
-      const entryW = 3.8;
-      const entryH = 3.15;
-      addBox(entryW, entryH, 0.35, officeGlassMat, entryCenterX, entryH * 0.5 + 0.05, frontZ - 0.12);
-      addBox(entryW + 0.1, 0.09, 0.18, whiteTrimMat, entryCenterX, entryH + 0.04, frontZ + 0.04);
-      addBox(entryW + 0.1, 0.07, 0.18, whiteTrimMat, entryCenterX, 2.28, frontZ + 0.04);
-      addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX - 1.42, 0.95, frontZ + 0.04);
-      addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX + 1.42, 0.95, frontZ + 0.04);
-      [-1.9, -0.95, 0, 0.95, 1.9].forEach((dx) => {
-        const h = Math.abs(dx) < 0.05 ? entryH - 2.28 : entryH;
-        const yPos = Math.abs(dx) < 0.05 ? 2.28 + h * 0.5 : entryH * 0.5 + 0.04;
-        addBox(0.07, h, 0.18, whiteTrimMat, entryCenterX + dx, yPos, frontZ + 0.04);
-      });
-      addBox(0.9, 2.22, 0.05, whiteTrimMat, entryCenterX - 0.48, 1.15, frontZ + 0.02);
-      addBox(0.76, 2.02, 0.06, officeGlassMat, entryCenterX - 0.48, 1.15, frontZ + 0.02);
-      const openDoorGrp = new Group();
-      openDoorGrp.position.set(entryCenterX + 0.92, 1.15, frontZ + 0.05);
-      openDoorGrp.rotation.y = -0.95;
-      const doorFrameMesh = new Mesh(new BoxGeometry(0.92, 2.22, 0.05), whiteTrimMat);
-      doorFrameMesh.position.set(-0.46, 0, 0);
-      openDoorGrp.add(doorFrameMesh);
-      const doorGlassMesh = new Mesh(new BoxGeometry(0.76, 2.02, 0.06), officeGlassMat);
-      doorGlassMesh.position.set(-0.46, 0, 0);
-      openDoorGrp.add(doorGlassMesh);
-      arch.add(openDoorGrp);
-      addBox(0.42, 0.52, 0.05, copperFrameMat, -3.15, 1.48, frontZ + 0.06);
-      addBox(0.18, 0.24, 0.04, darkBronzeMat, -3.15, 2.02, frontZ + 0.06);
-      addRibbonWindow({ pos: frontZ, nz: 1 }, -0.2, 0.78, 4.75, 2.05, 5, true);
-      addRibbonWindow({ pos: frontZ, nz: 1 }, 5, 0.78, 4.75, 2.05, 5, true);
-      addContouredDouglasStrip(douglasX - 0.04, douglasX + 0.06, -6.05, 25.4, 0.72, 0, darkSpandrelMat, 36);
-      [
-        [20.6, 5.6, 5],
-        [12.8, 5.6, 5],
-        [4.8, 5.2, 5],
-        [-2.2, 4.2, 4]
-      ].forEach(([wz, ww, wbays]) => {
-        const localGround = getDouglasLocalGroundY(11.375, wz);
-        const winYBot = Math.min(1.68, 0.78 + localGround * 0.52);
-        const winH = Math.max(1.35, 2.83 - winYBot);
-        addRibbonWindow({ pos: douglasX, nx: 1 }, wz, winYBot, ww, winH, wbays, true);
-      });
-      addRibbonWindow({ pos: courtX, nx: -1 }, 13.8, 0.78, 2.2, 2.05, 2, true);
-      addRibbonWindow({ pos: courtX, nx: -1 }, 9.8, 0.98, 0.85, 1.65, 1, false);
-      addRibbonWindow({ pos: courtX, nx: -1 }, 7.8, 0.98, 0.85, 1.65, 1, false);
-      addRibbonWindow({ pos: courtX, nx: -1 }, 1.2, 0.78, 5.2, 2.05, 5, true);
-      addRibbonWindow({ pos: rearZ, nz: -1 }, -7.4, 0.78, 4.8, 2.05, 4, true);
-      addRibbonWindow({ pos: -10.29, nz: -1 }, 0.45, 0.78, 5.2, 2.05, 5, true);
-      addBox(20.6, 0.22, 1.05, whiteTrimMat, -1.55, 3.28, frontZ + 0.48);
-      addBox(0.95, 0.22, 32.15, whiteTrimMat, douglasX + 0.44, 3.28, 9.92);
-      addBox(0.85, 0.22, 8.1, whiteTrimMat, courtX - 0.38, 3.28, 21.95);
-      addBox(0.18, 0.2, 24.05, whiteTrimMat, courtX - 0.06, 3.26, 5.98);
-      addRibbonWindow({ pos: frontZ, nz: 1 }, -7.25, 5.05, 4.65, 1.5, 5, false);
-      addRibbonWindow({ pos: frontZ, nz: 1 }, -1.05, 5.05, 4.65, 1.5, 5, false);
-      addRibbonWindow({ pos: frontZ, nz: 1 }, 5.05, 5.05, 4.65, 1.5, 5, false);
-      addRibbonWindow({ pos: douglasX, nx: 1 }, 20.6, 5.05, 5.6, 1.5, 5, false);
-      addRibbonWindow({ pos: douglasX, nx: 1 }, 15.2, 5.35, 0.92, 1.15, 1, false);
-      addRibbonWindow({ pos: douglasX, nx: 1 }, 13, 5.35, 0.92, 1.15, 1, false);
-      addRibbonWindow({ pos: douglasX, nx: 1 }, 7.2, 5.05, 5.4, 1.5, 5, false);
-      addRibbonWindow({ pos: douglasX, nx: 1 }, -1.5, 5.05, 5.2, 1.5, 5, false);
-      addRibbonWindow({ pos: courtX, nx: -1 }, 12.2, 5.05, 5.4, 1.5, 5, false);
-      addRibbonWindow({ pos: courtX, nx: -1 }, 3.8, 5.05, 5.4, 1.5, 5, false);
-      addRibbonWindow({ pos: courtX, nx: -1 }, -2.8, 5.05, 4.2, 1.5, 4, false);
-      addRibbonWindow({ pos: rearZ, nz: -1 }, -7.4, 5.05, 4.8, 1.5, 4, false);
-      addRibbonWindow({ pos: -10.29, nz: -1 }, 0.45, 5.05, 5.2, 1.5, 5, false);
-      const sconceMat = new MeshStandardMaterial({
-        color: "#f7f8fa",
-        emissive: "#fff4d6",
-        emissiveIntensity: 0.22,
-        roughness: 0.35,
-        metalness: 0.1
-      });
-      [-9.25, -4.05, 1.15, 6.25].forEach((sx) => {
-        const sconce = new Mesh(new ConeGeometry(0.34, 0.56, 3), sconceMat);
-        sconce.position.set(sx, 7.22, frontZ + 0.12);
-        sconce.rotation.y = Math.PI;
-        sconce.castShadow = true;
-        arch.add(sconce);
-      });
-      [23.2, 18, 9.8, 1.2].forEach((sz) => {
-        const sconce = new Mesh(new ConeGeometry(0.34, 0.56, 3), sconceMat);
-        sconce.position.set(douglasX + 0.12, 7.22, sz);
-        sconce.rotation.y = -Math.PI * 0.5;
-        sconce.castShadow = true;
-        arch.add(sconce);
-      });
-      [21.8, 12.2, 3.8, -2.8].forEach((sz) => {
-        const sconce = new Mesh(new ConeGeometry(0.34, 0.56, 3), sconceMat);
-        sconce.position.set(courtX - 0.12, 7.22, sz);
-        sconce.rotation.y = Math.PI * 0.5;
-        sconce.castShadow = true;
-        arch.add(sconce);
-      });
-      addBox(3.82, 4.28, 7.26, grayCoreStuccoMat, -9.23, 10.54, 21.81);
-      addBox(3.96, 0.16, 7.4, whiteTrimMat, -9.23, 12.7, 21.81);
-      addBox(0.04, 4.26, 0.06, whiteTrimMat, -9.23, 10.525, frontZ + 0.06);
-      addBox(3.8, 0.04, 0.06, whiteTrimMat, -9.23, 10.35, frontZ + 0.06);
-      [21.8, 18.2, 13.6].forEach((jz) => {
-        addBox(0.08, 4.26, 0.04, whiteTrimMat, courtX - 0.04, 10.525, jz);
-      });
-      [21.8, 18.2, 13.6, 9, 4.4].forEach((jz) => {
-        addBox(0.06, 4.95, 0.04, darkSpandrelMat, courtX - 0.03, 5.85, jz);
-      });
-      addRibbonWindow({ pos: frontZ, nz: 1 }, 0.28, 8.48, 15.2, 1.3, 15, false);
-      addRibbonWindow({ pos: douglasX, nx: 1 }, 9.72, 8.48, 31.3, 1.3, 30, false);
-      addRibbonWindow({ pos: courtX, nx: -1 }, 14.65, 8.48, 1.05, 1.3, 1, true);
-      addRibbonWindow({ pos: courtX, nx: -1 }, 9, 8.48, 9.1, 1.3, 10, true);
-      addRibbonWindow({ pos: rearZ, nz: -1 }, -7.38, 8.48, 7.1, 1.3, 7, false);
-      addRibbonWindow({ pos: rearZ, nz: -1 }, 6.23, 8.48, 3.1, 1.3, 3, false);
-      addRibbonWindow({ pos: -10.29, nz: -1 }, 0.45, 8.48, 7.9, 1.3, 8, false);
-      addRibbonWindow({ pos: 4.56, nx: 1 }, -8.17, 8.48, 4, 1.3, 4, false);
-      addRibbonWindow({ pos: -3.66, nx: -1 }, -8.17, 8.48, 4, 1.3, 4, false);
-      const neLouverH = 2.74;
-      const neLouverY = 9.88 + neLouverH * 0.5;
-      const neLouverW = 15.25;
-      addBox(neLouverW, neLouverH, 0.28, copperLouverMat, 0.28, neLouverY, frontZ - 0.12);
-      for (let i = 0; i <= 5; i++) {
-        const px2 = -7.34 + i * (neLouverW / 5);
-        addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, px2, neLouverY, frontZ - 0.1);
-      }
-      const nwLouverL = 31.45;
-      addBox(0.28, neLouverH, nwLouverL, copperLouverMat, douglasX - 0.12, neLouverY, 9.68);
-      for (let i = 0; i <= 10; i++) {
-        const pz2 = 25.4 - i * (nwLouverL / 10);
-        addBox(0.34, neLouverH + 0.08, 0.11, copperFrameMat, douglasX - 0.1, neLouverY, pz2);
-      }
-      addBox(0.28, neLouverH, 4.6, grayCoreStuccoMat, courtX + 0.12, neLouverY, 15.9);
-      addBox(0.36, 0.16, 4.65, whiteTrimMat, courtX + 0.1, 12.7, 15.9);
-      addBox(0.28, neLouverH, 9.2, copperLouverMat, courtX + 0.12, neLouverY, 9);
-      [13.6, 9, 4.4].forEach((pz2) => {
-        addBox(0.34, neLouverH + 0.08, 0.11, copperFrameMat, courtX + 0.1, neLouverY, pz2);
-      });
-      addBox(0.28, 4.28, 10.45, grayCoreStuccoMat, courtX + 0.12, 10.54, -0.825);
-      addBox(0.36, 0.16, 10.5, whiteTrimMat, courtX + 0.1, 12.7, -0.825);
-      addBox(0.32, 1.35, 1.65, darkBronzeMat, courtX + 0.08, 11.15, -4.15);
-      addBox(7.44, neLouverH, 0.28, copperLouverMat, -7.38, neLouverY, rearZ + 0.12);
-      for (let i = 0; i <= 3; i++) {
-        addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, -11.1 + i * (7.44 / 3), neLouverY, rearZ + 0.1);
-      }
-      addBox(3.35, neLouverH, 0.28, copperLouverMat, 6.235, neLouverY, rearZ + 0.12);
-      addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, 4.56, neLouverY, rearZ + 0.1);
-      addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, 7.91, neLouverY, rearZ + 0.1);
-      addBox(8.22, neLouverH, 0.28, copperLouverMat, 0.45, neLouverY, -10.29 + 0.12);
-      for (let i = 0; i <= 3; i++) {
-        addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, -3.66 + i * (8.22 / 3), neLouverY, -10.29 + 0.1);
-      }
-      addBox(0.28, neLouverH, 4.24, copperLouverMat, -3.66 + 0.12, neLouverY, -8.17);
-      addBox(0.28, neLouverH, 4.24, copperLouverMat, 4.56 - 0.12, neLouverY, -8.17);
-      addBox(0.24, 1.4, 31.2, whiteTrimMat, douglasX - 0.36, 10.5, 9.72);
-      addBox(0.24, 1.4, 24, whiteTrimMat, courtX + 0.36, 10.5, 6.1);
-      addBox(7.2, 1.4, 0.24, whiteTrimMat, -7.38, 10.5, rearZ + 0.36);
-      addBox(3.15, 1.4, 0.24, whiteTrimMat, 6.23, 10.5, rearZ + 0.36);
-      addBox(8, 1.4, 0.24, whiteTrimMat, 0.45, 10.5, -10.29 + 0.36);
-      addBox(0.24, 1.4, 4.1, whiteTrimMat, -3.66 + 0.36, 10.5, -8.17);
-      addBox(0.24, 1.4, 4.1, whiteTrimMat, 4.56 - 0.36, 10.5, -8.17);
-      const pentBaseY = 9.8;
-      const pentWallH = 3.65;
-      const pentCrownH = 1.75;
-      addBox(7.6, pentWallH, 12.4, penthouseWallMat, -7, pentBaseY + pentWallH * 0.5, 12.2);
-      addBox(7.68, 0.14, 12.48, whiteTrimMat, -7, pentBaseY + pentWallH, 12.2);
-      addBox(7.6, pentCrownH, 12.4, silverLouverMat, -7, pentBaseY + pentWallH + pentCrownH * 0.5, 12.2);
-      addBox(7.72, 0.14, 12.52, galvSteelMat, -7, pentBaseY + pentWallH + pentCrownH + 0.05, 12.2);
-      addBox(13.6, pentWallH, 16.1, penthouseWallMat, -4, pentBaseY + pentWallH * 0.5, 2.45);
-      addBox(13.68, 0.14, 16.18, whiteTrimMat, -4, pentBaseY + pentWallH, 2.45);
-      addBox(13.6, pentCrownH, 16.1, silverLouverMat, -4, pentBaseY + pentWallH + pentCrownH * 0.5, 2.45);
-      addBox(13.72, 0.14, 16.22, galvSteelMat, -4, pentBaseY + pentWallH + pentCrownH + 0.05, 2.45);
-      for (let lxPos = -10.5; lxPos <= -3.3; lxPos += 3.5) {
-        addBox(0.1, pentCrownH + 0.1, 0.12, galvSteelMat, lxPos, pentBaseY + pentWallH + pentCrownH * 0.5, 18.42);
-      }
-      for (let lzPos = 18.2; lzPos >= 10.6; lzPos -= 2.5) {
-        addBox(0.12, pentCrownH + 0.1, 0.1, galvSteelMat, -3.18, pentBaseY + pentWallH + pentCrownH * 0.5, lzPos);
-      }
-      for (let lxPos = -3.1; lxPos <= 2.8; lxPos += 2.95) {
-        addBox(0.1, pentCrownH + 0.1, 0.12, galvSteelMat, lxPos, pentBaseY + pentWallH + pentCrownH * 0.5, 10.52);
-      }
-      addBox(0.08, 2.15, 1.82, yellowDoorMat, -3.18, pentBaseY + 1.12, 15.6);
-      addBox(0.1, 2.15, 0.04, darkBronzeMat, -3.18, pentBaseY + 1.12, 15.6);
-      addBox(0.12, 0.16, 0.18, darkBronzeMat, -3.16, pentBaseY + 1.15, 15.6);
-      const ladderX = -1.6;
-      const ladderZ = 10.62;
-      addBox(0.06, 6.2, 0.08, galvSteelMat, ladderX - 0.28, pentBaseY + 3.1, ladderZ);
-      addBox(0.06, 6.2, 0.08, galvSteelMat, ladderX + 0.28, pentBaseY + 3.1, ladderZ);
-      for (let ry = 0.4; ry <= 6; ry += 0.35) {
-        addBox(0.56, 0.04, 0.05, galvSteelMat, ladderX, pentBaseY + ry, ladderZ);
-      }
-      for (let cy = 2.2; cy <= 6.1; cy += 0.65) {
-        const hoop = new Mesh(
-          new CylinderGeometry(0.42, 0.42, 0.05, 12, 1, true),
-          galvSteelMat
-        );
-        hoop.position.set(ladderX, pentBaseY + cy, ladderZ + 0.32);
-        arch.add(hoop);
-      }
-      addBox(1.35, 2.35, 1.85, galvSteelMat, 3.35, pentBaseY + 3.25, 9.2);
-      const chillerX = 2.1;
-      const chillerZ = 14.8;
-      addBox(3.1, 0.16, 3.1, basementConcreteMat, chillerX, pentBaseY + 0.08, chillerZ);
-      [-1.2, 1.2].forEach((dx) => {
-        [-1.2, 1.2].forEach((dz) => {
-          addBox(0.16, 0.55, 0.16, darkBronzeMat, chillerX + dx, pentBaseY + 0.38, chillerZ + dz);
-        });
-      });
-      addBox(2.85, 1.95, 2.85, penthouseWallMat, chillerX, pentBaseY + 1.62, chillerZ);
-      [-0.65, 0.65].forEach((dx) => {
-        const cowl = new Mesh(new CylinderGeometry(0.55, 0.55, 0.18, 16), darkBronzeMat);
-        cowl.position.set(chillerX + dx, pentBaseY + 2.68, chillerZ);
-        arch.add(cowl);
-      });
-      [-0.22, 0, 0.22].forEach((px2) => {
-        addBox(0.11, 2.15, 0.11, whiteTrimMat, chillerX + px2, pentBaseY + 1.55, chillerZ + 1.48);
-      });
-      addBox(5.35, 0.12, 0.12, whiteTrimMat, -0.52, pentBaseY + 0.52, 13.65);
-      addBox(5.35, 0.12, 0.12, whiteTrimMat, -0.52, pentBaseY + 0.52, 13.9);
-      [-2.2, -0.5, 1.2].forEach((sx) => {
-        addBox(0.12, 0.5, 0.48, galvSteelMat, sx, pentBaseY + 0.25, 13.78);
-      });
-      addBox(0.18, 0.65, 3.1, galvSteelMat, -3.1, pentBaseY + 0.65, 12.6);
-      const sidewalkConcreteMat = new MeshStandardMaterial({
-        color: "#d8d4cb",
-        roughness: 0.85,
-        metalness: 0.03
-      });
-      const sidewalkJointMat = new MeshStandardMaterial({
-        color: "#8c867a",
-        roughness: 0.92,
-        metalness: 0.02
-      });
-      const whitePebbleMat = new MeshStandardMaterial({
-        color: "#e8e5dd",
-        roughness: 0.95,
-        metalness: 0.01
-      });
-      const railPipeMat = new MeshStandardMaterial({
-        color: "#5c6166",
-        roughness: 0.45,
-        metalness: 0.68
-      });
-      const lawnMat = new MeshStandardMaterial({
-        color: "#4e7932",
-        roughness: 0.92,
-        metalness: 0.02
-      });
-      const shrubMat = new MeshStandardMaterial({
-        color: "#365c24",
-        roughness: 0.9,
-        metalness: 0.02
-      });
-      addBox(11.52, 0.28, 0.18, whitePebbleMat, 2.16, 0.29, frontZ + 0.09, false);
-      const walkW = 13.9;
-      const walkD = 1.72;
-      const walkCenterZ = frontZ + 1.04;
-      addBox(walkW, 0.28, walkD, sidewalkConcreteMat, 3.3, 0.28, walkCenterZ, false);
-      for (let jx = -3.65; jx <= 10.1; jx += 1.7) {
-        addBox(0.03, 0.29, walkD + 0.02, sidewalkJointMat, jx, 0.285, walkCenterZ, false);
-      }
-      addBox(7.48, 0.28, 1.9, sidewalkConcreteMat, -7.39, 0.28, frontZ + 0.95, false);
-      const railZ = frontZ + 1.84;
-      const railSpan = 15.3;
-      const railCenterX = 0.6;
-      const topRailGeo = new CylinderGeometry(0.026, 0.026, railSpan, 12);
-      topRailGeo.rotateZ(Math.PI * 0.5);
-      const topRailMesh = new Mesh(topRailGeo, railPipeMat);
-      topRailMesh.position.set(railCenterX, 1.28, railZ);
-      topRailMesh.castShadow = true;
-      arch.add(topRailMesh);
-      for (let rx = -7.05; rx <= 8.26; rx += 1.7) {
-        const postMesh = new Mesh(
-          new CylinderGeometry(0.024, 0.024, 0.9, 10),
-          railPipeMat
-        );
-        postMesh.position.set(rx, 0.83, railZ);
-        postMesh.castShadow = true;
-        arch.add(postMesh);
-      }
-      const lawnW = 23.7;
-      const lawnD = 2.25;
-      const lawnGeo = new BoxGeometry(lawnW, 0.22, lawnD);
-      const lawnMesh = new Mesh(lawnGeo, lawnMat);
-      lawnMesh.position.set(-1.6, 0.24, frontZ + 3.025);
-      lawnMesh.rotation.x = 0.065;
-      lawnMesh.receiveShadow = true;
-      arch.add(lawnMesh);
-      const hydGrp = new Group();
-      hydGrp.position.set(5.55, 0.34, frontZ + 3.05);
-      const hydYellowMat = new MeshStandardMaterial({ color: "#d8a818", roughness: 0.48, metalness: 0.22 });
-      const hydRedCapMat = new MeshStandardMaterial({ color: "#983b38", roughness: 0.62, metalness: 0.25 });
-      const hydPatinaMat = new MeshStandardMaterial({ color: "#567864", roughness: 0.58, metalness: 0.28 });
-      const hydBase = new Mesh(new CylinderGeometry(0.15, 0.17, 0.08, 14), hydYellowMat);
-      hydBase.position.y = 0.04;
-      hydGrp.add(hydBase);
-      const hydBarrel = new Mesh(new CylinderGeometry(0.125, 0.13, 0.52, 16), hydYellowMat);
-      hydBarrel.position.y = 0.3;
-      hydBarrel.castShadow = true;
-      hydGrp.add(hydBarrel);
-      [-1, 1].forEach((dir) => {
-        const noz = new Mesh(new CylinderGeometry(0.052, 0.052, 0.16, 12), hydYellowMat);
-        noz.rotation.z = Math.PI * 0.5;
-        noz.position.set(dir * 0.16, 0.38, 0);
-        hydGrp.add(noz);
-      });
-      const pumperNoz = new Mesh(new CylinderGeometry(0.075, 0.075, 0.16, 14), railPipeMat);
-      pumperNoz.rotation.x = Math.PI * 0.5;
-      pumperNoz.position.set(0, 0.33, 0.14);
-      hydGrp.add(pumperNoz);
-      const hydCollar = new Mesh(new CylinderGeometry(0.155, 0.155, 0.05, 16), hydRedCapMat);
-      hydCollar.position.y = 0.56;
-      hydGrp.add(hydCollar);
-      const hydBonnet = new Mesh(new SphereGeometry(0.13, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hydPatinaMat);
-      hydBonnet.position.y = 0.57;
-      hydGrp.add(hydBonnet);
-      const hydNut = new Mesh(new CylinderGeometry(0.032, 0.038, 0.06, 5), hydRedCapMat);
-      hydNut.position.y = 0.71;
-      hydGrp.add(hydNut);
-      arch.add(hydGrp);
-      const swWidth = 25.95;
-      const swDepth = 2.3;
-      const swCenterX = -0.475;
-      const swCenterZ = frontZ + 5.3;
-      addBox(swWidth, 0.26, swDepth, sidewalkConcreteMat, swCenterX, 0.21, swCenterZ, false);
-      addBox(swWidth, 0.27, 0.03, sidewalkJointMat, swCenterX, 0.215, swCenterZ, false);
-      for (let sx = -13.2; sx <= 12.25; sx += 1.75) {
-        addBox(0.03, 0.27, swDepth + 0.02, sidewalkJointMat, sx, 0.215, swCenterZ, false);
-      }
-      addBox(swWidth, 0.29, 0.16, whiteTrimMat, swCenterX, 0.225, frontZ + 6.37, false);
-      addContouredDouglasStrip(douglasX, douglasX + 0.18, -6.05, 25.4, 0.33, -0.08, whitePebbleMat, 40);
-      addContouredDouglasStrip(douglasX + 0.18, 10.25, -10.55, 25.4, 0.32, -0.08, lawnMat, 48);
-      addContouredDouglasStrip(4.56, douglasX + 0.18, -10.55, -6.05, 0.32, -0.08, lawnMat, 12);
-      const dougSwW = 2.25;
-      const dougSwCenterX = 10.25 + dougSwW * 0.5;
-      addContouredDouglasStrip(10.25, 12.5, -10.55, 29.55, 0.34, -0.1, sidewalkConcreteMat, 56);
-      addContouredDouglasStrip(dougSwCenterX - 0.015, dougSwCenterX + 0.015, -10.55, 29.55, 0.346, 0, sidewalkJointMat, 56);
-      for (let sz = -10; sz <= 29; sz += 1.75) {
-        const sampleSwY = (zVal) => Math.max(
-          getDouglasLocalGroundY(10.25, zVal),
-          getDouglasLocalGroundY(12.5, zVal),
-          getDouglasLocalGroundY(dougSwCenterX, zVal)
-        );
-        const yHere = sampleSwY(sz);
-        const yPrev = sampleSwY(sz - 0.35);
-        const yNext = sampleSwY(sz + 0.35);
-        const jMesh = addBox(dougSwW + 0.02, 0.04, 0.03, sidewalkJointMat, dougSwCenterX, yHere + 0.33, sz, false);
-        jMesh.rotation.x = Math.atan2(yPrev - yNext, 0.7);
-      }
-      addContouredDouglasStrip(12.34, 12.5, -10.55, 31.85, 0.37, -0.1, whiteTrimMat, 60);
-      const signGroundY = getDouglasLocalGroundY(8.85, frontZ + 2.35);
-      const streetSignMat = new MeshStandardMaterial({ color: "#1b6b3a", roughness: 0.45, metalness: 0.18 });
-      addBox(0.055, 2.35, 0.055, galvSteelMat, 8.85, signGroundY + 1.42, frontZ + 2.35);
-      addBox(0.78, 0.18, 0.03, streetSignMat, 8.85, signGroundY + 2.52, frontZ + 2.35);
-      addBox(0.03, 0.18, 0.72, streetSignMat, 8.85, signGroundY + 2.32, frontZ + 2.35);
-      const bollardGrp = new Group();
-      bollardGrp.position.set(5.75, 0.32, frontZ + 5.95);
-      const bollardFlange = new Mesh(new CylinderGeometry(0.13, 0.14, 0.03, 16), darkBronzeMat);
-      bollardFlange.position.y = 0.015;
-      bollardGrp.add(bollardFlange);
-      const bollardShaft = new Mesh(new CylinderGeometry(0.082, 0.082, 0.86, 16), darkBronzeMat);
-      bollardShaft.position.y = 0.44;
-      bollardShaft.castShadow = true;
-      bollardGrp.add(bollardShaft);
-      const bollardCap = new Mesh(new CylinderGeometry(0.088, 0.088, 0.04, 16), darkBronzeMat);
-      bollardCap.position.y = 0.87;
-      bollardGrp.add(bollardCap);
-      arch.add(bollardGrp);
-      addBox(0.05, 2.45, 0.05, galvSteelMat, -1.4, 1.45, frontZ + 6.18);
-      addBox(0.32, 0.46, 0.02, whiteTrimMat, -1.4, 2.35, frontZ + 6.18);
-      addBox(0.32, 0.38, 0.02, whiteTrimMat, -1.4, 1.88, frontZ + 6.18);
+      buildPhotoRealisticBuilding316(this, group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
     }
-    /**
-     * Photo-realistic Architectural Reconstruction of Building 300 (300 Washington St — Juvenile Justice Center & Rear Gymnasium)
-     * Modeled directly from the aerial & street-level reference photographs:
-     * - Single-floor high-ceiling Main Wing & Washington St Entrance (y = 0.0m..4.65m) with recessed glass vestibule,
-     *   projecting canopy, tan-brown brick entry wall, "300 WASHINGTON ST" signage, and black wrought-iron security gate to Building 316
-     * - Two High-Ceiling Detention Wings along the Orondo Ave (SE) side (y = 0.0m..5.65m) in variegated buff/gold/brown/charcoal
-     *   running-bond brick, each with 5 lower stepped beige precast concrete wall panels + horizontal transom slot windows,
-     *   5 upper clerestory slot windows in a stepped precast frieze band, and bright silver sheet-metal roof flashing
-     * - Two Semi-Circular Outdoor Recreation Yard Enclosures (North & South drums, y = 0.0m..4.85m) at the outer ends of the detention
-     *   wings with beige concrete base plinths, variegated brick lower walls, white hollow-metal exit doors, and 6-bay off-white
-     *   precast open-grid security mesh screen walls (3 vertical tiers x 2 sub-columns per bay with projecting vertical precast fins)
-     * - Service & Sallyport Wing behind Building 316 (y = 0.0m..4.45m) with wide white sectional roll-up garage door,
-     *   yellow safety bollards, red FDC standpipe wheel, double white utility doors, and upper mechanical penthouse (y = 4.45m..7.25m)
-     * - High-Bay Arched-Roof Rear Gymnasium (lx = 0.59m..28.45m, lz = -35.94m..-15.00m) rising to y = 8.40m at the eaves and
-     *   crowned with a curved barrel-vault roof reaching y = 10.65m with a dark-gray standing-seam fascia and center silver exhaust flue
-     */
     _buildPhotoRealisticBuilding300(group, building, shape, wallMat, trimMat) {
-      const brickCanvas = document.createElement("canvas");
-      brickCanvas.width = 512;
-      brickCanvas.height = 512;
-      const bCtx = brickCanvas.getContext("2d");
-      bCtx.fillStyle = "#8b8072";
-      bCtx.fillRect(0, 0, 512, 512);
-      const palette = [
-        "#c99f62",
-        // Warm gold/ochre brick
-        "#be9258",
-        // Tan-buff brick
-        "#a37548",
-        // Medium brown brick
-        "#865c3b",
-        // Dark russet brown brick
-        "#6c5344",
-        // Charcoal-brown accent brick
-        "#bfa382",
-        // Pale grey-buff base brick
-        "#d2ab6e"
-        // Honey gold brick
-      ];
-      for (let r = 0; r < 32; r++) {
-        const off = r % 2 * 16;
-        for (let c = -1; c <= 16; c++) {
-          const seed = Math.abs(Math.sin(r * 19.7 + c * 37.3) * 43758.5453);
-          const idx = Math.floor(seed % 1 * palette.length);
-          bCtx.fillStyle = palette[idx];
-          bCtx.fillRect(c * 32 + off + 2, r * 16 + 2, 29, 13);
-        }
-      }
-      const varBrickTex = new CanvasTexture(brickCanvas);
-      varBrickTex.wrapS = RepeatWrapping;
-      varBrickTex.wrapT = RepeatWrapping;
-      varBrickTex.repeat.set(2.5, 2);
-      varBrickTex.colorSpace = SRGBColorSpace;
-      const varBrickMat = new MeshStandardMaterial({
-        map: varBrickTex,
-        roughness: 0.84,
-        metalness: 0.04
-      });
-      const precastCanvas = document.createElement("canvas");
-      precastCanvas.width = 512;
-      precastCanvas.height = 512;
-      const pCtx = precastCanvas.getContext("2d");
-      pCtx.fillStyle = "#cbbba0";
-      pCtx.fillRect(0, 0, 512, 512);
-      for (let y = 0; y < 512; y += 64) {
-        for (let x = 0; x < 512; x += 128) {
-          const j = Math.sin(x * 13.7 + y * 29.3) * 43758.5 % 1 * 6 - 3;
-          pCtx.fillStyle = `rgb(${203 + j}, ${187 + j}, ${160 + j})`;
-          pCtx.fillRect(x + 2, y + 2, 124, 60);
-        }
-      }
-      pCtx.strokeStyle = "rgba(96, 84, 68, 0.42)";
-      pCtx.lineWidth = 3;
-      for (let x = 0; x <= 512; x += 128) {
-        pCtx.beginPath();
-        pCtx.moveTo(x, 0);
-        pCtx.lineTo(x, 512);
-        pCtx.stroke();
-      }
-      for (let y = 0; y <= 512; y += 64) {
-        pCtx.beginPath();
-        pCtx.moveTo(0, y);
-        pCtx.lineTo(512, y);
-        pCtx.stroke();
-      }
-      const precastTex = new CanvasTexture(precastCanvas);
-      precastTex.wrapS = RepeatWrapping;
-      precastTex.wrapT = RepeatWrapping;
-      precastTex.repeat.set(0.24, 0.24);
-      precastTex.colorSpace = SRGBColorSpace;
-      const tanPrecastMat = new MeshStandardMaterial({
-        map: precastTex,
-        roughness: 0.8,
-        metalness: 0.04
-      });
-      const plinthBeigeMat = new MeshStandardMaterial({
-        color: "#d4c6ac",
-        roughness: 0.85,
-        metalness: 0.03
-      });
-      const recCreamMat = new MeshStandardMaterial({
-        color: "#dedcd2",
-        roughness: 0.78,
-        metalness: 0.04
-      });
-      const silverFlashingMat = new MeshStandardMaterial({
-        color: "#d6dde4",
-        roughness: 0.3,
-        metalness: 0.72
-      });
-      const darkFasciaMat = new MeshStandardMaterial({
-        color: "#4e555c",
-        roughness: 0.52,
-        metalness: 0.45
-      });
-      const roofMembraneMat = new MeshStandardMaterial({
-        color: "#dcdad3",
-        roughness: 0.86,
-        metalness: 0.05
-      });
-      const gymRoofMat = new MeshStandardMaterial({
-        color: "#6b727a",
-        roughness: 0.65,
-        metalness: 0.3
-      });
-      const securityMeshMat = new MeshStandardMaterial({
-        color: "#1f2326",
-        roughness: 0.65,
-        metalness: 0.45
-      });
-      const slotGlassMat = new MeshStandardMaterial({
-        color: "#496b73",
-        roughness: 0.2,
-        metalness: 0.38
-      });
-      const whiteDoorMat = new MeshStandardMaterial({
-        color: "#e6e7e2",
-        roughness: 0.58,
-        metalness: 0.12
-      });
-      const blackIronMat = new MeshStandardMaterial({
-        color: "#222528",
-        roughness: 0.42,
-        metalness: 0.65
-      });
-      const bollardYellowMat = new MeshStandardMaterial({
-        color: "#e5b524",
-        roughness: 0.5,
-        metalness: 0.18
-      });
-      const plazaConcreteMat = new MeshStandardMaterial({ color: "#d8d4cb", roughness: 0.85, metalness: 0.03 });
-      const plazaJointMat = new MeshStandardMaterial({ color: "#8c867a", roughness: 0.92, metalness: 0.02 });
-      const pipeRailMat = new MeshStandardMaterial({ color: "#565b60", roughness: 0.42, metalness: 0.68 });
-      const hedgeGreenMat = new MeshStandardMaterial({ color: "#3b6228", roughness: 0.9, metalness: 0.02 });
-      const hedgeRedMat = new MeshStandardMaterial({ color: "#6e352c", roughness: 0.9, metalness: 0.02 });
-      const turfLawnMat = new MeshStandardMaterial({ color: "#4e7932", roughness: 0.92, metalness: 0.02 });
-      const footingGeo = new ExtrudeGeometry(shape, { depth: 5.5, bevelEnabled: false });
-      footingGeo.rotateX(-Math.PI / 2);
-      const footingMesh = new Mesh(footingGeo, plinthBeigeMat);
-      footingMesh.position.y = -5.5;
-      footingMesh.castShadow = true;
-      footingMesh.receiveShadow = true;
-      group.add(footingMesh);
-      const baseWallH = 4.55;
-      const mainBodyGeo = new ExtrudeGeometry(shape, { depth: baseWallH, bevelEnabled: false });
-      mainBodyGeo.rotateX(-Math.PI / 2);
-      this._applyArchitecturalUVs(mainBodyGeo, baseWallH, 1.15);
-      const mainBodyMesh = new Mesh(mainBodyGeo, [roofMembraneMat, tanPrecastMat]);
-      mainBodyMesh.name = "Building300_SingleFloorHighCeilingBase";
-      mainBodyMesh.position.y = 0;
-      mainBodyMesh.castShadow = true;
-      mainBodyMesh.receiveShadow = true;
-      mainBodyMesh.userData = { isSelectableBuilding: true, building, floorLayer: 1 };
-      group.add(mainBodyMesh);
-      const baseBandGeo = new ExtrudeGeometry(shape, {
-        depth: 0.72,
-        bevelEnabled: true,
-        bevelThickness: 0.03,
-        bevelSize: 0.05,
-        bevelSegments: 1
-      });
-      baseBandGeo.rotateX(-Math.PI / 2);
-      const baseBandMesh = new Mesh(baseBandGeo, plinthBeigeMat);
-      baseBandMesh.position.y = 0;
-      group.add(baseBandMesh);
-      const arch = new Group();
-      arch.name = "Building300ArchitecturalDetails";
-      arch.rotation.y = Math.atan2(0.59621, -0.80283);
-      group.add(arch);
-      const addBox = (w, h, d, mat, x, y, z, cast = true) => {
-        const m = new Mesh(new BoxGeometry(w, h, d), mat);
-        m.position.set(x, y, z);
-        m.castShadow = cast;
-        m.receiveShadow = true;
-        m.userData = { isSelectableBuilding: true, building };
-        arch.add(m);
-        return m;
-      };
-      addBox(2.55, 1.32, 0.36, plinthBeigeMat, 3.82, 4.31, 29.89);
-      addBox(2.68, 0.14, 0.48, plinthBeigeMat, 3.82, 5.02, 29.89);
-      addBox(6.65, 1.08, 0.34, plinthBeigeMat, 8.42, 4.19, 29.89);
-      addBox(6.72, 0.14, 0.46, plinthBeigeMat, 8.42, 4.78, 29.89);
-      addBox(0.54, 0.88, 0.34, plinthBeigeMat, 12.05, 4.09, 29.89);
-      addBox(0.46, 0.16, 0.48, silverFlashingMat, 12.05, 4.62, 29.92);
-      addBox(11.76, 1.08, 0.34, plinthBeigeMat, 18.2, 4.19, 29.89);
-      addBox(11.82, 0.14, 0.46, plinthBeigeMat, 18.2, 4.78, 29.89);
-      addBox(0.36, 1.32, 3.2, plinthBeigeMat, 2.7, 4.31, 28.29);
-      addBox(0.48, 0.14, 3.28, plinthBeigeMat, 2.7, 5.02, 28.29);
-      addBox(0.34, 1.08, 7.95, plinthBeigeMat, 2.7, 4.19, 22.72);
-      addBox(0.46, 0.14, 8.05, plinthBeigeMat, 2.7, 4.78, 22.72);
-      addBox(0.34, 1.08, 24.45, plinthBeigeMat, 24.06, 4.19, 17.67);
-      addBox(0.46, 0.14, 24.55, plinthBeigeMat, 24.06, 4.78, 17.67);
-      [16.5, 20.2, 24.4, 27.8].forEach((jz) => {
-        addBox(0.06, 4.65, 0.04, darkFasciaMat, 24.09, 2.32, jz);
-      });
-      addBox(0.06, 0.04, 14, darkFasciaMat, 24.09, 3.85, 22.8);
-      [22.8, 26.2].forEach((wz) => {
-        addBox(0.14, 1.75, 2.45, slotGlassMat, 24.08, 2.05, wz);
-        addBox(0.16, 0.08, 2.55, whiteDoorMat, 24.09, 2.92, wz);
-        addBox(0.16, 0.08, 2.55, whiteDoorMat, 24.09, 1.18, wz);
-      });
-      addBox(5.95, 4.65, 3.3, varBrickMat, 0.1, 2.325, 17.45);
-      addBox(6.08, 0.58, 3.42, plinthBeigeMat, 0.1, 4.94, 17.45);
-      addBox(6.18, 0.52, 3.52, plinthBeigeMat, 0.1, 5.49, 17.45);
-      addBox(6.3, 0.22, 3.64, silverFlashingMat, 0.1, 5.86, 17.45);
-      [-1.8, -0.55, 0.75, 2.05].forEach((px2) => {
-        addBox(0.28, 1.08, 3.56, plinthBeigeMat, px2, 5.22, 17.45);
-      });
-      addBox(0.36, 1.12, 12.2, plinthBeigeMat, 2.7, 5.11, 9.9);
-      addBox(0.48, 0.14, 12.3, silverFlashingMat, 2.7, 5.72, 9.9);
-      addBox(12.8, 1.12, 0.36, plinthBeigeMat, 9.1, 5.11, 3.8);
-      addBox(12.9, 0.14, 0.48, silverFlashingMat, 9.1, 5.72, 3.8);
-      [
-        [2.92, 6.2, 0],
-        // Ladder 1 on the N-S dividing parapet wall (facing +X lower roof)
-        [6.85, 4.02, Math.PI * 0.5]
-        // Ladder 2 on the E-W transverse parapet wall (facing +Z lower roof)
-      ].forEach(([lxPos, lzPos, lRot]) => {
-        const ladGrp = new Group();
-        ladGrp.position.set(lxPos, 4.55, lzPos);
-        ladGrp.rotation.y = lRot;
-        [-0.22, 0.22].forEach((ry) => {
-          const rail = new Mesh(new BoxGeometry(0.04, 1.65, 0.06), blackIronMat);
-          rail.position.set(0, 0.825, ry);
-          ladGrp.add(rail);
-          const topLoop = new Mesh(new BoxGeometry(0.32, 0.04, 0.04), blackIronMat);
-          topLoop.position.set(-0.14, 1.65, ry);
-          ladGrp.add(topLoop);
-        });
-        for (let rY = 0.25; rY <= 1.55; rY += 0.26) {
-          const rung = new Mesh(new CylinderGeometry(0.015, 0.015, 0.44, 8), blackIronMat);
-          rung.rotation.x = Math.PI * 0.5;
-          rung.position.set(0, rY, 0);
-          ladGrp.add(rung);
-        }
-        arch.add(ladGrp);
-      });
-      for (let rz = 7; rz <= 28; rz += 2.6) {
-        addBox(20.8, 0.02, 0.04, darkFasciaMat, 13.4, 4.56, rz, false);
-      }
-      addBox(0.86, 0.28, 0.86, plinthBeigeMat, 15.85, 4.69, 24.8);
-      addBox(0.94, 0.06, 0.94, silverFlashingMat, 15.85, 4.85, 24.8);
-      const roofDome1 = new Mesh(new CylinderGeometry(0.34, 0.38, 0.26, 18), whiteDoorMat);
-      roofDome1.position.set(15.85, 5, 24.8);
-      arch.add(roofDome1);
-      const roofCap1 = new Mesh(new SphereGeometry(0.35, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), silverFlashingMat);
-      roofCap1.position.set(15.85, 5.1, 24.8);
-      arch.add(roofCap1);
-      addBox(0.76, 0.26, 0.76, silverFlashingMat, 21.4, 4.68, 15.6);
-      const roofDome2 = new Mesh(new CylinderGeometry(0.32, 0.26, 0.3, 16), silverFlashingMat);
-      roofDome2.position.set(21.4, 4.94, 15.6);
-      arch.add(roofDome2);
-      [
-        [8.2, 25.4, 4.55],
-        [12.6, 18.2, 4.55],
-        [17.8, 16.4, 4.55],
-        [20.5, 22.8, 4.55],
-        [-6.5, 14.2, 5.55],
-        [-9.8, 11.4, 5.55],
-        [-14.2, 8.6, 5.55],
-        [-16.5, 3.2, 5.55],
-        [-8.4, -6.5, 5.55],
-        [-13.5, -11.2, 5.55],
-        [-17.2, -15.8, 5.55]
-      ].forEach(([vx, vz, vy]) => {
-        const vPipe = new Mesh(new CylinderGeometry(0.045, 0.045, 0.52, 8), blackIronMat);
-        vPipe.position.set(vx, vy + 0.26, vz);
-        arch.add(vPipe);
-      });
-      addBox(19.43, 3.68, 0.28, varBrickMat, 12.42, 1.84, 34.05);
-      addBox(0.28, 3.68, 4.2, varBrickMat, 2.71, 1.84, 31.97);
-      addBox(19.1, 0.12, 3.92, roofMembraneMat, 12.42, 3.56, 31.97);
-      addBox(5.14, 0.26, 0.3, varBrickMat, 5.28, 3.81, 34.05);
-      addBox(5.26, 0.16, 0.44, plinthBeigeMat, 5.28, 4.02, 34.08);
-      addBox(0.3, 0.26, 4.2, varBrickMat, 2.71, 3.81, 31.97);
-      addBox(0.44, 0.16, 4.3, plinthBeigeMat, 2.71, 4.02, 31.97);
-      addBox(8.3, 0.16, 0.44, plinthBeigeMat, 12, 3.74, 34.08);
-      addBox(0.24, 0.32, 0.44, plinthBeigeMat, 7.85, 3.88, 34.08);
-      addBox(0.24, 0.32, 0.44, plinthBeigeMat, 16.15, 3.88, 34.08);
-      addBox(5.99, 0.26, 0.3, varBrickMat, 19.145, 3.81, 34.05);
-      addBox(6.12, 0.16, 0.44, plinthBeigeMat, 19.145, 4.02, 34.08);
-      [[5.8, 31.6], [7.9, 30.7]].forEach(([px2, pz2]) => {
-        const pVent = new Mesh(new CylinderGeometry(0.04, 0.04, 0.38, 8), blackIronMat);
-        pVent.position.set(px2, 3.78, pz2);
-        arch.add(pVent);
-      });
-      addBox(0.32, 4.55, 11.14, tanPrecastMat, 2.71, 2.275, 24.32);
-      addBox(0.38, 0.72, 11.2, plinthBeigeMat, 2.71, 0.36, 24.32);
-      addBox(0.44, 0.14, 11.24, whiteDoorMat, 2.71, 4.62, 24.32);
-      [21.5, 25.2, 28.8].forEach((jz) => {
-        addBox(0.36, 4.55, 0.04, darkFasciaMat, 2.68, 2.275, jz);
-      });
-      addBox(0.36, 0.04, 11.14, darkFasciaMat, 2.68, 2.05, 24.32);
-      addBox(3.06, 0.72, 0.42, plinthBeigeMat, 1.18, 0.36, 29.89);
-      addBox(3.02, 3.1, 0.38, varBrickMat, 1.18, 2.27, 29.89);
-      addBox(3.12, 0.38, 0.46, plinthBeigeMat, 1.18, 3.98, 29.89);
-      addBox(3.18, 0.08, 0.5, whiteDoorMat, 1.18, 4.2, 29.89);
-      addBox(2.95, 0.72, 0.44, plinthBeigeMat, 1.25, 0.36, 33.95);
-      addBox(2.9, 3.1, 0.4, varBrickMat, 1.25, 2.27, 33.95);
-      addBox(3, 0.38, 0.48, plinthBeigeMat, 1.25, 3.98, 33.95);
-      addBox(3.06, 0.08, 0.52, whiteDoorMat, 1.25, 4.2, 33.95);
-      const leftWinZ = 31.9;
-      const leftWinW = 3.56;
-      addBox(0.3, 0.58, leftWinW + 0.1, plinthBeigeMat, 0.28, 0.29, leftWinZ);
-      addBox(0.18, 2.8, leftWinW, slotGlassMat, 0.28, 1.98, leftWinZ);
-      addBox(2.85, 0.3, leftWinW + 0.16, whiteDoorMat, 1.25, 3.48, leftWinZ);
-      addBox(2.92, 0.06, leftWinW + 0.22, silverFlashingMat, 1.25, 3.65, leftWinZ);
-      [0.62, 1.05, 2.42, 3.32].forEach((hy) => {
-        addBox(0.24, 0.075, leftWinW + 0.04, whiteDoorMat, 0.24, hy, leftWinZ);
-      });
-      [-1.72, -0.57, 0.57, 1.72].forEach((dz) => {
-        addBox(0.24, 2.8, 0.075, whiteDoorMat, 0.24, 1.98, leftWinZ + dz);
-      });
-      addBox(2.4, 0.95, 3.2, silverFlashingMat, 9.07, 4.85, 31.5);
-      const buildCurvedTopIronFence = (x0, z0, x1, z1, fenceBaseY = 0.18, fenceH = 1.85) => {
-        const len = Math.hypot(x1 - x0, z1 - z0);
-        const cx = (x0 + x1) * 0.5;
-        const cz = (z0 + z1) * 0.5;
-        const rotY = -Math.atan2(z1 - z0, x1 - x0);
-        const fGrp = new Group();
-        fGrp.position.set(cx, fenceBaseY, cz);
-        fGrp.rotation.y = rotY;
-        const topRail = new Mesh(new BoxGeometry(len, 0.055, 0.055), blackIronMat);
-        topRail.position.set(0, fenceH - 0.18, 0);
-        fGrp.add(topRail);
-        const botRail = new Mesh(new BoxGeometry(len, 0.055, 0.055), blackIronMat);
-        botRail.position.set(0, 0.16, 0);
-        fGrp.add(botRail);
-        const numPosts = Math.max(2, Math.round(len / 2.8) + 1);
-        for (let p = 0; p < numPosts; p++) {
-          const px2 = -len * 0.5 + p / (numPosts - 1) * len;
-          const post = new Mesh(new BoxGeometry(0.085, fenceH + 0.06, 0.085), blackIronMat);
-          post.position.set(px2, fenceH * 0.5, 0);
-          post.castShadow = true;
-          fGrp.add(post);
-        }
-        const numPickets = Math.floor(len / 0.18);
-        for (let k = 1; k < numPickets; k++) {
-          const kx = -len * 0.5 + k * 0.18;
-          const picket = new Mesh(new BoxGeometry(0.025, fenceH - 0.12, 0.025), blackIronMat);
-          picket.position.set(kx, (fenceH - 0.12) * 0.5 + 0.08, 0);
-          fGrp.add(picket);
-          const loop = new Mesh(new TorusGeometry(0.065, 0.013, 6, 10, Math.PI), blackIronMat);
-          loop.rotation.y = Math.PI * 0.5;
-          loop.position.set(kx, fenceH - 0.06, 0);
-          fGrp.add(loop);
-        }
-        arch.add(fGrp);
-      };
-      buildCurvedTopIronFence(2.65, 28.85, -6.5, 28.85, 0.18, 1.85);
-      buildCurvedTopIronFence(-6.5, 28.85, -6.5, 18.75, 0.18, 1.85);
-      const bermGeo = new BoxGeometry(5.15, 0.68, 10);
-      const bermMesh = new Mesh(bermGeo, turfLawnMat);
-      bermMesh.position.set(0.08, 0.42, 23.8);
-      bermMesh.rotation.z = -0.08;
-      bermMesh.rotation.x = 0.05;
-      bermMesh.receiveShadow = true;
-      arch.add(bermMesh);
-      [
-        [-0.45, 34.25, 2.35, 2.15, hedgeGreenMat],
-        [0.65, 34.65, 1.95, 1.75, hedgeGreenMat],
-        [-0.85, 33.45, 1.45, 0.85, hedgeRedMat]
-      ].forEach(([bx, bz, bw, bh, bMat]) => {
-        const bush = new Mesh(new SphereGeometry(bw * 0.55, 12, 10), bMat);
-        bush.scale.set(1.15, bh / (bw * 1.1), 1.05);
-        bush.position.set(bx, 0.25 + bh * 0.42, bz);
-        bush.castShadow = true;
-        bush.receiveShadow = true;
-        arch.add(bush);
-      });
-      const eastPole = new Mesh(new CylinderGeometry(0.09, 0.12, 8.2, 12), blackIronMat);
-      eastPole.position.set(-3.85, 4.1, 35.6);
-      eastPole.castShadow = true;
-      arch.add(eastPole);
-      addBox(1.15, 0.08, 0.12, blackIronMat, -3.35, 8.15, 35.6);
-      addBox(0.38, 0.12, 0.22, blackIronMat, -3.55, 5.85, 35.6);
-      addBox(0.05, 2.55, 0.05, silverFlashingMat, -4.65, 1.45, 36.65);
-      addBox(0.42, 0.48, 0.03, blackIronMat, -4.65, 2.35, 36.65);
-      addBox(0.36, 0.42, 0.03, whiteDoorMat, -4.65, 1.82, 36.65);
-      const bayW = 7.8;
-      const bayCenterX = 12;
-      const bayFrontZ = 35.22;
-      addBox(bayW + 0.16, 0.38, 1.26, plinthBeigeMat, bayCenterX, 0.19, 34.62);
-      addBox(bayW, 2.76, 1.18, slotGlassMat, bayCenterX, 1.72, 34.62);
-      addBox(bayW + 0.14, 0.1, 1.24, whiteDoorMat, bayCenterX, 3.04, 34.62);
-      addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.86, 34.62);
-      addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.38, 34.62);
-      [-3.9, 3.9].forEach((sx) => {
-        addBox(0.12, 2.76, 1.24, whiteDoorMat, bayCenterX + sx, 1.72, 34.62);
-        addBox(0.14, 0.08, 1.24, whiteDoorMat, bayCenterX + sx, 2.38, 34.62);
-      });
-      [-2.15, 2.15].forEach((dx) => {
-        addBox(0.09, 2.76, 0.16, whiteDoorMat, bayCenterX + dx, 1.72, bayFrontZ);
-      });
-      [-0.36, 0.36].forEach((cxOff) => {
-        addBox(0.16, 2.86, 0.26, whiteDoorMat, bayCenterX + cxOff, 1.76, bayFrontZ + 0.04);
-      });
-      [1.18, 1.48].forEach((hy) => {
-        addBox(0.72, 0.07, 0.22, whiteDoorMat, bayCenterX, hy, bayFrontZ + 0.03);
-      });
-      addBox(3.8, 0.22, 1.44, whiteDoorMat, 9.65, 3.2, 34.76);
-      addBox(3.88, 0.07, 1.5, silverFlashingMat, 9.65, 3.34, 34.76);
-      addBox(3.8, 0.22, 1.44, whiteDoorMat, 14.35, 3.2, 34.76);
-      addBox(3.88, 0.07, 1.5, silverFlashingMat, 14.35, 3.34, 34.76);
-      addBox(1.02, 0.24, 1.32, whiteDoorMat, bayCenterX, 3.24, 34.68);
-      addBox(1.08, 0.07, 1.38, silverFlashingMat, bayCenterX, 3.38, 34.68);
-      addBox(0.12, 0.14, 0.06, hedgeRedMat, bayCenterX, 3.24, 35.35);
-      [5.45, 18.25].forEach((cxPos) => {
-        const portGrp = new Group();
-        portGrp.position.set(cxPos, 1.68, 34.12);
-        const numVois = 16;
-        for (let v = 0; v < numVois; v++) {
-          const ang = v / numVois * Math.PI * 2;
-          const vBrick = new Mesh(new BoxGeometry(0.36, 0.22, 0.24), varBrickMat);
-          vBrick.position.set(Math.cos(ang) * 0.98, Math.sin(ang) * 0.98, 0.02);
-          vBrick.rotation.z = ang + Math.PI * 0.5;
-          portGrp.add(vBrick);
-        }
-        const revealRing = new Mesh(new TorusGeometry(0.86, 0.08, 12, 32), darkFasciaMat);
-        revealRing.position.z = 0.02;
-        portGrp.add(revealRing);
-        const glassDisc = new Mesh(new CylinderGeometry(0.84, 0.84, 0.08, 28), slotGlassMat);
-        glassDisc.rotation.x = Math.PI * 0.5;
-        glassDisc.position.z = -0.02;
-        portGrp.add(glassDisc);
-        const rimTorus = new Mesh(new TorusGeometry(0.82, 0.045, 10, 28), whiteDoorMat);
-        rimTorus.position.z = 0.03;
-        portGrp.add(rimTorus);
-        const hMul = new Mesh(new BoxGeometry(1.58, 0.055, 0.09), whiteDoorMat);
-        hMul.position.set(0, -0.18, 0.03);
-        portGrp.add(hMul);
-        [-0.24, 0.24].forEach((vx) => {
-          const vMul = new Mesh(new BoxGeometry(0.055, 1.54, 0.09), whiteDoorMat);
-          vMul.position.set(vx, 0, 0.03);
-          portGrp.add(vMul);
-        });
-        arch.add(portGrp);
-      });
-      const addr300Tex = this._createTextPlaqueTexture(
-        ["300", "WASHINGTON STREET"],
-        "#9c7552",
-        "#f4f5f7",
-        512,
-        160
-      );
-      const addr300Mat = new MeshStandardMaterial({ map: addr300Tex, roughness: 0.45, metalness: 0.32 });
-      addBox(2.45, 0.56, 0.05, addr300Mat, 20.15, 2.02, 34.18, false);
-      addBox(0.28, 3.1, 3.55, slotGlassMat, 22.08, 1.62, 31.8);
-      addBox(0.32, 0.09, 3.65, whiteDoorMat, 22.14, 3.12, 31.8);
-      addBox(0.32, 0.08, 3.65, whiteDoorMat, 22.14, 2.25, 31.8);
-      [-1.75, -0.88, 0, 0.88, 1.75].forEach((dz) => {
-        addBox(0.32, 3.1, 0.07, whiteDoorMat, 22.14, 1.62, 31.8 + dz);
-      });
-      addBox(1.85, 0.24, 4.18, whiteDoorMat, 23, 3.38, 31.97);
-      addBox(1.92, 0.08, 4.24, silverFlashingMat, 23, 3.52, 31.97);
-      addBox(1.94, 3.68, 0.24, varBrickMat, 23.11, 1.84, 29.89);
-      const jjcWallTex = this._createTextPlaqueTexture(
-        ["CHELAN COUNTY", "JUVENILE JUSTICE CENTER"],
-        "#9c7552",
-        "#f4f5f7",
-        512,
-        160
-      );
-      const jjcWallMat = new MeshStandardMaterial({ map: jjcWallTex, roughness: 0.45, metalness: 0.32 });
-      addBox(1.38, 0.42, 0.05, jjcWallMat, 23.38, 2.48, 30.03, false);
-      addBox(0.36, 0.44, 0.05, blackIronMat, 23.38, 1.82, 30.03);
-      addBox(0.34, 0.2, 0.22, blackIronMat, 23.38, 3.05, 30.08);
-      addBox(0.38, 0.58, 0.1, whiteDoorMat, 22.48, 1.68, 30.04);
-      addBox(0.28, 0.28, 0.12, slotGlassMat, 22.48, 1.76, 30.05);
-      addBox(6.6, 0.07, 0.07, blackIronMat, 27.38, 2.38, 29.35);
-      addBox(6.6, 0.07, 0.07, blackIronMat, 27.38, 0.3, 29.35);
-      for (let fx = 24.15; fx <= 30.6; fx += 0.28) {
-        addBox(0.04, 2.15, 0.04, blackIronMat, fx, 1.32, 29.35);
-      }
-      const landingY = 0.62;
-      addBox(8.55, landingY, 4.96, plazaConcreteMat, 26.375, landingY * 0.5, 32.37, false);
-      const medCx = 26.55;
-      const medCz = 32.35;
-      const innerDisk = new Mesh(new CylinderGeometry(1.05, 1.05, 0.02, 28), plazaConcreteMat);
-      innerDisk.position.set(medCx, landingY + 0.01, medCz);
-      arch.add(innerDisk);
-      [1.05, 1.95, 2.25, 3.15].forEach((rad) => {
-        const ringTorus = new Mesh(new TorusGeometry(rad, 0.02, 8, 36), plazaJointMat);
-        ringTorus.rotation.x = Math.PI * 0.5;
-        ringTorus.position.set(medCx, landingY + 0.013, medCz);
-        arch.add(ringTorus);
-      });
-      for (let r = 0; r < 8; r++) {
-        const ang = r * Math.PI / 4;
-        const ray = new Mesh(new BoxGeometry(2.1, 0.02, 0.024), plazaJointMat);
-        ray.rotation.y = -ang;
-        ray.position.set(medCx + Math.cos(ang) * 2.1, landingY + 0.013, medCz + Math.sin(ang) * 2.1);
-        arch.add(ray);
-      }
-      [-2.14, -2, -1.86, -1.72, -1.58, -1.44, -1.3].forEach((ang) => {
-        const bx = medCx + Math.cos(ang) * 3.22;
-        const bz = medCz + Math.sin(ang) * 2.85;
-        const bSeg = new Group();
-        bSeg.position.set(bx, landingY, bz);
-        bSeg.rotation.y = -ang + Math.PI * 0.5;
-        const bBase = new Mesh(new BoxGeometry(0.5, 0.44, 0.54), varBrickMat);
-        bBase.position.y = 0.22;
-        bSeg.add(bBase);
-        const bCap = new Mesh(new BoxGeometry(0.54, 0.08, 0.62), plinthBeigeMat);
-        bCap.position.y = 0.46;
-        bSeg.add(bCap);
-        arch.add(bSeg);
-      });
-      [-1.08, -0.97, -0.86, -0.75, -0.64, -0.53, -0.42].forEach((ang) => {
-        const bx = medCx + Math.cos(ang) * 3.28;
-        const bz = medCz + Math.sin(ang) * 2.85;
-        const bSeg = new Group();
-        bSeg.position.set(bx, landingY, bz);
-        bSeg.rotation.y = -ang + Math.PI * 0.5;
-        const bBase = new Mesh(new BoxGeometry(0.48, 0.44, 0.54), varBrickMat);
-        bBase.position.y = 0.22;
-        bSeg.add(bBase);
-        const bCap = new Mesh(new BoxGeometry(0.52, 0.08, 0.62), plinthBeigeMat);
-        bCap.position.y = 0.46;
-        bSeg.add(bCap);
-        arch.add(bSeg);
-      });
-      addBox(0.48, 0.68, 0.48, plinthBeigeMat, medCx + 0.82, landingY + 0.34, medCz - 2.65);
-      const backPlanter = new Mesh(new CylinderGeometry(0.32, 0.28, 0.48, 14), blackIronMat);
-      backPlanter.position.set(medCx + 1.55, landingY + 0.24, medCz - 2.85);
-      arch.add(backPlanter);
-      const poleMesh = new Mesh(new CylinderGeometry(0.09, 0.11, 7.8, 12), blackIronMat);
-      poleMesh.position.set(medCx + 1.25, landingY + 3.9, medCz - 2.75);
-      poleMesh.castShadow = true;
-      arch.add(poleMesh);
-      const stairX = 26.4;
-      const stairW = 3.85;
-      const numSteps = 7;
-      const stepDepth = 2.04 / numSteps;
-      const stepRise = (landingY - 0.2) / numSteps;
-      for (let st = 0; st < numSteps; st++) {
-        const stH = landingY - (st + 0.5) * stepRise;
-        const stZ = 34.85 + (st + 0.5) * stepDepth;
-        addBox(stairW, stH, stepDepth + 0.02, plazaConcreteMat, stairX, stH * 0.5, stZ, false);
-        addBox(stairW, 0.02, 0.025, plazaJointMat, stairX, stH + 5e-3, stZ + stepDepth * 0.5, false);
-      }
-      addBox(0.52, 0.96, 1.4, varBrickMat, 24.18, 0.48, 34.95);
-      addBox(0.6, 0.09, 1.48, plinthBeigeMat, 24.18, 1, 34.95);
-      addBox(0.52, 0.74, 1.45, varBrickMat, 24.18, 0.37, 36.32);
-      addBox(0.6, 0.09, 1.52, plinthBeigeMat, 24.18, 0.78, 36.32);
-      addBox(0.52, 0.98, 1.45, varBrickMat, 28.62, 0.49, 34.98);
-      addBox(0.6, 0.09, 1.54, plinthBeigeMat, 28.62, 1.02, 34.98);
-      addBox(0.52, 0.76, 1.45, varBrickMat, 28.62, 0.38, 36.38);
-      addBox(0.6, 0.09, 1.54, plinthBeigeMat, 28.62, 0.8, 36.38);
-      addBox(1.65, 0.96, 0.48, varBrickMat, 29.42, 0.48, 34.55);
-      addBox(1.74, 0.09, 0.56, plinthBeigeMat, 29.42, 1, 34.55);
-      addBox(0.58, 0.48, 0.58, plinthBeigeMat, 29.55, 0.38, 35.15);
-      addBox(0.46, 0.05, 0.46, hedgeRedMat, 29.55, 0.64, 35.15);
-      addBox(2.05, 0.22, 2.57, turfLawnMat, 29.645, 0.19, 35.835, false);
-      [24.58, 28.22].forEach((rx) => {
-        const rGrp = new Group();
-        rGrp.position.set(rx, 0, 35.85);
-        const railBar = new Mesh(new CylinderGeometry(0.024, 0.024, 2.38, 10), pipeRailMat);
-        railBar.rotation.x = Math.PI * 0.5 + 0.19;
-        railBar.position.set(0, 1.18, 0);
-        rGrp.add(railBar);
-        const postTop = new Mesh(new CylinderGeometry(0.022, 0.022, 0.82, 10), pipeRailMat);
-        postTop.position.set(0, landingY + 0.41, -0.95);
-        rGrp.add(postTop);
-        const postBot = new Mesh(new CylinderGeometry(0.022, 0.022, 0.82, 10), pipeRailMat);
-        postBot.position.set(0, 0.22 + 0.41, 0.95);
-        rGrp.add(postBot);
-        arch.add(rGrp);
-      });
-      addBox(1.45, 0.04, 0.04, pipeRailMat, 29.85, landingY + 0.88, 34.35);
-      addBox(0.04, 0.88, 0.04, pipeRailMat, 29.15, landingY + 0.44, 34.35);
-      addBox(0.04, 0.88, 0.04, pipeRailMat, 30.55, landingY + 0.44, 34.35);
-      addBox(30.98, 0.22, 3.07, turfLawnMat, 8.69, 0.19, 35.585, false);
-      addBox(9.51, 0.22, 15.3, turfLawnMat, -2.045, 0.19, 26.4, false);
-      const bushCoords = [
-        [3.2, 34.8, 1.35, 1.25, hedgeGreenMat],
-        [4.8, 35, 1.45, 1.35, hedgeGreenMat],
-        [6.4, 35.1, 1.15, 0.95, hedgeRedMat],
-        [8, 35.5, 1.1, 0.82, hedgeGreenMat],
-        [9.8, 35.6, 1.15, 0.78, hedgeRedMat],
-        [11.6, 35.6, 1.2, 0.8, hedgeGreenMat],
-        [13.4, 35.6, 1.15, 0.78, hedgeGreenMat],
-        [15.2, 35.5, 1.2, 0.85, hedgeRedMat],
-        [16.8, 35.1, 1.35, 1.05, hedgeRedMat],
-        [18.6, 35, 1.45, 1.25, hedgeGreenMat],
-        [20.4, 35, 1.5, 1.32, hedgeGreenMat],
-        [22, 35.1, 1.35, 1.18, hedgeGreenMat]
-      ];
-      bushCoords.forEach(([bx, bz, bw, bh, bMat]) => {
-        const bush = new Mesh(new SphereGeometry(bw * 0.55, 10, 8), bMat);
-        bush.scale.set(1.15, bh / (bw * 1.1), 0.95);
-        bush.position.set(bx, 0.25 + bh * 0.42, bz);
-        bush.castShadow = true;
-        bush.receiveShadow = true;
-        arch.add(bush);
-      });
-      const sw300W = 35.2;
-      const sw300D = 2.3;
-      const sw300Cx = 10.8;
-      const sw300Cz = 38.27;
-      addBox(sw300W, 0.26, sw300D, plazaConcreteMat, sw300Cx, 0.21, sw300Cz, false);
-      addBox(sw300W, 0.27, 0.03, plazaJointMat, sw300Cx, 0.215, sw300Cz, false);
-      for (let sx = -6.65; sx <= 28.35; sx += 1.75) {
-        addBox(0.03, 0.27, sw300D + 0.02, plazaJointMat, sx, 0.215, sw300Cz, false);
-      }
-      addBox(sw300W, 0.29, 0.16, whiteDoorMat, sw300Cx, 0.225, 39.34, false);
-      addBox(2.4, 0.25, 12.97, plazaConcreteMat, -5.6, 0.205, 30.635, false);
-      for (let sz = 25; sz <= 36; sz += 1.75) {
-        addBox(2.42, 0.26, 0.03, plazaJointMat, -5.6, 0.21, sz, false);
-      }
-      const detPodH = 5.65;
-      const detBrickTop = 4.65;
-      const buildDetentionPodWing = (xMin, xMax, zMin, zMax) => {
-        const w = xMax - xMin;
-        const d = zMax - zMin;
-        const cx = (xMin + xMax) * 0.5;
-        const cz = (zMin + zMax) * 0.5;
-        addBox(w, detBrickTop - 0.72, d, varBrickMat, cx, 0.72 + (detBrickTop - 0.72) * 0.5, cz);
-        addBox(w + 0.08, 0.72, d + 0.08, plinthBeigeMat, cx, 0.36, cz);
-        addBox(w + 0.12, 0.85, d + 0.12, tanPrecastMat, cx, 5.075, cz);
-        addBox(w + 0.24, 0.22, d + 0.24, silverFlashingMat, cx, 5.61, cz);
-        addBox(w - 0.3, 0.1, d - 0.3, roofMembraneMat, cx, 5.52, cz);
-        const numBays = 5;
-        const baySpan = (d - 2.4) / numBays;
-        for (let b = 0; b < numBays; b++) {
-          const bz = zMin + 1.2 + (b + 0.5) * baySpan;
-          addBox(0.14, 2.18, 1.65, plinthBeigeMat, xMin - 0.04, 1.09, bz);
-          addBox(0.16, 0.24, 1.48, whiteDoorMat, xMin - 0.06, 1.94, bz);
-          addBox(0.18, 0.18, 1.4, slotGlassMat, xMin - 0.07, 1.94, bz);
-          addBox(0.18, 0.18, 1.72, plinthBeigeMat, xMin - 0.06, 2.17, bz);
-          addBox(0.09, 2.4, 0.05, blackIronMat, xMin - 0.02, 3.45, bz);
-          addBox(0.18, 0.28, 1.42, whiteDoorMat, xMin - 0.07, 5.06, bz);
-          addBox(0.2, 0.2, 1.34, slotGlassMat, xMin - 0.08, 5.06, bz);
-          if (b < numBays - 1) {
-            const pilZ = bz + baySpan * 0.5;
-            addBox(0.22, 0.92, 0.52, plinthBeigeMat, xMin - 0.08, 5.08, pilZ);
-            addBox(0.28, 0.72, 0.34, plinthBeigeMat, xMin - 0.1, 5.08, pilZ);
-          }
-        }
-        [zMin + 0.35, zMax - 0.35].forEach((czPos) => {
-          addBox(0.24, 0.92, 0.65, plinthBeigeMat, xMin - 0.08, 5.08, czPos);
-        });
-        const returnZ = zMin > -2 ? zMin : zMax;
-        const returnDir = zMin > -2 ? -1 : 1;
-        addBox(1.65, 2.18, 0.14, plinthBeigeMat, xMin + 2.35, 1.09, returnZ + returnDir * 0.04);
-        addBox(1.48, 0.24, 0.16, whiteDoorMat, xMin + 2.35, 1.94, returnZ + returnDir * 0.06);
-        addBox(1.4, 0.18, 0.18, slotGlassMat, xMin + 2.35, 1.94, returnZ + returnDir * 0.07);
-      };
-      buildDetentionPodWing(-24.18, -2.89, 0.4, 18.6);
-      buildDetentionPodWing(-24.38, -2.9, -22.19, -3.64);
-      addBox(18.06, 5.05, 4.05, tanPrecastMat, -11.93, 2.525, -1.625);
-      addBox(18.18, 0.2, 4.16, silverFlashingMat, -11.93, 5.12, -1.625);
-      [-2.75, -0.55].forEach((wz) => {
-        addBox(0.14, 0.24, 1.38, whiteDoorMat, -20.98, 1.92, wz);
-        addBox(0.16, 0.18, 1.3, slotGlassMat, -20.99, 1.92, wz);
-      });
-      const ventCyl = new Mesh(new CylinderGeometry(0.11, 0.11, 0.14, 12), blackIronMat);
-      ventCyl.rotation.z = Math.PI * 0.5;
-      ventCyl.position.set(-20.98, 3.65, -2.15);
-      arch.add(ventCyl);
-      const buildSemiCircularRecYard = (centerX, centerZ, radiusX, radiusZ, startAngle, endAngle, doorX, doorZ) => {
-        const segments = 10;
-        const dTheta = (endAngle - startAngle) / segments;
-        for (let s = 0; s < segments; s++) {
-          const a0 = startAngle + s * dTheta;
-          const a1 = startAngle + (s + 1) * dTheta;
-          const x0 = centerX + Math.cos(a0) * radiusX;
-          const z0 = centerZ + Math.sin(a0) * radiusZ;
-          const x1 = centerX + Math.cos(a1) * radiusX;
-          const z1 = centerZ + Math.sin(a1) * radiusZ;
-          const segW = Math.hypot(x1 - x0, z1 - z0) + 0.06;
-          const mx = (x0 + x1) * 0.5;
-          const mz = (z0 + z1) * 0.5;
-          const rotY = -Math.atan2(z1 - z0, x1 - x0);
-          const bayGrp = new Group();
-          bayGrp.position.set(mx, 0, mz);
-          bayGrp.rotation.y = rotY;
-          const plinthM = new Mesh(new BoxGeometry(segW, 0.68, 0.36), plinthBeigeMat);
-          plinthM.position.y = 0.34;
-          bayGrp.add(plinthM);
-          const brickM = new Mesh(new BoxGeometry(segW, 2.14, 0.32), varBrickMat);
-          brickM.position.y = 1.75;
-          brickM.castShadow = true;
-          brickM.receiveShadow = true;
-          bayGrp.add(brickM);
-          const midBandM = new Mesh(new BoxGeometry(segW + 0.04, 0.5, 0.38), recCreamMat);
-          midBandM.position.y = 3.07;
-          bayGrp.add(midBandM);
-          const topBandM = new Mesh(new BoxGeometry(segW + 0.06, 0.3, 0.42), recCreamMat);
-          topBandM.position.y = 4.77;
-          bayGrp.add(topBandM);
-          const topFlashM = new Mesh(new BoxGeometry(segW + 0.1, 0.08, 0.46), silverFlashingMat);
-          topFlashM.position.y = 4.94;
-          bayGrp.add(topFlashM);
-          const meshM = new Mesh(new BoxGeometry(segW - 0.06, 1.3, 0.14), securityMeshMat);
-          meshM.position.y = 3.97;
-          bayGrp.add(meshM);
-          const subMul = new Mesh(new BoxGeometry(0.08, 1.3, 0.26), recCreamMat);
-          subMul.position.set(0, 3.97, 0.04);
-          bayGrp.add(subMul);
-          [3.75, 4.19].forEach((hy) => {
-            const hBar = new Mesh(new BoxGeometry(segW - 0.04, 0.07, 0.26), recCreamMat);
-            hBar.position.set(0, hy, 0.04);
-            bayGrp.add(hBar);
-          });
-          const finM = new Mesh(new BoxGeometry(0.12, 2.02, 0.46), recCreamMat);
-          finM.position.set(-segW * 0.5 + 0.04, 3.73, 0.06);
-          finM.castShadow = true;
-          bayGrp.add(finM);
-          if (s === segments - 1) {
-            const endFinM = new Mesh(new BoxGeometry(0.12, 2.02, 0.46), recCreamMat);
-            endFinM.position.set(segW * 0.5 - 0.04, 3.73, 0.06);
-            endFinM.castShadow = true;
-            bayGrp.add(endFinM);
-          }
-          arch.add(bayGrp);
-        }
-        const capGeo = new CylinderGeometry(1, 1, 0.14, 32);
-        const capMesh = new Mesh(capGeo, roofMembraneMat);
-        capMesh.scale.set(radiusX * 0.98, 1, radiusZ * 0.98);
-        capMesh.position.set(centerX, 4.78, centerZ);
-        arch.add(capMesh);
-        addBox(0.32, 4.92, 1.32, recCreamMat, doorX + 0.04, 2.46, doorZ);
-        addBox(0.26, 2.42, 1.02, whiteDoorMat, doorX - 0.02, 1.24, doorZ);
-        addBox(0.34, 0.14, 0.36, recCreamMat, doorX - 0.06, 2.62, doorZ - 0.32);
-      };
-      buildSemiCircularRecYard(-18.6, 18.8, 5.65, 4.25, Math.PI * 0.05, Math.PI * 1.05, -24.16, 19.25);
-      buildSemiCircularRecYard(-18.8, -22.2, 5.65, 4.25, -Math.PI * 1.05, -Math.PI * 0.05, -24.36, -22.75);
-      const garZ = -0.3;
-      const garW = 5.4;
-      const garH = 3.05;
-      addBox(0.18, garH + 0.16, garW + 0.24, plinthBeigeMat, 27.14, garH * 0.5 + 0.04, garZ);
-      addBox(0.14, garH, garW, whiteDoorMat, 27.18, garH * 0.5 + 0.02, garZ);
-      for (let py2 = 0.5; py2 < garH; py2 += 0.5) {
-        addBox(0.18, 0.04, garW - 0.08, darkFasciaMat, 27.2, py2, garZ);
-      }
-      [-3.15, 3.15].forEach((dz) => {
-        const bol = new Mesh(new CylinderGeometry(0.1, 0.1, 1.05, 12), bollardYellowMat);
-        bol.position.set(27.85, 0.52, garZ + dz);
-        bol.castShadow = true;
-        arch.add(bol);
-      });
-      addBox(0.16, 2.25, 1.88, whiteDoorMat, 28.46, 1.15, -9.2);
-      addBox(0.18, 2.25, 0.04, darkFasciaMat, 28.47, 1.15, -9.2);
-      const fdcRedMat = new MeshStandardMaterial({ color: "#9e2a28", roughness: 0.5, metalness: 0.3 });
-      addBox(0.22, 0.28, 0.28, fdcRedMat, 28.5, 0.95, -6.4);
-      addBox(0.16, 0.62, 0.42, darkFasciaMat, 27.18, 0.55, 3.35);
-      addBox(0.16, 0.62, 0.42, darkFasciaMat, 28.47, 0.55, -5.2);
-      addBox(1.6, 2.45, 2.1, blackIronMat, 27.75, 1.25, -13.6);
-      addBox(0.16, 2.2, 0.96, whiteDoorMat, 27.2, 1.12, -13.6);
-      const coreShiftX = 4.572;
-      addBox(17.6, 2.8, 18.6, tanPrecastMat, 13 + coreShiftX, 5.95, -5.5);
-      addBox(17.78, 0.16, 18.78, plinthBeigeMat, 13 + coreShiftX, 7.38, -5.5);
-      addBox(17.2, 0.08, 18.2, roofMembraneMat, 13 + coreShiftX, 7.34, -5.5);
-      [-11.5, -7.8, -4.1, -0.4].forEach((jz) => {
-        addBox(0.06, 2.8, 0.04, darkFasciaMat, 4.18 + coreShiftX, 5.95, jz);
-      });
-      [7.5, 11.2, 14.9, 18.6].forEach((jx) => {
-        addBox(0.04, 2.8, 0.06, darkFasciaMat, jx + coreShiftX, 5.95, 3.82);
-      });
-      addBox(0.12, 0.56, 0.68, whiteDoorMat, 4.16 + coreShiftX, 6.28, 0.85);
-      addBox(0.14, 0.62, 0.42, silverFlashingMat, 4.15 + coreShiftX, 5.65, -5.8);
-      addBox(0.14, 0.62, 0.42, silverFlashingMat, 4.15 + coreShiftX, 5.65, -6.4);
-      addBox(1.85, 0.38, 1.15, silverFlashingMat, 8.8 + coreShiftX, 7.56, -3.2);
-      addBox(0.95, 0.48, 0.95, silverFlashingMat, 9.2 + coreShiftX, 7.62, -6.4);
-      addBox(0.16, 2.15, 1.65, whiteDoorMat, 21.82 + coreShiftX, 5.65, 0.8);
-      addBox(0.16, 0.85, 1.35, silverFlashingMat, 21.82 + coreShiftX, 6.35, -10.5);
-      addBox(1.4, 0.95, 8.8, silverFlashingMat, 27.25, 5.25, -4.8);
-      for (let dz = -8.8; dz <= -0.8; dz += 2) {
-        addBox(0.12, 1.25, 0.12, darkFasciaMat, 27.95, 5.18, dz);
-      }
-      const gymXMin = 0.59;
-      const gymXMax = 28.44;
-      const gymW = gymXMax - gymXMin;
-      const gymCenterX = (gymXMin + gymXMax) * 0.5;
-      const gymZMin = -35.94;
-      const gymZMax = -15;
-      const gymSpanZ = gymZMax - gymZMin;
-      const gymCenterZ = (gymZMin + gymZMax) * 0.5;
-      const gymEaveY = 8.4;
-      const gymArchRise = 2.25;
-      addBox(gymW, gymEaveY, gymSpanZ, tanPrecastMat, gymCenterX, gymEaveY * 0.5, gymCenterZ);
-      addBox(gymW + 0.1, 0.72, gymSpanZ + 0.1, plinthBeigeMat, gymCenterX, 0.36, gymCenterZ);
-      const archShape = new Shape();
-      const halfSpan = gymSpanZ * 0.5;
-      const archSteps = 24;
-      archShape.moveTo(-halfSpan, 0);
-      for (let i = 0; i <= archSteps; i++) {
-        const u = -1 + 2 * i / archSteps;
-        const zLocal = u * halfSpan;
-        const yLocal = gymArchRise * (1 - u * u);
-        archShape.lineTo(zLocal, yLocal);
-      }
-      archShape.lineTo(halfSpan, 0);
-      archShape.closePath();
-      const barrelGeo = new ExtrudeGeometry(archShape, { depth: gymW, bevelEnabled: false });
-      barrelGeo.rotateY(Math.PI * 0.5);
-      this._applyArchitecturalUVs(barrelGeo, gymArchRise, 0.6);
-      const barrelMesh = new Mesh(barrelGeo, tanPrecastMat);
-      barrelMesh.position.set(gymXMin, gymEaveY, gymCenterZ);
-      barrelMesh.castShadow = true;
-      barrelMesh.receiveShadow = true;
-      barrelMesh.userData = { isSelectableBuilding: true, building };
-      arch.add(barrelMesh);
-      for (let i = 0; i < archSteps; i++) {
-        const u0 = -1 + 2 * i / archSteps;
-        const u1 = -1 + 2 * (i + 1) / archSteps;
-        const z0 = gymCenterZ + u0 * halfSpan;
-        const z1 = gymCenterZ + u1 * halfSpan;
-        const y0 = gymEaveY + gymArchRise * (1 - u0 * u0);
-        const y1 = gymEaveY + gymArchRise * (1 - u1 * u1);
-        const segLen = Math.hypot(z1 - z0, y1 - y0) + 0.04;
-        const mz = (z0 + z1) * 0.5;
-        const my = (y0 + y1) * 0.5;
-        const tiltX = -Math.atan2(y1 - y0, z1 - z0);
-        const roofSeg = new Mesh(
-          new BoxGeometry(gymW + 0.36, 0.18, segLen),
-          gymRoofMat
-        );
-        roofSeg.position.set(gymCenterX, my + 0.08, mz);
-        roofSeg.rotation.x = tiltX;
-        roofSeg.castShadow = true;
-        roofSeg.receiveShadow = true;
-        arch.add(roofSeg);
-        [gymXMax + 0.14, gymXMin - 0.14].forEach((fx) => {
-          const fasciaSeg = new Mesh(
-            new BoxGeometry(0.24, 0.34, segLen + 0.02),
-            darkFasciaMat
-          );
-          fasciaSeg.position.set(fx, my - 0.02, mz);
-          fasciaSeg.rotation.x = tiltX;
-          arch.add(fasciaSeg);
-        });
-      }
-      const fluePipe = new Mesh(new CylinderGeometry(0.14, 0.14, 2.45, 14), silverFlashingMat);
-      fluePipe.position.set(gymXMax + 0.22, 10.15, gymCenterZ);
-      fluePipe.castShadow = true;
-      arch.add(fluePipe);
-      const flueCap = new Mesh(new CylinderGeometry(0.22, 0.22, 0.1, 14), silverFlashingMat);
-      flueCap.position.set(gymXMax + 0.22, 11.42, gymCenterZ);
-      arch.add(flueCap);
-      const gymSconce = new Mesh(new ConeGeometry(0.28, 0.46, 3), whiteDoorMat);
-      gymSconce.position.set(gymXMax + 0.1, 3.85, gymCenterZ);
-      gymSconce.rotation.y = -Math.PI * 0.5;
-      arch.add(gymSconce);
-      addBox(0.16, 1.35, 1.35, whiteDoorMat, gymXMax + 0.04, 1.95, -18.2);
-      addBox(0.18, 1.22, 1.22, slotGlassMat, gymXMax + 0.05, 1.95, -18.2);
-      addBox(0.16, 2.22, 1.05, whiteDoorMat, gymXMax + 0.04, 1.12, -29.6);
-      addBox(0.18, 2.25, 2.85, silverFlashingMat, gymXMax + 0.05, 1.35, -33.2);
-      for (let ly = 0.35; ly <= 2.35; ly += 0.22) {
-        addBox(0.2, 0.05, 2.75, darkFasciaMat, gymXMax + 0.06, ly, -33.2);
-      }
-      addBox(1.55, 0.18, 31, plinthBeigeMat, 29.2, 0.09, -20.47, false);
-      [22.9, 25.9].forEach((lxPos) => {
-        addBox(2.45, 1.55, 0.18, silverFlashingMat, lxPos, 6.25, gymZMin - 0.05);
-        for (let ly = 5.6; ly <= 6.9; ly += 0.22) {
-          addBox(2.35, 0.05, 0.2, darkFasciaMat, lxPos, ly, gymZMin - 0.06);
-        }
-      });
-      addBox(2.45, 1.25, 0.18, silverFlashingMat, 25.9, 2.65, gymZMin - 0.05);
+      buildPhotoRealisticBuilding300(this, group, building, shape, wallMat, trimMat);
     }
   };
+
+  // js/foundry/ground/CampusFoundationPads.js
+  function buildCampusFoundationPads(groundFoundry, parent) {
+    const lotLevelY = groundFoundry.getRawTerrainHeight(-22, 10);
+    const fndGroup = new Group();
+    fndGroup.name = "Building400ConcreteFoundation";
+    fndGroup.position.set(-36.91, lotLevelY, 5.92);
+    fndGroup.rotation.y = Math.atan2(0.8116, 0.5842);
+    const can = document.createElement("canvas");
+    can.width = 1024;
+    can.height = 1024;
+    const ctx = can.getContext("2d");
+    ctx.fillStyle = "#cfc9be";
+    ctx.fillRect(0, 0, 1024, 1024);
+    for (let i = 0; i < 6e3; i++) {
+      ctx.fillStyle = i % 2 === 0 ? "rgba(255,255,255,0.05)" : "rgba(60,55,48,0.05)";
+      ctx.fillRect(i * 73 % 1024, i * 137 % 1024, 8, 3);
+    }
+    ctx.strokeStyle = "rgba(75, 70, 62, 0.38)";
+    ctx.lineWidth = 3;
+    for (let g = 64; g < 1024; g += 64) {
+      ctx.beginPath();
+      ctx.moveTo(g, 0);
+      ctx.lineTo(g, 1024);
+      ctx.moveTo(0, g);
+      ctx.lineTo(1024, g);
+      ctx.stroke();
+    }
+    const concreteTex = new CanvasTexture(can);
+    concreteTex.wrapS = RepeatWrapping;
+    concreteTex.wrapT = RepeatWrapping;
+    concreteTex.repeat.set(3, 3);
+    concreteTex.colorSpace = SRGBColorSpace;
+    const subMatSlabMat = new MeshStandardMaterial({
+      map: concreteTex,
+      bumpMap: concreteTex,
+      bumpScale: 0.015,
+      color: "#d8d2c7",
+      roughness: 0.86,
+      metalness: 0.03,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
+    });
+    const structuralFootingMat = new MeshStandardMaterial({
+      map: concreteTex,
+      bumpMap: concreteTex,
+      bumpScale: 0.02,
+      color: "#c2bcb0",
+      roughness: 0.82,
+      metalness: 0.05,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2
+    });
+    const stemWallMat = new MeshStandardMaterial({
+      color: "#ded8ce",
+      roughness: 0.78,
+      metalness: 0.04,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2
+    });
+    const apronW = 24.4;
+    const apronD = 41.85;
+    const apronH = 0.28;
+    const apronMesh = new Mesh(
+      new BoxGeometry(apronW, apronH, apronD),
+      subMatSlabMat
+    );
+    apronMesh.position.set(5.2, -0.1, 0.725);
+    apronMesh.receiveShadow = true;
+    apronMesh.castShadow = true;
+    fndGroup.add(apronMesh);
+    const wallZ = 14.62;
+    const frontWingZ = 14.14;
+    const bldg400LocalPts = [
+      [-3.24, frontWingZ],
+      [-0.35, frontWingZ],
+      [-0.35, wallZ],
+      [9.35, wallZ],
+      [9.35, frontWingZ],
+      [12.61, frontWingZ],
+      [12.61, 7.3],
+      [12.25, 7.3],
+      [12.25, -11.2],
+      [12.61, -11.2],
+      [12.61, -16.64],
+      [-5.35, -16.64],
+      [-5.35, -11.2],
+      [-2.86, -11.2],
+      [-2.86, 7.3],
+      [-3.24, 7.3]
+    ];
+    const fndShape = new Shape();
+    bldg400LocalPts.forEach(([lx, lz], idx) => {
+      if (idx === 0) fndShape.moveTo(lx, -lz);
+      else fndShape.lineTo(lx, -lz);
+    });
+    fndShape.closePath();
+    const slabGeo = new ExtrudeGeometry(fndShape, {
+      depth: 0.24,
+      bevelEnabled: true,
+      bevelThickness: 0.03,
+      bevelSize: 0.04,
+      bevelSegments: 2
+    });
+    slabGeo.rotateX(-Math.PI / 2);
+    const slabMesh = new Mesh(slabGeo, structuralFootingMat);
+    slabMesh.position.set(0, 0.14, 0);
+    slabMesh.receiveShadow = true;
+    slabMesh.castShadow = true;
+    fndGroup.add(slabMesh);
+    for (let i = 0; i < bldg400LocalPts.length; i++) {
+      const [x0, z0] = bldg400LocalPts[i];
+      const [x1, z1] = bldg400LocalPts[(i + 1) % bldg400LocalPts.length];
+      const segLen = Math.hypot(x1 - x0, z1 - z0);
+      const cx = (x0 + x1) * 0.5;
+      const cz = (z0 + z1) * 0.5;
+      const ang = Math.atan2(x1 - x0, z1 - z0);
+      const curb = new Mesh(
+        new BoxGeometry(0.42, 0.14, segLen + 0.42),
+        stemWallMat
+      );
+      curb.position.set(cx, 0.43, cz);
+      curb.rotation.y = ang;
+      curb.castShadow = true;
+      curb.receiveShadow = true;
+      fndGroup.add(curb);
+    }
+    const portFnd = new Mesh(
+      new BoxGeometry(9.7, 0.22, 4.25),
+      structuralFootingMat
+    );
+    portFnd.position.set(4.5, 0.25, wallZ + 2.125);
+    portFnd.receiveShadow = true;
+    portFnd.castShadow = true;
+    fndGroup.add(portFnd);
+    parent.add(fndGroup);
+    const buildWashGradedFoundation = (code, bldgPts, apronPts, gradeY) => {
+      const grp = new Group();
+      grp.name = `Building${code}ConcreteFoundation`;
+      grp.position.set(0, gradeY, 0);
+      const apronShape = new Shape();
+      apronPts.forEach(([px2, pz2], idx) => {
+        if (idx === 0) apronShape.moveTo(px2, -pz2);
+        else apronShape.lineTo(px2, -pz2);
+      });
+      apronShape.closePath();
+      const aGeo = new ExtrudeGeometry(apronShape, {
+        depth: 0.28,
+        bevelEnabled: true,
+        bevelThickness: 0.02,
+        bevelSize: 0.04,
+        bevelSegments: 2
+      });
+      aGeo.rotateX(-Math.PI / 2);
+      const aMesh = new Mesh(aGeo, subMatSlabMat);
+      aMesh.position.set(0, -0.12, 0);
+      aMesh.receiveShadow = true;
+      aMesh.castShadow = true;
+      grp.add(aMesh);
+      const bShape = new Shape();
+      bldgPts.forEach(([px2, pz2], idx) => {
+        if (idx === 0) bShape.moveTo(px2, -pz2);
+        else bShape.lineTo(px2, -pz2);
+      });
+      bShape.closePath();
+      const sGeo = new ExtrudeGeometry(bShape, {
+        depth: 0.24,
+        bevelEnabled: true,
+        bevelThickness: 0.03,
+        bevelSize: 0.04,
+        bevelSegments: 2
+      });
+      sGeo.rotateX(-Math.PI / 2);
+      const sMesh = new Mesh(sGeo, structuralFootingMat);
+      sMesh.position.set(0, 0.14, 0);
+      sMesh.receiveShadow = true;
+      sMesh.castShadow = true;
+      grp.add(sMesh);
+      for (let i = 0; i < bldgPts.length; i++) {
+        if (code === "316_300_Connected" && (i >= 1 && i <= 24)) continue;
+        const [x0, z0] = bldgPts[i];
+        const [x1, z1] = bldgPts[(i + 1) % bldgPts.length];
+        const segLen = Math.hypot(x1 - x0, z1 - z0);
+        const cx = (x0 + x1) * 0.5;
+        const cz = (z0 + z1) * 0.5;
+        const ang = Math.atan2(x1 - x0, z1 - z0);
+        const curb = new Mesh(
+          new BoxGeometry(0.42, 0.14, segLen + 0.42),
+          stemWallMat
+        );
+        curb.position.set(cx, 0.43, cz);
+        curb.rotation.y = ang;
+        curb.castShadow = true;
+        curb.receiveShadow = true;
+        grp.add(curb);
+      }
+      parent.add(grp);
+    };
+    const connectedStructuralPts = [
+      // Building 316 NW & Washington St frontage
+      [-12.34, 50.31],
+      [-15.06, 48.3],
+      [3.73, 23.08],
+      [19, 34.42],
+      // Connected across Washington St frontage to Building 300
+      [26.48, 38.66],
+      [42.11, 50.2],
+      // Building 300 SE, S, and SW stepped perimeter
+      [32.99, 62.52],
+      [37.49, 65.83],
+      [39.56, 63.03],
+      [53.85, 73.58],
+      [54.7, 76.01],
+      [54.46, 78.66],
+      [43.65, 93.27],
+      [41.03, 91.35],
+      [38.62, 94.61],
+      [41.36, 96.63],
+      [30.32, 111.54],
+      [28.58, 112.23],
+      [25.68, 112.3],
+      [11.03, 101.49],
+      [13.44, 98.22],
+      [10.61, 96.14],
+      [2.12, 107.62],
+      [-20.28, 91.09],
+      [-0.63, 64.55],
+      // Connected to Building 316 SW perimeter
+      [0.2, 59.63],
+      [-5.74, 55.21],
+      [-8.28, 58.62],
+      [-14.88, 53.72]
+    ];
+    const connectedApronPts = groundFoundry._connected316_300ApronPts;
+    buildWashGradedFoundation(
+      "316_300_Connected",
+      connectedStructuralPts,
+      connectedApronPts,
+      groundFoundry.getBuildingRoadHeight("building-316")
+    );
+  }
 
   // js/foundry/CampusGroundFoundry.js
   var CampusGroundFoundry = class {
@@ -35666,16 +36757,30 @@ void main() {
       this.outerTerrainMat = null;
       this.mapStyle = "roadmap";
       this.textures = {};
+      this.innerTerrainMesh = null;
+      this.outerTerrainMesh = null;
+      this.bulldozedCells = /* @__PURE__ */ new Map();
+      this._bulldozeHistory = [];
+      try {
+        const savedCells = localStorage.getItem("chelan_bulldozed_cells_v1");
+        if (savedCells) {
+          const parsed = JSON.parse(savedCells);
+          if (Array.isArray(parsed)) {
+            parsed.forEach(([key, steps]) => {
+              if (typeof key === "string" && typeof steps === "number" && steps > 0) {
+                this.bulldozedCells.set(key, steps);
+              }
+            });
+          }
+        }
+      } catch (_) {
+      }
       this._connected316_300ApronPts = [
         [-16.54, 50.94],
         [-21.34, 49.19],
         [3.91, 15.19],
-        [47.7, 47.7],
-        [38.63, 59.95],
-        [40.66, 60.1],
-        [56.37, 71.72],
-        [57.75, 75.63],
-        [57.37, 79.76],
+        [70.11, 64.34],
+        [58.21, 80.37],
         [32.23, 114.02],
         [29.2, 115.22],
         [24.34, 115.33],
@@ -35758,15 +36863,30 @@ void main() {
     getTerrainHeight(x, z) {
       const rawY = this.getRawTerrainHeight(x, z);
       if (!this.terrainData) return rawY;
+      const applyBulldoze = (baseY) => {
+        if (!this.bulldozedCells || this.bulldozedCells.size === 0) return baseY;
+        const ix0 = Math.floor(x);
+        const iz0 = Math.floor(z);
+        const fx = x - ix0;
+        const fz = z - iz0;
+        const sx = fx * fx * (3 - 2 * fx);
+        const sz = fz * fz * (3 - 2 * fz);
+        const s00 = this.bulldozedCells.get(`${ix0},${iz0}`) || 0;
+        const s10 = this.bulldozedCells.get(`${ix0 + 1},${iz0}`) || 0;
+        const s01 = this.bulldozedCells.get(`${ix0},${iz0 + 1}`) || 0;
+        const s11 = this.bulldozedCells.get(`${ix0 + 1},${iz0 + 1}`) || 0;
+        const steps = (s00 * (1 - sx) + s10 * sx) * (1 - sz) + (s01 * (1 - sx) + s11 * sx) * sz;
+        return baseY - steps * 0.3048 * this.exaggeration;
+      };
       {
         const dx = x - -36.91;
         const dz = z - 5.92;
         const lx = dx * 0.5842 - dz * 0.8116;
         const lz = dx * 0.8116 + dz * 0.5842;
-        if (lx > -34 && lx < 21.5 && lz > -28 && lz < 26.5) {
+        if (lx > -34 && lx < 21.5 && lz > -28 && lz < 25.5) {
           const lotLevelY = this.getRawTerrainHeight(-22, 10);
-          const padW = MathUtils.smoothstep(lx, -32, -20) * (1 - MathUtils.smoothstep(lx, 17.5, 21)) * MathUtils.smoothstep(lz, -26, -20.2) * (1 - MathUtils.smoothstep(lz, 22.2, 26));
-          return MathUtils.lerp(rawY, lotLevelY, padW);
+          const padW = MathUtils.smoothstep(lx, -32, -20) * (1 - MathUtils.smoothstep(lx, 17.5, 21)) * MathUtils.smoothstep(lz, -26, -20.2) * (1 - MathUtils.smoothstep(lz, 21.65, 25));
+          return applyBulldoze(MathUtils.lerp(rawY, lotLevelY, padW));
         }
       }
       if (this._connected316_300ApronPts) {
@@ -35785,7 +36905,7 @@ void main() {
               padW *= 1 - dougContourRelease;
             }
             const washGradeY = this.getBuildingRoadHeight("building-316");
-            return MathUtils.lerp(rawY, washGradeY, padW);
+            return applyBulldoze(MathUtils.lerp(rawY, washGradeY, padW));
           }
         }
       }
@@ -35809,10 +36929,10 @@ void main() {
         if (totalW > 1e-4) {
           const avgPadY = weightedPadY / totalW;
           const blendW = Math.min(1, totalW);
-          return MathUtils.lerp(rawY, avgPadY, blendW);
+          return applyBulldoze(MathUtils.lerp(rawY, avgPadY, blendW));
         }
       }
-      return rawY;
+      return applyBulldoze(rawY);
     }
     getElevationASL(x, z) {
       if (!this.terrainData) return 223.51;
@@ -35905,11 +37025,12 @@ void main() {
       });
       const mesh = new Mesh(geo, this.outerTerrainMat);
       mesh.receiveShadow = true;
+      this.outerTerrainMesh = mesh;
       parent.add(mesh);
     }
     _buildInnerCampusTerrainMesh(parent) {
       const size = this.terrainData?.inner?.size || 640;
-      const segs = 240;
+      const segs = 320;
       const geo = new PlaneGeometry(size, size, segs, segs);
       geo.rotateX(-Math.PI / 2);
       const pos = geo.attributes.position;
@@ -35931,252 +37052,87 @@ void main() {
       });
       const mesh = new Mesh(geo, this.innerTerrainMat);
       mesh.receiveShadow = true;
+      this.innerTerrainMesh = mesh;
       parent.add(mesh);
+    }
+    /**
+     * Bulldozer Tool: Lower a 1m x 1m square at (x, z) by 1 foot (0.3048m)
+     */
+    bulldoze1mSquare(x, z, deltaSteps = 1) {
+      const ix = Math.floor(x);
+      const iz = Math.floor(z);
+      const corners = [
+        `${ix},${iz}`,
+        `${ix + 1},${iz}`,
+        `${ix},${iz + 1}`,
+        `${ix + 1},${iz + 1}`
+      ];
+      const prevStates = corners.map((k) => [k, this.bulldozedCells.get(k) || 0]);
+      this._bulldozeHistory.push(prevStates);
+      if (this._bulldozeHistory.length > 200) this._bulldozeHistory.shift();
+      const baseStep = Math.max(...prevStates.map(([, v]) => v));
+      const nextStep = Math.max(0, baseStep + deltaSteps);
+      corners.forEach((k) => {
+        if (nextStep === 0) this.bulldozedCells.delete(k);
+        else this.bulldozedCells.set(k, nextStep);
+      });
+      this._saveBulldozedCells();
+      this._refreshTerrainRegion(ix - 3, ix + 4, iz - 3, iz + 4);
+      return { ix, iz, steps: nextStep, feetLowered: nextStep };
+    }
+    undoBulldoze() {
+      if (this._bulldozeHistory.length === 0) return false;
+      const prevStates = this._bulldozeHistory.pop();
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      prevStates.forEach(([k, val]) => {
+        const [cx, cz] = k.split(",").map(Number);
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cz < minZ) minZ = cz;
+        if (cz > maxZ) maxZ = cz;
+        if (val <= 0) this.bulldozedCells.delete(k);
+        else this.bulldozedCells.set(k, val);
+      });
+      this._saveBulldozedCells();
+      this._refreshTerrainRegion(minX - 3, maxX + 3, minZ - 3, maxZ + 3);
+      return true;
+    }
+    clearAllBulldoze() {
+      if (this.bulldozedCells.size === 0) return false;
+      this.bulldozedCells.clear();
+      this._bulldozeHistory = [];
+      this._saveBulldozedCells();
+      this._refreshTerrainRegion(-320, 320, -320, 320);
+      return true;
+    }
+    _saveBulldozedCells() {
+      try {
+        localStorage.setItem(
+          "chelan_bulldozed_cells_v1",
+          JSON.stringify(Array.from(this.bulldozedCells.entries()))
+        );
+      } catch (_) {
+      }
+    }
+    _refreshTerrainRegion(minX, maxX, minZ, maxZ) {
+      if (!this.innerTerrainMesh) return;
+      const geo = this.innerTerrainMesh.geometry;
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const vx = pos.getX(i);
+        const vz = pos.getZ(i);
+        if (vx >= minX && vx <= maxX && vz >= minZ && vz <= maxZ) {
+          pos.setY(i, this.getTerrainHeight(vx, vz));
+        }
+      }
+      pos.needsUpdate = true;
+      geo.computeVertexNormals();
     }
     /**
      * Poured Concrete Foundation Mat & Stepped Structural Footing Slab on the leveled Building 400 lot
      */
     _buildBuilding400FoundationPad(parent) {
-      const lotLevelY = this.getRawTerrainHeight(-22, 10);
-      const fndGroup = new Group();
-      fndGroup.name = "Building400ConcreteFoundation";
-      fndGroup.position.set(-36.91, lotLevelY, 5.92);
-      fndGroup.rotation.y = Math.atan2(0.8116, 0.5842);
-      const can = document.createElement("canvas");
-      can.width = 1024;
-      can.height = 1024;
-      const ctx = can.getContext("2d");
-      ctx.fillStyle = "#cfc9be";
-      ctx.fillRect(0, 0, 1024, 1024);
-      for (let i = 0; i < 6e3; i++) {
-        ctx.fillStyle = i % 2 === 0 ? "rgba(255,255,255,0.05)" : "rgba(60,55,48,0.05)";
-        ctx.fillRect(i * 73 % 1024, i * 137 % 1024, 8, 3);
-      }
-      ctx.strokeStyle = "rgba(75, 70, 62, 0.38)";
-      ctx.lineWidth = 3;
-      for (let g = 64; g < 1024; g += 64) {
-        ctx.beginPath();
-        ctx.moveTo(g, 0);
-        ctx.lineTo(g, 1024);
-        ctx.moveTo(0, g);
-        ctx.lineTo(1024, g);
-        ctx.stroke();
-      }
-      const concreteTex = new CanvasTexture(can);
-      concreteTex.wrapS = RepeatWrapping;
-      concreteTex.wrapT = RepeatWrapping;
-      concreteTex.repeat.set(3, 3);
-      concreteTex.colorSpace = SRGBColorSpace;
-      const subMatSlabMat = new MeshStandardMaterial({
-        map: concreteTex,
-        bumpMap: concreteTex,
-        bumpScale: 0.015,
-        color: "#d8d2c7",
-        roughness: 0.86,
-        metalness: 0.03,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1
-      });
-      const structuralFootingMat = new MeshStandardMaterial({
-        map: concreteTex,
-        bumpMap: concreteTex,
-        bumpScale: 0.02,
-        color: "#c2bcb0",
-        roughness: 0.82,
-        metalness: 0.05,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2
-      });
-      const stemWallMat = new MeshStandardMaterial({
-        color: "#ded8ce",
-        roughness: 0.78,
-        metalness: 0.04,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2
-      });
-      const apronW = 24.4;
-      const apronD = 42.4;
-      const apronH = 0.28;
-      const apronMesh = new Mesh(
-        new BoxGeometry(apronW, apronH, apronD),
-        subMatSlabMat
-      );
-      apronMesh.position.set(5.2, 0.02, 1);
-      apronMesh.receiveShadow = true;
-      apronMesh.castShadow = true;
-      fndGroup.add(apronMesh);
-      const wallZ = 14.62;
-      const frontWingZ = 14.14;
-      const bldg400LocalPts = [
-        [-3.24, frontWingZ],
-        [-0.35, frontWingZ],
-        [-0.35, wallZ],
-        [9.35, wallZ],
-        [9.35, frontWingZ],
-        [12.61, frontWingZ],
-        [12.61, 7.3],
-        [12.25, 7.3],
-        [12.25, -11.2],
-        [12.61, -11.2],
-        [12.61, -16.64],
-        [-5.35, -16.64],
-        [-5.35, -11.2],
-        [-2.86, -11.2],
-        [-2.86, 7.3],
-        [-3.24, 7.3]
-      ];
-      const fndShape = new Shape();
-      bldg400LocalPts.forEach(([lx, lz], idx) => {
-        if (idx === 0) fndShape.moveTo(lx, -lz);
-        else fndShape.lineTo(lx, -lz);
-      });
-      fndShape.closePath();
-      const slabGeo = new ExtrudeGeometry(fndShape, {
-        depth: 0.24,
-        bevelEnabled: true,
-        bevelThickness: 0.03,
-        bevelSize: 0.04,
-        bevelSegments: 2
-      });
-      slabGeo.rotateX(-Math.PI / 2);
-      const slabMesh = new Mesh(slabGeo, structuralFootingMat);
-      slabMesh.position.set(0, 0.14, 0);
-      slabMesh.receiveShadow = true;
-      slabMesh.castShadow = true;
-      fndGroup.add(slabMesh);
-      for (let i = 0; i < bldg400LocalPts.length; i++) {
-        const [x0, z0] = bldg400LocalPts[i];
-        const [x1, z1] = bldg400LocalPts[(i + 1) % bldg400LocalPts.length];
-        const segLen = Math.hypot(x1 - x0, z1 - z0);
-        const cx = (x0 + x1) * 0.5;
-        const cz = (z0 + z1) * 0.5;
-        const ang = Math.atan2(x1 - x0, z1 - z0);
-        const curb = new Mesh(
-          new BoxGeometry(0.42, 0.14, segLen + 0.42),
-          stemWallMat
-        );
-        curb.position.set(cx, 0.43, cz);
-        curb.rotation.y = ang;
-        curb.castShadow = true;
-        curb.receiveShadow = true;
-        fndGroup.add(curb);
-      }
-      const portFnd = new Mesh(
-        new BoxGeometry(9.7, 0.22, 4.25),
-        structuralFootingMat
-      );
-      portFnd.position.set(4.5, 0.25, wallZ + 2.125);
-      portFnd.receiveShadow = true;
-      portFnd.castShadow = true;
-      fndGroup.add(portFnd);
-      parent.add(fndGroup);
-      const buildWashGradedFoundation = (code, bldgPts, apronPts, gradeY) => {
-        const grp = new Group();
-        grp.name = `Building${code}ConcreteFoundation`;
-        grp.position.set(0, gradeY, 0);
-        const apronShape = new Shape();
-        apronPts.forEach(([px2, pz2], idx) => {
-          if (idx === 0) apronShape.moveTo(px2, -pz2);
-          else apronShape.lineTo(px2, -pz2);
-        });
-        apronShape.closePath();
-        const aGeo = new ExtrudeGeometry(apronShape, {
-          depth: 0.28,
-          bevelEnabled: true,
-          bevelThickness: 0.02,
-          bevelSize: 0.04,
-          bevelSegments: 2
-        });
-        aGeo.rotateX(-Math.PI / 2);
-        const aMesh = new Mesh(aGeo, subMatSlabMat);
-        aMesh.position.set(0, -0.12, 0);
-        aMesh.receiveShadow = true;
-        aMesh.castShadow = true;
-        grp.add(aMesh);
-        const bShape = new Shape();
-        bldgPts.forEach(([px2, pz2], idx) => {
-          if (idx === 0) bShape.moveTo(px2, -pz2);
-          else bShape.lineTo(px2, -pz2);
-        });
-        bShape.closePath();
-        const sGeo = new ExtrudeGeometry(bShape, {
-          depth: 0.24,
-          bevelEnabled: true,
-          bevelThickness: 0.03,
-          bevelSize: 0.04,
-          bevelSegments: 2
-        });
-        sGeo.rotateX(-Math.PI / 2);
-        const sMesh = new Mesh(sGeo, structuralFootingMat);
-        sMesh.position.set(0, 0.14, 0);
-        sMesh.receiveShadow = true;
-        sMesh.castShadow = true;
-        grp.add(sMesh);
-        for (let i = 0; i < bldgPts.length; i++) {
-          if (code === "316_300_Connected" && (i === 1 || i === 2 || i === 3 || i === 4 || i === 5 || i === 24)) continue;
-          const [x0, z0] = bldgPts[i];
-          const [x1, z1] = bldgPts[(i + 1) % bldgPts.length];
-          const segLen = Math.hypot(x1 - x0, z1 - z0);
-          const cx = (x0 + x1) * 0.5;
-          const cz = (z0 + z1) * 0.5;
-          const ang = Math.atan2(x1 - x0, z1 - z0);
-          const curb = new Mesh(
-            new BoxGeometry(0.42, 0.14, segLen + 0.42),
-            stemWallMat
-          );
-          curb.position.set(cx, 0.43, cz);
-          curb.rotation.y = ang;
-          curb.castShadow = true;
-          curb.receiveShadow = true;
-          grp.add(curb);
-        }
-        parent.add(grp);
-      };
-      const connectedStructuralPts = [
-        // Building 316 NW & Washington St frontage
-        [-12.34, 50.31],
-        [-15.06, 48.3],
-        [3.73, 23.08],
-        [19, 34.42],
-        // Connected across Washington St frontage to Building 300
-        [26.48, 38.66],
-        [42.11, 50.2],
-        // Building 300 SE, S, and SW stepped perimeter
-        [32.99, 62.52],
-        [37.49, 65.83],
-        [39.56, 63.03],
-        [53.85, 73.58],
-        [54.7, 76.01],
-        [54.46, 78.66],
-        [43.65, 93.27],
-        [41.03, 91.35],
-        [38.62, 94.61],
-        [41.36, 96.63],
-        [30.32, 111.54],
-        [28.58, 112.23],
-        [25.68, 112.3],
-        [11.03, 101.49],
-        [13.44, 98.22],
-        [10.61, 96.14],
-        [2.12, 107.62],
-        [-20.28, 91.09],
-        [-0.63, 64.55],
-        // Connected to Building 316 SW perimeter
-        [0.2, 59.63],
-        [-5.74, 55.21],
-        [-8.28, 58.62],
-        [-14.88, 53.72]
-      ];
-      const connectedApronPts = this._connected316_300ApronPts;
-      buildWashGradedFoundation(
-        "316_300_Connected",
-        connectedStructuralPts,
-        connectedApronPts,
-        this.getBuildingRoadHeight("building-316")
-      );
+      buildCampusFoundationPads(this, parent);
     }
     _buildTopographicContours(parent) {
       const positions = [];
@@ -36340,6 +37296,28 @@ void main() {
       this.selectionRing.position.y = 0.28;
       this.selectionRing.visible = false;
       this.scene.add(this.selectionRing);
+      this.bulldozerActive = false;
+      this.bulldozerGroup = new Group();
+      this.bulldozerGroup.name = "Bulldozer1mCursor";
+      this.bulldozerGroup.visible = false;
+      const bBoxGeo = new BoxGeometry(1, 0.3048, 1);
+      const bFillMat = new MeshBasicMaterial({
+        color: "#f59e0b",
+        transparent: true,
+        opacity: 0.35,
+        depthTest: false
+      });
+      const bEdgesGeo = new EdgesGeometry(bBoxGeo);
+      const bLineMat = new LineBasicMaterial({
+        color: "#fde047",
+        depthTest: false
+      });
+      const bFillMesh = new Mesh(bBoxGeo, bFillMat);
+      bFillMesh.position.y = -0.3048 * 0.5;
+      const bWireMesh = new LineSegments(bEdgesGeo, bLineMat);
+      bWireMesh.position.y = -0.3048 * 0.5;
+      this.bulldozerGroup.add(bFillMesh, bWireMesh);
+      this.scene.add(this.bulldozerGroup);
       this.setTimeOfDay(14);
     }
     setTimeOfDay(hourFloat) {
@@ -36613,7 +37591,61 @@ void main() {
       document.getElementById("close-detail-btn").addEventListener("click", () => {
         this.clearSelection();
       });
-      this.selectBuilding("courthouse-350", false);
+      this.clearSelection();
+      const optBtn = document.getElementById("btn-toggle-options");
+      if (optBtn) {
+        optBtn.addEventListener("click", () => {
+          const hidden = document.body.classList.toggle("options-hidden");
+          optBtn.textContent = hidden ? "\u2699\uFE0F Options" : "\u2715 Hide Options";
+        });
+      }
+      const bulldozeBtn = document.getElementById("btn-bulldozer-tool");
+      const undoBtn = document.getElementById("btn-bulldozer-undo");
+      const clearBtn = document.getElementById("btn-bulldozer-clear");
+      const readoutEl = document.getElementById("bulldozer-readout");
+      const syncBulldozerButtons = () => {
+        const hasEdits = this.groundFoundry.bulldozedCells && this.groundFoundry.bulldozedCells.size > 0;
+        if (undoBtn) undoBtn.classList.toggle("hidden", !this.bulldozerActive && !hasEdits);
+        if (clearBtn) clearBtn.classList.toggle("hidden", !this.bulldozerActive && !hasEdits);
+        if (readoutEl) readoutEl.classList.toggle("hidden", !this.bulldozerActive);
+      };
+      this._syncBulldozerButtons = syncBulldozerButtons;
+      if (bulldozeBtn) {
+        bulldozeBtn.addEventListener("click", () => {
+          this.bulldozerActive = !this.bulldozerActive;
+          bulldozeBtn.classList.toggle("active", this.bulldozerActive);
+          this.controls.enableRotate = !this.bulldozerActive;
+          this.renderer.domElement.style.cursor = this.bulldozerActive ? "crosshair" : "default";
+          if (!this.bulldozerActive) {
+            this.bulldozerGroup.visible = false;
+          }
+          syncBulldozerButtons();
+        });
+      }
+      if (undoBtn) {
+        undoBtn.addEventListener("click", () => {
+          if (this.groundFoundry.undoBulldoze()) {
+            this._refreshBulldozeDependents();
+            syncBulldozerButtons();
+          }
+        });
+      }
+      if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+          if (this.groundFoundry.clearAllBulldoze()) {
+            this._refreshBulldozeDependents();
+            syncBulldozerButtons();
+          }
+        });
+      }
+      syncBulldozerButtons();
+    }
+    _refreshBulldozeDependents() {
+      const b316 = CAMPUS_DATA.campusBuildings.find((b) => b.code === "316" || b.id === "building-316");
+      if (b316) {
+        this._spawnCampusBuilding(b316);
+      }
+      this.renderer.shadowMap.needsUpdate = true;
     }
     _renderBuildingDirectory(query) {
       const listEl = document.getElementById("building-list");
@@ -36743,10 +37775,74 @@ void main() {
         this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
       });
       let pointerDownPos = { x: 0, y: 0 };
+      let isBulldozeDragging = false;
+      let lastBulldozedCellKey = null;
+      const readoutEl = document.getElementById("bulldozer-readout");
+      const raycastTerrainPoint = (clientX, clientY) => {
+        const targetMesh = this.groundFoundry.innerTerrainMesh;
+        if (!targetMesh) return null;
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        this.pointer.x = (clientX - rect.left) / rect.width * 2 - 1;
+        this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+        this.raycaster.setFromCamera(this.pointer, this.camera);
+        const hits = this.raycaster.intersectObject(targetMesh, false);
+        return hits.length > 0 ? hits[0].point : null;
+      };
+      const applyBulldozeAtPoint = (pt, shiftKey = false) => {
+        const ix = Math.floor(pt.x);
+        const iz = Math.floor(pt.z);
+        const cellKey = `${ix},${iz}`;
+        if (isBulldozeDragging && cellKey === lastBulldozedCellKey) return;
+        lastBulldozedCellKey = cellKey;
+        const deltaSteps = shiftKey ? -1 : 1;
+        const res = this.groundFoundry.bulldoze1mSquare(pt.x, pt.z, deltaSteps);
+        const newY = this.groundFoundry.getTerrainHeight(ix + 0.5, iz + 0.5);
+        this.bulldozerGroup.position.set(ix + 0.5, newY + 0.02, iz + 0.5);
+        this.bulldozerGroup.visible = true;
+        if (readoutEl) {
+          readoutEl.textContent = `1m\xD71m [${ix}, ${iz}] \u2022 Lowered -${res.feetLowered} ft (${(res.feetLowered * 0.3048).toFixed(2)}m)`;
+        }
+        if (this._syncBulldozerButtons) this._syncBulldozerButtons();
+      };
+      this.renderer.domElement.addEventListener("pointermove", (e) => {
+        if (!this.bulldozerActive) return;
+        const pt = raycastTerrainPoint(e.clientX, e.clientY);
+        if (!pt) {
+          this.bulldozerGroup.visible = false;
+          return;
+        }
+        const ix = Math.floor(pt.x);
+        const iz = Math.floor(pt.z);
+        const cy = this.groundFoundry.getTerrainHeight(ix + 0.5, iz + 0.5);
+        this.bulldozerGroup.position.set(ix + 0.5, cy + 0.02, iz + 0.5);
+        this.bulldozerGroup.visible = true;
+        if (isBulldozeDragging && e.buttons & 1) {
+          applyBulldozeAtPoint(pt, e.shiftKey);
+        } else if (readoutEl) {
+          const curSteps = this.groundFoundry.bulldozedCells.get(`${ix},${iz}`) || 0;
+          readoutEl.textContent = `1m\xD71m [${ix}, ${iz}] \u2022 Current: -${curSteps} ft (Click: -1 ft | Shift+Click: +1 ft)`;
+        }
+      });
       this.renderer.domElement.addEventListener("pointerdown", (e) => {
         pointerDownPos = { x: e.clientX, y: e.clientY };
+        if (this.bulldozerActive && e.button === 0) {
+          const pt = raycastTerrainPoint(e.clientX, e.clientY);
+          if (pt) {
+            isBulldozeDragging = true;
+            lastBulldozedCellKey = null;
+            applyBulldozeAtPoint(pt, e.shiftKey);
+          }
+        }
+      });
+      window.addEventListener("pointerup", () => {
+        if (isBulldozeDragging) {
+          isBulldozeDragging = false;
+          lastBulldozedCellKey = null;
+          this._refreshBulldozeDependents();
+        }
       });
       this.renderer.domElement.addEventListener("pointerup", (e) => {
+        if (this.bulldozerActive) return;
         const moveDist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
         if (moveDist > 6) return;
         const rect = this.renderer.domElement.getBoundingClientRect();
