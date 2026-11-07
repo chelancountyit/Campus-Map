@@ -46,13 +46,13 @@ export function buildBuilding300GroundsAndGrading(ctx) {
         const medCz = 32.35;
         // Center solid circular concrete medallion disc (radius = 1.05m)
         const innerDisk = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.02, 28), plazaConcreteMat);
-        innerDisk.position.set(medCx, landingY + 0.01, medCz);
+        innerDisk.position.set(medCx, landingY + 0.012, medCz);
         arch.add(innerDisk);
         // Four concentric circular score rings (radii = 1.05m, 1.95m, 2.25m, and outer perimeter circle 3.15m — exact match to ac6172be.jpg!)
         [1.05, 1.95, 2.25, 3.15].forEach((rad) => {
             const ringTorus = new THREE.Mesh(new THREE.TorusGeometry(rad, 0.020, 8, 36), plazaJointMat);
             ringTorus.rotation.x = Math.PI * 0.5;
-            ringTorus.position.set(medCx, landingY + 0.013, medCz);
+            ringTorus.position.set(medCx, landingY + 0.022, medCz);
             arch.add(ringTorus);
         });
         // 8 radial score lines radiating from the center medallion (r = 1.05m) out to the outer circle (r = 3.15m)
@@ -60,7 +60,7 @@ export function buildBuilding300GroundsAndGrading(ctx) {
             const ang = (r * Math.PI) / 4;
             const ray = new THREE.Mesh(new THREE.BoxGeometry(2.10, 0.02, 0.024), plazaJointMat);
             ray.rotation.y = -ang;
-            ray.position.set(medCx + Math.cos(ang) * 2.10, landingY + 0.013, medCz + Math.sin(ang) * 2.10);
+            ray.position.set(medCx + Math.cos(ang) * 2.10, landingY + 0.016, medCz + Math.sin(ang) * 2.10);
             arch.add(ray);
         }
 
@@ -309,16 +309,16 @@ export function buildBuilding300GroundsAndGrading(ctx) {
             arch.add(bush);
         });
 
-        // Continuous Washington St Public Concrete Sidewalk in front of Building 300 Perfectly Collinear with Building 316's Sidewalk (lx = -28.20m..28.40m, lz = 37.12m..39.42m = lz316 29.55m..31.85m!)
-        const sw300W = 56.60;
+        // Continuous Washington St Public Concrete Sidewalk in front of Building 300 Perfectly Collinear with Building 316's Sidewalk (lx = -28.20m..28.35m, lz = 37.12m..39.42m = lz316 29.55m..31.85m!)
+        const sw300W = 56.55;
         const sw300D = 2.30;
-        const sw300Cx = 0.10;
+        const sw300Cx = 0.075;
         const sw300Cz = 38.27;
         addBox(sw300W, 0.26, sw300D, plazaConcreteMat, sw300Cx, 0.21, sw300Cz, false);
         // Longitudinal center score joint & transverse control joints every 1.75m (strictly collinear with Building 316's center score joint at lz316 = 30.70m -> lz300 = 38.27m!)
-        addBox(sw300W, 0.27, 0.03, plazaJointMat, sw300Cx, 0.215, sw300Cz, false);
-        for (let sx = -27.65; sx <= 28.35; sx += 1.75) {
-            addBox(0.03, 0.27, sw300D + 0.02, plazaJointMat, sx, 0.215, sw300Cz, false);
+        addBox(sw300W, 0.275, 0.03, plazaJointMat, sw300Cx, 0.215, sw300Cz, false);
+        for (let sx = -27.65; sx <= 28.30; sx += 1.75) {
+            addBox(0.03, 0.278, sw300D + 0.02, plazaJointMat, sx, 0.218, sw300Cz, false);
         }
         // Raised Concrete Street Curb along the outer Washington St edge of the sidewalk (lz = 39.34m = lz316 31.77m — zero step!)
         addBox(sw300W, 0.29, 0.16, whiteDoorMat, sw300Cx, 0.225, 39.34, false);

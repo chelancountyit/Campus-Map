@@ -340,11 +340,11 @@ export function buildBuilding316Structure(ctx) {
         const pentWallH = 3.65; // y = 9.80m..13.45m smooth beige/gray penthouse wall
         const pentCrownH = 1.75; // y = 13.45m..15.20m silver horizontal louvered crown
 
-        // East Wing Penthouse Lower Wall & Silver Louvered Crown
-        addBox(7.60, pentWallH, 12.40, penthouseWallMat, -7.00, pentBaseY + pentWallH * 0.5, 12.20);
-        addBox(7.68, 0.14, 12.48, whiteTrimMat, -7.00, pentBaseY + pentWallH, 12.20);
-        addBox(7.60, pentCrownH, 12.40, silverLouverMat, -7.00, pentBaseY + pentWallH + pentCrownH * 0.5, 12.20);
-        addBox(7.72, 0.14, 12.52, galvSteelMat, -7.00, pentBaseY + pentWallH + pentCrownH + 0.05, 12.20);
+        // East Wing Penthouse Lower Wall & Silver Louvered Crown (lz = +10.50m..+18.40m, abutting Rear Wing cleanly at lz = +10.50m)
+        addBox(7.60, pentWallH, 7.90, penthouseWallMat, -7.00, pentBaseY + pentWallH * 0.5, 14.45);
+        addBox(7.68, 0.14, 7.98, whiteTrimMat, -7.00, pentBaseY + pentWallH, 14.45);
+        addBox(7.60, pentCrownH, 7.90, silverLouverMat, -7.00, pentBaseY + pentWallH + pentCrownH * 0.5, 14.45);
+        addBox(7.72, 0.14, 8.02, galvSteelMat, -7.00, pentBaseY + pentWallH + pentCrownH + 0.05, 14.45);
 
         // Rear Wing Penthouse Lower Wall & Silver Louvered Crown
         addBox(13.60, pentWallH, 16.10, penthouseWallMat, -4.00, pentBaseY + pentWallH * 0.5, 2.45);

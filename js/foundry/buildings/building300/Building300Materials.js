@@ -100,7 +100,10 @@ export function createBuilding300Context(foundry, group, building, shape) {
         const roofMembraneMat = new THREE.MeshStandardMaterial({
             color: '#dcdad3',
             roughness: 0.86,
-            metalness: 0.05
+            metalness: 0.05,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1
         });
         const gymRoofMat = new THREE.MeshStandardMaterial({
             color: '#6b727a',
@@ -133,11 +136,25 @@ export function createBuilding300Context(foundry, group, building, shape) {
             metalness: 0.18
         });
         const plazaConcreteMat = new THREE.MeshStandardMaterial({ color: '#d8d4cb', roughness: 0.85, metalness: 0.03 });
-        const plazaJointMat = new THREE.MeshStandardMaterial({ color: '#8c867a', roughness: 0.92, metalness: 0.02 });
+        const plazaJointMat = new THREE.MeshStandardMaterial({
+            color: '#8c867a',
+            roughness: 0.92,
+            metalness: 0.02,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1
+        });
         const pipeRailMat = new THREE.MeshStandardMaterial({ color: '#565b60', roughness: 0.42, metalness: 0.68 });
         const hedgeGreenMat = new THREE.MeshStandardMaterial({ color: '#3b6228', roughness: 0.90, metalness: 0.02 });
         const hedgeRedMat = new THREE.MeshStandardMaterial({ color: '#6e352c', roughness: 0.90, metalness: 0.02 });
-        const turfLawnMat = new THREE.MeshStandardMaterial({ color: '#4e7932', roughness: 0.92, metalness: 0.02 });
+        const turfLawnMat = new THREE.MeshStandardMaterial({
+            color: '#4e7932',
+            roughness: 0.92,
+            metalness: 0.02,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1
+        });
 
         const arch = new THREE.Group();
         arch.name = 'Building300ArchitecturalDetails';
@@ -173,7 +190,7 @@ export function createBuilding300Context(foundry, group, building, shape) {
             let hNorthBerm = 0.0;
             if (lz < 29.89 && lx <= 3.00) {
                 let wDist = 0.0;
-                if (lx >= -16.20) {
+                if (lx >= -17.80) {
                     const zCrest = lx >= -2.89
                         ? 22.28 + 3.12 * smooth01((lx - (-2.89)) / (2.71 - (-2.89)))
                         : 22.28;
@@ -184,7 +201,7 @@ export function createBuilding300Context(foundry, group, building, shape) {
                         wDist = 1.0 - smooth01((lz - zCrest) / rampSpan);
                     }
                 } else if (lz >= 14.60) {
-                    const dx = (-16.20 - lx) / 7.98;
+                    const dx = (-17.80 - lx) / 6.38;
                     const dz = (lz - 14.60) / 7.68;
                     const rEll = Math.hypot(dx, dz);
                     const dEll = Math.max(0, (rEll - 1.0) * 7.68);

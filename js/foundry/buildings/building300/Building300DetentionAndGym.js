@@ -22,21 +22,26 @@ export function buildBuilding300DetentionAndGym(ctx) {
         const detRoofY = 5.55;
         const detBrickTop = 4.65;
 
-        // Exact 12-vertex polygon (lx, lz) of the Orondo Detention Wing roof matched to fb80d49d.jpg & fa2886c9.jpg:
-        // Each corner has a 2-segment pocket: a straight +X segment perpendicular to Orondo Ave (to pApex) followed by a long diagonal segment to pEnd!
+        // Exact 14-vertex polygon (lx, lz) of the Orondo Detention Wing roof matched to DJI drone photo (dji_fly_20230907_112120_109_1694110999879_photo (1).jpg) & green reference lines:
+        // Each corner has a 3-segment chamfered pocket:
+        //   1. Straight +X segment perpendicular to Orondo Ave (pStart -> pApex)
+        //   2. Angled diagonal segment (pApex -> pMid)
+        //   3. Straight segment parallel to Orondo Ave along +/-Z (pMid -> pEnd) meeting the North/South wall!
         const detPolyPts = [
             [-2.89, 22.28],   // 0: NE corner (steps 3.50m North of lz = 18.78m!)
-            [-16.20, 22.28],  // 1: North wall inner corner at North Rec Yard (pEnd)
-            [-20.10, 14.60],  // 2: North Rec Yard inner apex (pApex — straight +X from pStart!)
-            [-24.18, 14.60],  // 3: North Rec Yard Orondo (-X) corner (pStart)
-            [-24.18, 0.40],   // 4: North Pod South-West corner at Central Notch
-            [-20.96, 0.40],   // 5: Central Notch North inner corner
-            [-20.96, -3.65],  // 6: Central Notch South inner corner
-            [-24.38, -3.65],  // 7: South Pod North-West corner at Central Notch
-            [-24.38, -18.00], // 8: South Rec Yard Orondo (-X) corner (pStart)
-            [-20.30, -18.00], // 9: South Rec Yard inner apex (pApex — straight +X from pStart!)
-            [-16.20, -25.60], // 10: South wall inner corner at South Rec Yard (pEnd)
-            [-2.89, -25.60]   // 11: SE corner (steps 4.04m South of lz = -21.56m!)
+            [-17.80, 22.28],  // 1: North wall inner corner at North Rec Yard (pEnd)
+            [-17.80, 18.20],  // 2: North Rec Yard intermediate bend (pMid — parallel to Orondo Ave from pEnd!)
+            [-20.50, 14.60],  // 3: North Rec Yard inner apex (pApex — diagonal from pMid!)
+            [-24.18, 14.60],  // 4: North Rec Yard Orondo (-X) corner (pStart — perpendicular to Orondo Ave!)
+            [-24.18, 0.40],   // 5: North Pod South-West corner at Central Notch
+            [-20.96, 0.40],   // 6: Central Notch North inner corner
+            [-20.96, -3.65],  // 7: Central Notch South inner corner
+            [-24.38, -3.65],  // 8: South Pod North-West corner at Central Notch
+            [-24.38, -18.00], // 9: South Rec Yard Orondo (-X) corner (pStart — perpendicular to Orondo Ave!)
+            [-20.70, -18.00], // 10: South Rec Yard inner apex (pApex — straight +X from pStart!)
+            [-18.00, -21.80], // 11: South Rec Yard intermediate bend (pMid — diagonal from pApex!)
+            [-18.00, -25.60], // 12: South wall inner corner at South Rec Yard (pEnd — parallel to Orondo Ave!)
+            [-2.89, -25.60]   // 13: SE corner (steps 4.04m South of lz = -21.56m!)
         ];
 
         const detWingShape = new THREE.Shape();
@@ -83,8 +88,8 @@ export function buildBuilding300DetentionAndGym(ctx) {
         detFriezeMesh.userData = { isSelectableBuilding: true, building };
         arch.add(detFriezeMesh);
 
-        // 5. Continuous Perimeter Parapet Wall, 3-Tier Upper Cornice Molding & Silver Sheet-Metal Coping Cap around all 12 edges of detPolyPts!
-        const addEdgeParapetAndCornice = (x0, z0, x1, z1, includeCornice = true) => {
+        // 5. Continuous Perimeter Parapet Wall, 3-Tier Upper Cornice Molding & Silver Sheet-Metal Coping Cap around all 14 edges of detPolyPts!
+        const addEdgeParapetAndCornice = (x0, z0, x1, z1, includeCornice = true, edgeIdx = 0, includeParapet = true) => {
             const len = Math.hypot(x1 - x0, z1 - z0) + 0.34;
             const mx = (x0 + x1) * 0.5;
             const mz = (z0 + z1) * 0.5;
@@ -92,23 +97,27 @@ export function buildBuilding300DetentionAndGym(ctx) {
             const eGrp = new THREE.Group();
             eGrp.position.set(mx, 0, mz);
             eGrp.rotation.y = rotY;
+            const dy = (edgeIdx % 3) * 0.003;
+            const dz = (edgeIdx % 2) * 0.006;
 
-            const pWall = new THREE.Mesh(new THREE.BoxGeometry(len, 0.20, 0.34), plinthBeigeMat);
-            pWall.position.y = 5.62;
-            eGrp.add(pWall);
-            const pCap = new THREE.Mesh(new THREE.BoxGeometry(len + 0.06, 0.10, 0.42), silverFlashingMat);
-            pCap.position.y = 5.75;
-            eGrp.add(pCap);
+            if (includeParapet) {
+                const pWall = new THREE.Mesh(new THREE.BoxGeometry(len, 0.20, 0.34 + dz), plinthBeigeMat);
+                pWall.position.y = 5.62 + dy;
+                eGrp.add(pWall);
+                const pCap = new THREE.Mesh(new THREE.BoxGeometry(len + 0.06, 0.10, 0.42 + dz), silverFlashingMat);
+                pCap.position.y = 5.75 + dy;
+                eGrp.add(pCap);
+            }
 
             if (includeCornice) {
-                const c1 = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.38), plinthBeigeMat);
-                c1.position.y = 5.32;
+                const c1 = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.38 + dz), plinthBeigeMat);
+                c1.position.y = 5.32 + dy;
                 eGrp.add(c1);
-                const c2 = new THREE.Mesh(new THREE.BoxGeometry(len + 0.04, 0.08, 0.44), plinthBeigeMat);
-                c2.position.y = 5.41;
+                const c2 = new THREE.Mesh(new THREE.BoxGeometry(len + 0.04, 0.08, 0.44 + dz), plinthBeigeMat);
+                c2.position.y = 5.41 + dy;
                 eGrp.add(c2);
-                const c3 = new THREE.Mesh(new THREE.BoxGeometry(len + 0.08, 0.08, 0.50), plinthBeigeMat);
-                c3.position.y = 5.49;
+                const c3 = new THREE.Mesh(new THREE.BoxGeometry(len + 0.08, 0.08, 0.50 + dz), plinthBeigeMat);
+                c3.position.y = 5.49 + dy;
                 eGrp.add(c3);
             }
             arch.add(eGrp);
@@ -117,11 +126,11 @@ export function buildBuilding300DetentionAndGym(ctx) {
         for (let i = 0; i < detPolyPts.length; i++) {
             const [x0, z0] = detPolyPts[i];
             const [x1, z1] = detPolyPts[(i + 1) % detPolyPts.length];
-            addEdgeParapetAndCornice(x0, z0, x1, z1, i < detPolyPts.length - 1);
+            addEdgeParapetAndCornice(x0, z0, x1, z1, i < detPolyPts.length - 1, i, true);
         }
-        // Add 3-tier cornice on the exposed North (lz = 18.78..22.28) and South (lz = -25.60..-21.56) step-outs of the lx = -2.89m back wall (2d99ad17.jpg!)
-        addEdgeParapetAndCornice(-2.89, 18.78, -2.89, 22.28, true);
-        addEdgeParapetAndCornice(-2.89, -25.60, -2.89, -21.56, true);
+        // Add 3-tier cornice only (no duplicate parapet) on the exposed North (lz = 18.78..22.28) and South (lz = -25.60..-21.56) step-outs of the lx = -2.89m back wall (2d99ad17.jpg!)
+        addEdgeParapetAndCornice(-2.89, 18.78, -2.89, 22.28, true, 14, false);
+        addEdgeParapetAndCornice(-2.89, -25.60, -2.89, -21.56, true, 15, false);
 
         // 6. Central Recessed Precast Wall Overlay (lx = -20.96m, lz = -3.65m..+0.40m, c4cb0ae6.jpg!)
         addBox(0.18, 4.65, 4.10, tanPrecastMat, -20.96, 2.395, -1.625);
@@ -143,13 +152,9 @@ export function buildBuilding300DetentionAndGym(ctx) {
         arch.add(ventCyl);
         addBox(0.45, 0.06, 0.45, plazaConcreteMat, -21.45, 0.03, -2.32, false);
 
-        // 7. Rooftop Details on the Orondo Detention Roof (matched directly to 28619543.jpg!):
-        addBox(18.00, 0.03, 0.12, plazaJointMat, -11.90, 5.56, -1.625, false);
-        for (let rz = -22.0; rz <= 19.0; rz += 3.8) {
-            addBox(13.00, 0.015, 0.04, plazaJointMat, -9.50, 5.555, rz, false);
-        }
-        addBox(0.85, 0.18, 1.25, darkFasciaMat, -9.60, 5.64, -10.80);
-        addBox(0.68, 0.20, 1.08, plinthBeigeMat, -9.60, 5.65, -10.80);
+        // 7. Rooftop Details on the Orondo Detention Roof (matched directly to DJI drone photo dji_fly_20230907_112120_109_1694110999879_photo (1).jpg!):
+        addBox(0.85, 0.18, 1.25, darkFasciaMat, -9.60, 5.64, 10.80);
+        addBox(0.68, 0.20, 1.08, plinthBeigeMat, -9.60, 5.66, 10.80);
         [
             [-6.20, 11.80], [-9.60, 16.40], [-19.40, 7.80],
             [-11.80, 0.40], [-13.60, -1.80],
@@ -232,12 +237,14 @@ export function buildBuilding300DetentionAndGym(ctx) {
             buildScoredSlotBay(bx, -25.60, '-Z', true);
         });
 
-        // Upper Clerestory Slot Windows along the 4 Inner Corner Pocket Walls above the Rec Yard roofs (fb80d49d.jpg, c5e2718f.jpg & b5ec68b4.jpg!)
+        // Upper Clerestory Slot Windows along the 6 Inner Corner Pocket Walls above the Rec Yard roofs (fb80d49d.jpg, c5e2718f.jpg & b5ec68b4.jpg!)
         [
             [detPolyPts[1], detPolyPts[2]],
             [detPolyPts[2], detPolyPts[3]],
-            [detPolyPts[8], detPolyPts[9]],
-            [detPolyPts[9], detPolyPts[10]]
+            [detPolyPts[3], detPolyPts[4]],
+            [detPolyPts[9], detPolyPts[10]],
+            [detPolyPts[10], detPolyPts[11]],
+            [detPolyPts[11], detPolyPts[12]]
         ].forEach(([[x0, z0], [x1, z1]]) => {
             const mx = (x0 + x1) * 0.5;
             const mz = (z0 + z1) * 0.5;
@@ -253,18 +260,19 @@ export function buildBuilding300DetentionAndGym(ctx) {
         });
 
         // C. TWO CHAMFERED / FAN-SHAPED OUTDOOR RECREATION YARD ENCLOSURES IN THE ROOF CORNERS
-        // Exact match to OSM vertices (idx 12..14 on North, idx 5..7 on South) & close-up photos (9bf67bc6.jpg, 3e0daacd.jpg, 4ba0e364.jpg, c5e2718f.jpg, b5ec68b4.jpg)
+        // Exact match to DJI drone photo (dji_fly_20230907_112120_109_1694110999879_photo (1).jpg) & close-up photos (9bf67bc6.jpg, 3e0daacd.jpg, 4ba0e364.jpg, c5e2718f.jpg, b5ec68b4.jpg)
         // =========================================================================
         const buildChamferedCornerRecYard = (isNorth) => {
-            // Exact 2-segment inner corner pocket vertices from detPolyPts (fb80d49d.jpg):
+            // Exact 3-segment inner corner pocket vertices from detPolyPts:
             const pStart = isNorth ? [-24.18, 14.60] : [-24.38, -18.00]; // Orondo (-X) wall junction
-            const pApex  = isNorth ? [-20.10, 14.60] : [-20.30, -18.00]; // Inner apex (straight +X from pStart!)
-            const pEnd   = isNorth ? [-16.20, 22.28] : [-16.20, -25.60]; // Outer (+Z / -Z) wall junction
+            const pApex  = isNorth ? [-20.50, 14.60] : [-20.70, -18.00]; // Inner apex (straight +X from pStart!)
+            const pMid   = isNorth ? [-17.80, 18.20] : [-18.00, -21.80]; // Intermediate bend (diagonal from pApex!)
+            const pEnd   = isNorth ? [-17.80, 22.28] : [-18.00, -25.60]; // Outer (+Z / -Z) wall junction (parallel to Orondo Ave from pMid!)
 
             // Tangent 90-degree quarter-circle/ellipse arc directly from pStart (ang = PI, tangent to Orondo -X wall) to pEnd (ang = +-PI/2, tangent to North/South wall):
-            const centerArcX = pEnd[0];   // -16.20m
+            const centerArcX = pEnd[0];   // -17.80m (North), -18.00m (South)
             const centerArcZ = pStart[1]; // +14.60m (North), -18.00m (South)
-            const rx         = Math.abs(pStart[0] - centerArcX); // 7.98m (North), 8.18m (South)
+            const rx         = Math.abs(pStart[0] - centerArcX); // 6.38m (North), 6.38m (South)
             const rz         = Math.abs(pEnd[1] - centerArcZ);   // 7.68m (North), 7.60m (South)
             const segments   = 8;
             const arcPts     = [];
@@ -354,10 +362,11 @@ export function buildBuilding300DetentionAndGym(ctx) {
                 arch.add(bayGrp);
             }
 
-            // Fan-Shaped Translucent-Cream Roof Deck filling the exact polygon between pStart -> pApex -> pEnd and the 90-degree tangent outer curve (arcPts)
+            // Fan-Shaped Translucent-Cream Roof Deck filling the exact polygon between pStart -> pApex -> pMid -> pEnd and the 90-degree tangent outer curve (arcPts)
             const fanShape = new THREE.Shape();
             fanShape.moveTo(pStart[0], -pStart[1]);
             fanShape.lineTo(pApex[0], -pApex[1]);
+            fanShape.lineTo(pMid[0], -pMid[1]);
             fanShape.lineTo(pEnd[0], -pEnd[1]);
             for (let s = segments - 1; s >= 1; s--) {
                 fanShape.lineTo(arcPts[s][0], -arcPts[s][1]);
@@ -372,16 +381,20 @@ export function buildBuilding300DetentionAndGym(ctx) {
             fanMesh.receiveShadow = true;
             arch.add(fanMesh);
 
-            // Central radial structural seam line bisecting the fan roof from pApex to midArc (arcPts[4], fb80d49d.jpg!)
-            const midArc = arcPts[4];
-            const seamLen = Math.hypot(midArc[0] - pApex[0], midArc[1] - pApex[1]) - 0.20;
-            const seamMx = (pApex[0] + midArc[0]) * 0.5;
-            const seamMz = (pApex[1] + midArc[1]) * 0.5;
-            const seamRot = -Math.atan2(midArc[1] - pApex[1], midArc[0] - pApex[0]);
-            const seamBar = new THREE.Mesh(new THREE.BoxGeometry(seamLen, 0.03, 0.06), plazaJointMat);
-            seamBar.position.set(seamMx, 4.89, seamMz);
-            seamBar.rotation.y = seamRot;
-            arch.add(seamBar);
+            // Radial structural seam lines on the fan roof from pApex and pMid to the outer arc (matching the DJI drone photo!)
+            [
+                [pApex, arcPts[3]],
+                [pMid, arcPts[5]]
+            ].forEach(([pInner, pOuter]) => {
+                const seamLen = Math.hypot(pOuter[0] - pInner[0], pOuter[1] - pInner[1]) - 0.20;
+                const seamMx = (pInner[0] + pOuter[0]) * 0.5;
+                const seamMz = (pInner[1] + pOuter[1]) * 0.5;
+                const seamRot = -Math.atan2(pOuter[1] - pInner[1], pOuter[0] - pInner[0]);
+                const seamBar = new THREE.Mesh(new THREE.BoxGeometry(seamLen, 0.03, 0.06), plazaJointMat);
+                seamBar.position.set(seamMx, 4.89, seamMz);
+                seamBar.rotation.y = seamRot;
+                arch.add(seamBar);
+            });
         };
 
         buildChamferedCornerRecYard(true);
@@ -433,7 +446,7 @@ export function buildBuilding300DetentionAndGym(ctx) {
         const coreShiftX = 4.572; // 15 feet away from Orondo Ave (+X direction)
         addBox(17.60, 2.80, 18.60, tanPrecastMat, 13.00 + coreShiftX, 5.95, -5.50);
         addBox(17.78, 0.16, 18.78, plinthBeigeMat, 13.00 + coreShiftX, 7.38, -5.50); // Cream-beige perimeter coping cap (3e290850.jpg)
-        addBox(17.20, 0.08, 18.20, roofMembraneMat, 13.00 + coreShiftX, 7.34, -5.50); // Flat dark-gray membrane roof deck
+        addBox(17.20, 0.08, 18.20, roofMembraneMat, 13.00 + coreShiftX, 7.43, -5.50); // Flat light-gray membrane roof deck above coping base
         // Vertical precast panel score lines on the East (-X) and North (+Z) faces of the upper box (3e290850.jpg!)
         [-11.50, -7.80, -4.10, -0.40].forEach((jz) => {
             addBox(0.06, 2.80, 0.04, darkFasciaMat, 4.18 + coreShiftX, 5.95, jz);
@@ -479,10 +492,10 @@ export function buildBuilding300DetentionAndGym(ctx) {
         const gymEaveY = 8.40;
         const gymArchRise = 2.25; // Crown reaches y = 10.65m
 
-        // 1. Rectangular High-Bay Gym Lower/Main Box up to Eave Height (y = 0.0m..8.40m)
-        addBox(gymW, gymEaveY, gymSpanZ, tanPrecastMat, gymCenterX, gymEaveY * 0.5, gymCenterZ);
-        // Smooth beige base plinth around the Gym (y = 0.0m..0.72m)
-        addBox(gymW + 0.10, 0.72, gymSpanZ + 0.10, plinthBeigeMat, gymCenterX, 0.36, gymCenterZ);
+        // 1. Rectangular High-Bay Gym Upper Wall Box from Main Roof (y = 4.55m) up to Eave Height (y = 8.40m)
+        // (Lower 0.0m..4.55m walls & 0.0m..0.72m base plinth are already extruded by mainBodyMesh & baseBandMesh!)
+        const gymUpperH = gymEaveY - 4.55;
+        addBox(gymW, gymUpperH, gymSpanZ, tanPrecastMat, gymCenterX, 4.55 + gymUpperH * 0.5, gymCenterZ);
 
         // 2. Curved Barrel-Vault Upper Arch & Standing-Seam Roof (y = 8.40m..10.65m across lz = -35.94m..-15.00m)
         // Construct an exact 2D arch profile in the YZ plane and extrude it along X (length = gymW = 27.85m)
@@ -523,12 +536,14 @@ export function buildBuilding300DetentionAndGym(ctx) {
             const my = (y0 + y1) * 0.5;
             const tiltX = -Math.atan2(y1 - y0, z1 - z0);
 
+            const wJitter = (i % 2) * 0.008;
+            const yJitter = (i % 2) * 0.002;
             // Roof membrane/metal panel segment spanning full Gym width
             const roofSeg = new THREE.Mesh(
-                new THREE.BoxGeometry(gymW + 0.36, 0.18, segLen),
+                new THREE.BoxGeometry(gymW + 0.36 + wJitter, 0.18, segLen),
                 gymRoofMat
             );
-            roofSeg.position.set(gymCenterX, my + 0.08, mz);
+            roofSeg.position.set(gymCenterX, my + 0.08 + yJitter, mz);
             roofSeg.rotation.x = tiltX;
             roofSeg.castShadow = true;
             roofSeg.receiveShadow = true;
@@ -537,10 +552,10 @@ export function buildBuilding300DetentionAndGym(ctx) {
             // Projecting dark-slate arched fascia trim band on +X (NW Parking Lot) and -X (SE Orondo) gable ends
             [gymXMax + 0.14, gymXMin - 0.14].forEach((fx) => {
                 const fasciaSeg = new THREE.Mesh(
-                    new THREE.BoxGeometry(0.24, 0.34, segLen + 0.02),
+                    new THREE.BoxGeometry(0.24 + wJitter * 0.5, 0.34, segLen + 0.02),
                     darkFasciaMat
                 );
-                fasciaSeg.position.set(fx, my - 0.02, mz);
+                fasciaSeg.position.set(fx, my - 0.02 + yJitter, mz);
                 fasciaSeg.rotation.x = tiltX;
                 arch.add(fasciaSeg);
             });

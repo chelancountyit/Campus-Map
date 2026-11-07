@@ -26,7 +26,10 @@ export function buildBuilding316GroundsAndSidewalks(ctx) {
         const sidewalkJointMat = new THREE.MeshStandardMaterial({
             color: '#8c867a',
             roughness: 0.92,
-            metalness: 0.02
+            metalness: 0.02,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1
         });
         const whitePebbleMat = new THREE.MeshStandardMaterial({
             color: '#e8e5dd',
@@ -41,7 +44,10 @@ export function buildBuilding316GroundsAndSidewalks(ctx) {
         const lawnMat = new THREE.MeshStandardMaterial({
             color: '#4e7932',
             roughness: 0.92,
-            metalness: 0.02
+            metalness: 0.02,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1
         });
         const shrubMat = new THREE.MeshStandardMaterial({
             color: '#365c24',
@@ -146,10 +152,10 @@ export function buildBuilding316GroundsAndSidewalks(ctx) {
         const swCenterZ = frontZ + 5.30;
         addBox(swWidth, 0.26, swDepth, sidewalkConcreteMat, swCenterX, 0.21, swCenterZ, false);
         // Longitudinal center score joint dividing the sidewalk into two rows of panels (visible in reference photo)
-        addBox(swWidth, 0.27, 0.03, sidewalkJointMat, swCenterX, 0.215, swCenterZ, false);
+        addBox(swWidth, 0.275, 0.03, sidewalkJointMat, swCenterX, 0.215, swCenterZ, false);
         // Transverse control joints every 1.75m along the Washington St public sidewalk
         for (let sx = -13.20; sx <= 12.25; sx += 1.75) {
-            addBox(0.03, 0.27, swDepth + 0.02, sidewalkJointMat, sx, 0.215, swCenterZ, false);
+            addBox(0.03, 0.278, swDepth + 0.02, sidewalkJointMat, sx, 0.218, swCenterZ, false);
         }
         // Raised Concrete Street Curb along the outer Washington St edge of the sidewalk (lz = frontZ + 6.37m = 31.77m)
         addBox(swWidth, 0.29, 0.16, whiteTrimMat, swCenterX, 0.225, frontZ + 6.37, false);

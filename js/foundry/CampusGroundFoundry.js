@@ -17,6 +17,8 @@ export class CampusGroundFoundry {
         this.innerTerrainMat = null;
         this.outerTerrainMat = null;
         this.mapStyle = 'roadmap'; // 'roadmap' or 'satellite'
+        this.mapDarkness = 0.0;    // 0.0 (bright) .. 0.90 (dark)
+        this.topoDarkBgActive = false;
         this.textures = {};
         this.innerTerrainMesh = null;
         this.outerTerrainMesh = null;
@@ -319,8 +321,49 @@ export class CampusGroundFoundry {
         // 4. Topographic Elevation Contour Lines (2m intervals)
         this.contourLinesMesh = this._buildTopographicContours(envGroup);
 
+        this.applyGroundTheme();
+
         scene.add(envGroup);
         return envGroup;
+    }
+
+    setGroundTheme({ darkness = this.mapDarkness, topoActive = this.topoDarkBgActive } = {}) {
+        this.mapDarkness = THREE.MathUtils.clamp(darkness, 0, 0.92);
+        this.topoDarkBgActive = Boolean(topoActive);
+        this.applyGroundTheme();
+    }
+
+    applyGroundTheme() {
+        // Topo mode automatically uses a dark ground background (at least 76% darkened) so 2m contours pop cleanly
+        const effectiveDarkness = this.topoDarkBgActive
+            ? Math.max(this.mapDarkness, 0.76)
+            : this.mapDarkness;
+
+        const lightCol = new THREE.Color('#ffffff');
+        const darkCol = new THREE.Color(this.topoDarkBgActive ? '#151d2a' : '#18202c');
+        const tintCol = lightCol.clone().lerp(darkCol, effectiveDarkness);
+
+        if (this.innerTerrainMat) {
+            this.innerTerrainMat.color.copy(tintCol);
+            this.innerTerrainMat.roughness = THREE.MathUtils.lerp(0.88, 0.97, effectiveDarkness);
+            this.innerTerrainMat.needsUpdate = true;
+        }
+        if (this.outerTerrainMat) {
+            this.outerTerrainMat.color.copy(tintCol);
+            this.outerTerrainMat.roughness = THREE.MathUtils.lerp(0.92, 0.98, effectiveDarkness);
+            this.outerTerrainMat.needsUpdate = true;
+        }
+        if (this.contourLinesMesh && this.contourLinesMesh.material) {
+            const cMat = this.contourLinesMesh.material;
+            if (this.topoDarkBgActive || effectiveDarkness > 0.35) {
+                cMat.color.set('#fbbf24');
+                cMat.opacity = 0.86;
+            } else {
+                cMat.color.set('#d97706');
+                cMat.opacity = 0.42;
+            }
+            cMat.needsUpdate = true;
+        }
     }
 
     _buildOuterFoothillsMesh(parent) {
@@ -354,7 +397,10 @@ export class CampusGroundFoundry {
         this.outerTerrainMat = new THREE.MeshStandardMaterial({
             map: outerTex,
             roughness: 0.92,
-            metalness: 0.02
+            metalness: 0.02,
+            polygonOffset: true,
+            polygonOffsetFactor: 6,
+            polygonOffsetUnits: 6
         });
 
         const mesh = new THREE.Mesh(geo, this.outerTerrainMat);
@@ -389,8 +435,8 @@ export class CampusGroundFoundry {
             roughness: 0.88,
             metalness: 0.04,
             polygonOffset: true,
-            polygonOffsetFactor: 2,
-            polygonOffsetUnits: 2
+            polygonOffsetFactor: 4,
+            polygonOffsetUnits: 4
         });
 
         const mesh = new THREE.Mesh(geo, this.innerTerrainMat);

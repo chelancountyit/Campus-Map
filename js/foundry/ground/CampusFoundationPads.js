@@ -47,8 +47,8 @@ export function buildCampusFoundationPads(groundFoundry, parent) {
             roughness: 0.86,
             metalness: 0.03,
             polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: -1
+            polygonOffsetFactor: 2,
+            polygonOffsetUnits: 2
         });
 
         const structuralFootingMat = new THREE.MeshStandardMaterial({
@@ -59,8 +59,8 @@ export function buildCampusFoundationPads(groundFoundry, parent) {
             roughness: 0.82,
             metalness: 0.05,
             polygonOffset: true,
-            polygonOffsetFactor: -2,
-            polygonOffsetUnits: -2
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits: 1
         });
 
         const stemWallMat = new THREE.MeshStandardMaterial({
@@ -81,7 +81,7 @@ export function buildCampusFoundationPads(groundFoundry, parent) {
             new THREE.BoxGeometry(apronW, apronH, apronD),
             subMatSlabMat
         );
-        apronMesh.position.set(5.2, -0.10, 0.725);
+        apronMesh.position.set(5.2, -0.14, 0.725);
         apronMesh.receiveShadow = true;
         apronMesh.castShadow = true;
         fndGroup.add(apronMesh);
@@ -126,7 +126,7 @@ export function buildCampusFoundationPads(groundFoundry, parent) {
         });
         slabGeo.rotateX(-Math.PI / 2);
         const slabMesh = new THREE.Mesh(slabGeo, structuralFootingMat);
-        slabMesh.position.set(0, 0.14, 0);
+        slabMesh.position.set(0, 0.08, 0);
         slabMesh.receiveShadow = true;
         slabMesh.castShadow = true;
         fndGroup.add(slabMesh);
@@ -185,7 +185,7 @@ export function buildCampusFoundationPads(groundFoundry, parent) {
             });
             aGeo.rotateX(-Math.PI / 2);
             const aMesh = new THREE.Mesh(aGeo, subMatSlabMat);
-            aMesh.position.set(0, -0.12, 0);
+            aMesh.position.set(0, -0.22, 0);
             aMesh.receiveShadow = true;
             aMesh.castShadow = true;
             grp.add(aMesh);
@@ -207,7 +207,7 @@ export function buildCampusFoundationPads(groundFoundry, parent) {
             });
             sGeo.rotateX(-Math.PI / 2);
             const sMesh = new THREE.Mesh(sGeo, structuralFootingMat);
-            sMesh.position.set(0, 0.14, 0);
+            sMesh.position.set(0, -0.08, 0);
             sMesh.receiveShadow = true;
             sMesh.castShadow = true;
             grp.add(sMesh);

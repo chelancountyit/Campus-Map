@@ -16,9 +16,9 @@ export function buildBuilding400GroundsAndSidewalks(ctx) {
         // 2. Lower Forecourt Plaza (trimmed at lz = wallZ + 7.05m = 21.67m so the orange-boxed front slab is removed,
         //    aligning flush with the front edge of the Left Lawn, 2 square planters, and Right Square Lawn!)
         {
-            const plazaW = 19.20; // lx: -4.50m .. +14.70m
+            const plazaW = 18.95; // lx: -4.50m .. +14.45m (meets washSidewalk cleanly at lx = 14.45m)
             const plazaD = 5.20;  // lz: wallZ + 1.85m (16.47m) .. wallZ + 7.05m (21.67m)
-            const plazaCX = 5.10;
+            const plazaCX = 4.975;
             const plazaCZ = wallZ + 4.45;
             const plazaGeo = new THREE.BoxGeometry(plazaW, 0.32, plazaD, 48, 1, 20);
             const pPos = plazaGeo.attributes.position;
@@ -274,7 +274,7 @@ export function buildBuilding400GroundsAndSidewalks(ctx) {
 
         // Lush green turf recessed inside the 18cm-wide white concrete curb wall (ffcaac33.jpg, 6b9c1a26.jpg, 232bfcca.jpg)
         const innerTurfGeo = new THREE.ExtrudeGeometry(createRightPlanterShape(0.18), {
-            depth: rightLawnWallH + 0.025,
+            depth: rightLawnWallH + 0.035,
             bevelEnabled: false
         });
         innerTurfGeo.rotateX(-Math.PI / 2);
@@ -417,9 +417,9 @@ export function buildBuilding400GroundsAndSidewalks(ctx) {
         addBox(0.05, 1.08, 0.05, galvSteelMat, -3.26, 0.54, railMaxZ);
 
         // --- WASHINGTON ST (+X) SUNKEN AREAWAY, EXTERIOR STAIRS, ADA RAMP, DOORS/WINDOWS, BRICK FENCE & SIDEWALK (19a77a6c.jpg & adc547e2.jpg) ---
-        // At the Front Pavilion (lz = +10.2m..+16.47m) and Rear Pavilion (lz = -20.20m..-11.2m), the sidewalk comes flush up to the building wall!
-        addContouredSlab(2.35, 0.24, 6.3, plazaConcreteMat, washX + 1.15, 13.32, 0, 6, 14);
-        addContouredSlab(2.35, 0.24, 9.0, plazaConcreteMat, washX + 1.15, -15.70, 0, 6, 18);
+        // At the Front Pavilion (lz = +10.2m..+16.47m) and Rear Pavilion (lz = -20.20m..-11.2m), the sidewalk comes flush up to the building wall (lx = 12.25m..14.45m)!
+        addContouredSlab(2.20, 0.24, 6.3, plazaConcreteMat, washX + 1.10, 13.32, 0, 6, 14);
+        addContouredSlab(2.20, 0.24, 9.0, plazaConcreteMat, washX + 1.10, -15.70, 0, 6, 18);
 
         // Sunken Lightwell Trench Floor (lz = -11.2m to +10.2m)
         addBox(2.35, 0.20, 21.4, plinthConcreteMat, washX + 1.15, -2.45, -0.5, arch, false);

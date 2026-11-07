@@ -32078,7 +32078,10 @@ void main() {
       metalness: 0.04
     });
     const turfMat = new MeshLambertMaterial({
-      color: "#4b8638"
+      color: "#4b8638",
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2
     });
     const darkMetalMat = new MeshStandardMaterial({
       color: "#1e2226",
@@ -33116,9 +33119,9 @@ void main() {
     } = ctx;
     addBox(14.05, 0.51, 4.73, plazaConcreteMat, 3.625, -0.255, frontWingZ + 2.365, arch, false);
     {
-      const plazaW = 19.2;
+      const plazaW = 18.95;
       const plazaD = 5.2;
-      const plazaCX = 5.1;
+      const plazaCX = 4.975;
       const plazaCZ = wallZ + 4.45;
       const plazaGeo = new BoxGeometry(plazaW, 0.32, plazaD, 48, 1, 20);
       const pPos = plazaGeo.attributes.position;
@@ -33320,7 +33323,7 @@ void main() {
     outerPlanterMesh.receiveShadow = true;
     arch.add(outerPlanterMesh);
     const innerTurfGeo = new ExtrudeGeometry(createRightPlanterShape(0.18), {
-      depth: rightLawnWallH + 0.025,
+      depth: rightLawnWallH + 0.035,
       bevelEnabled: false
     });
     innerTurfGeo.rotateX(-Math.PI / 2);
@@ -33434,8 +33437,8 @@ void main() {
       addBox(0.05, 1.08, 0.05, galvSteelMat, railOuterX, 0.54, pz2);
     }
     addBox(0.05, 1.08, 0.05, galvSteelMat, -3.26, 0.54, railMaxZ);
-    addContouredSlab(2.35, 0.24, 6.3, plazaConcreteMat, washX + 1.15, 13.32, 0, 6, 14);
-    addContouredSlab(2.35, 0.24, 9, plazaConcreteMat, washX + 1.15, -15.7, 0, 6, 18);
+    addContouredSlab(2.2, 0.24, 6.3, plazaConcreteMat, washX + 1.1, 13.32, 0, 6, 14);
+    addContouredSlab(2.2, 0.24, 9, plazaConcreteMat, washX + 1.1, -15.7, 0, 6, 18);
     addBox(2.35, 0.2, 21.4, plinthConcreteMat, washX + 1.15, -2.45, -0.5, arch, false);
     const door1LandingY = lowerPlazaY - 0.64;
     addBox(2.15, 1.35, 2.5, plazaConcreteMat, washX + 1.1, door1LandingY - 0.675, 6.6, arch, false);
@@ -34188,10 +34191,10 @@ void main() {
     const pentBaseY = 9.8;
     const pentWallH = 3.65;
     const pentCrownH = 1.75;
-    addBox(7.6, pentWallH, 12.4, penthouseWallMat, -7, pentBaseY + pentWallH * 0.5, 12.2);
-    addBox(7.68, 0.14, 12.48, whiteTrimMat, -7, pentBaseY + pentWallH, 12.2);
-    addBox(7.6, pentCrownH, 12.4, silverLouverMat, -7, pentBaseY + pentWallH + pentCrownH * 0.5, 12.2);
-    addBox(7.72, 0.14, 12.52, galvSteelMat, -7, pentBaseY + pentWallH + pentCrownH + 0.05, 12.2);
+    addBox(7.6, pentWallH, 7.9, penthouseWallMat, -7, pentBaseY + pentWallH * 0.5, 14.45);
+    addBox(7.68, 0.14, 7.98, whiteTrimMat, -7, pentBaseY + pentWallH, 14.45);
+    addBox(7.6, pentCrownH, 7.9, silverLouverMat, -7, pentBaseY + pentWallH + pentCrownH * 0.5, 14.45);
+    addBox(7.72, 0.14, 8.02, galvSteelMat, -7, pentBaseY + pentWallH + pentCrownH + 0.05, 14.45);
     addBox(13.6, pentWallH, 16.1, penthouseWallMat, -4, pentBaseY + pentWallH * 0.5, 2.45);
     addBox(13.68, 0.14, 16.18, whiteTrimMat, -4, pentBaseY + pentWallH, 2.45);
     addBox(13.6, pentCrownH, 16.1, silverLouverMat, -4, pentBaseY + pentWallH + pentCrownH * 0.5, 2.45);
@@ -34280,7 +34283,10 @@ void main() {
     const sidewalkJointMat = new MeshStandardMaterial({
       color: "#8c867a",
       roughness: 0.92,
-      metalness: 0.02
+      metalness: 0.02,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
     });
     const whitePebbleMat = new MeshStandardMaterial({
       color: "#e8e5dd",
@@ -34295,7 +34301,10 @@ void main() {
     const lawnMat = new MeshStandardMaterial({
       color: "#4e7932",
       roughness: 0.92,
-      metalness: 0.02
+      metalness: 0.02,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
     });
     const shrubMat = new MeshStandardMaterial({
       color: "#365c24",
@@ -34374,9 +34383,9 @@ void main() {
     const swCenterX = -0.475;
     const swCenterZ = frontZ + 5.3;
     addBox(swWidth, 0.26, swDepth, sidewalkConcreteMat, swCenterX, 0.21, swCenterZ, false);
-    addBox(swWidth, 0.27, 0.03, sidewalkJointMat, swCenterX, 0.215, swCenterZ, false);
+    addBox(swWidth, 0.275, 0.03, sidewalkJointMat, swCenterX, 0.215, swCenterZ, false);
     for (let sx = -13.2; sx <= 12.25; sx += 1.75) {
-      addBox(0.03, 0.27, swDepth + 0.02, sidewalkJointMat, sx, 0.215, swCenterZ, false);
+      addBox(0.03, 0.278, swDepth + 0.02, sidewalkJointMat, sx, 0.218, swCenterZ, false);
     }
     addBox(swWidth, 0.29, 0.16, whiteTrimMat, swCenterX, 0.225, frontZ + 6.37, false);
     addContouredDouglasStrip(douglasX, douglasX + 0.18, -6.05, 25.4, 0.33, -0.08, whitePebbleMat, 40);
@@ -34532,7 +34541,10 @@ void main() {
     const roofMembraneMat = new MeshStandardMaterial({
       color: "#dcdad3",
       roughness: 0.86,
-      metalness: 0.05
+      metalness: 0.05,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
     });
     const gymRoofMat = new MeshStandardMaterial({
       color: "#6b727a",
@@ -34565,11 +34577,25 @@ void main() {
       metalness: 0.18
     });
     const plazaConcreteMat = new MeshStandardMaterial({ color: "#d8d4cb", roughness: 0.85, metalness: 0.03 });
-    const plazaJointMat = new MeshStandardMaterial({ color: "#8c867a", roughness: 0.92, metalness: 0.02 });
+    const plazaJointMat = new MeshStandardMaterial({
+      color: "#8c867a",
+      roughness: 0.92,
+      metalness: 0.02,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
+    });
     const pipeRailMat = new MeshStandardMaterial({ color: "#565b60", roughness: 0.42, metalness: 0.68 });
     const hedgeGreenMat = new MeshStandardMaterial({ color: "#3b6228", roughness: 0.9, metalness: 0.02 });
     const hedgeRedMat = new MeshStandardMaterial({ color: "#6e352c", roughness: 0.9, metalness: 0.02 });
-    const turfLawnMat = new MeshStandardMaterial({ color: "#4e7932", roughness: 0.92, metalness: 0.02 });
+    const turfLawnMat = new MeshStandardMaterial({
+      color: "#4e7932",
+      roughness: 0.92,
+      metalness: 0.02,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
+    });
     const arch = new Group();
     arch.name = "Building300ArchitecturalDetails";
     arch.rotation.y = Math.atan2(0.59621, -0.80283);
@@ -34592,7 +34618,7 @@ void main() {
       let hNorthBerm = 0;
       if (lz < 29.89 && lx <= 3) {
         let wDist = 0;
-        if (lx >= -16.2) {
+        if (lx >= -17.8) {
           const zCrest = lx >= -2.89 ? 22.28 + 3.12 * smooth01((lx - -2.89) / (2.71 - -2.89)) : 22.28;
           if (lz <= zCrest) {
             wDist = 1;
@@ -34601,7 +34627,7 @@ void main() {
             wDist = 1 - smooth01((lz - zCrest) / rampSpan);
           }
         } else if (lz >= 14.6) {
-          const dx = (-16.2 - lx) / 7.98;
+          const dx = (-17.8 - lx) / 6.38;
           const dz = (lz - 14.6) / 7.68;
           const rEll = Math.hypot(dx, dz);
           const dEll = Math.max(0, (rEll - 1) * 7.68);
@@ -34837,8 +34863,8 @@ void main() {
       pVent.position.set(px2, 3.82, pz2);
       arch.add(pVent);
     });
-    addBox(0.32, 4.55, 11.14, tanPrecastMat, 2.71, 2.275, 24.32);
-    addBox(0.38, 0.72, 11.2, plinthBeigeMat, 2.71, 0.36, 24.32);
+    addBox(0.32, 4.52, 11.1, tanPrecastMat, 2.71, 2.26, 24.32);
+    addBox(0.38, 0.7, 11.16, plinthBeigeMat, 2.71, 0.35, 24.32);
     addBox(0.44, 0.14, 11.24, whiteDoorMat, 2.71, 4.62, 24.32);
     [21.5, 25.2, 28.8].forEach((jz) => {
       addBox(0.36, 4.55, 0.04, darkFasciaMat, 2.68, 2.275, jz);
@@ -35044,19 +35070,19 @@ void main() {
     const medCx = 26.55;
     const medCz = 32.35;
     const innerDisk = new Mesh(new CylinderGeometry(1.05, 1.05, 0.02, 28), plazaConcreteMat);
-    innerDisk.position.set(medCx, landingY + 0.01, medCz);
+    innerDisk.position.set(medCx, landingY + 0.012, medCz);
     arch.add(innerDisk);
     [1.05, 1.95, 2.25, 3.15].forEach((rad) => {
       const ringTorus = new Mesh(new TorusGeometry(rad, 0.02, 8, 36), plazaJointMat);
       ringTorus.rotation.x = Math.PI * 0.5;
-      ringTorus.position.set(medCx, landingY + 0.013, medCz);
+      ringTorus.position.set(medCx, landingY + 0.022, medCz);
       arch.add(ringTorus);
     });
     for (let r = 0; r < 8; r++) {
       const ang = r * Math.PI / 4;
       const ray = new Mesh(new BoxGeometry(2.1, 0.02, 0.024), plazaJointMat);
       ray.rotation.y = -ang;
-      ray.position.set(medCx + Math.cos(ang) * 2.1, landingY + 0.013, medCz + Math.sin(ang) * 2.1);
+      ray.position.set(medCx + Math.cos(ang) * 2.1, landingY + 0.016, medCz + Math.sin(ang) * 2.1);
       arch.add(ray);
     }
     [-2.14, -2, -1.86, -1.72, -1.58, -1.44, -1.3].forEach((ang) => {
@@ -35269,14 +35295,14 @@ void main() {
       bush.receiveShadow = true;
       arch.add(bush);
     });
-    const sw300W = 56.6;
+    const sw300W = 56.55;
     const sw300D = 2.3;
-    const sw300Cx = 0.1;
+    const sw300Cx = 0.075;
     const sw300Cz = 38.27;
     addBox(sw300W, 0.26, sw300D, plazaConcreteMat, sw300Cx, 0.21, sw300Cz, false);
-    addBox(sw300W, 0.27, 0.03, plazaJointMat, sw300Cx, 0.215, sw300Cz, false);
-    for (let sx = -27.65; sx <= 28.35; sx += 1.75) {
-      addBox(0.03, 0.27, sw300D + 0.02, plazaJointMat, sx, 0.215, sw300Cz, false);
+    addBox(sw300W, 0.275, 0.03, plazaJointMat, sw300Cx, 0.215, sw300Cz, false);
+    for (let sx = -27.65; sx <= 28.3; sx += 1.75) {
+      addBox(0.03, 0.278, sw300D + 0.02, plazaJointMat, sx, 0.218, sw300Cz, false);
     }
     addBox(sw300W, 0.29, 0.16, whiteDoorMat, sw300Cx, 0.225, 39.34, false);
     const swaleMat = new MeshStandardMaterial({ color: "#6e655c", roughness: 0.95, metalness: 0.02 });
@@ -35365,28 +35391,32 @@ void main() {
     const detPolyPts = [
       [-2.89, 22.28],
       // 0: NE corner (steps 3.50m North of lz = 18.78m!)
-      [-16.2, 22.28],
+      [-17.8, 22.28],
       // 1: North wall inner corner at North Rec Yard (pEnd)
-      [-20.1, 14.6],
-      // 2: North Rec Yard inner apex (pApex — straight +X from pStart!)
+      [-17.8, 18.2],
+      // 2: North Rec Yard intermediate bend (pMid — parallel to Orondo Ave from pEnd!)
+      [-20.5, 14.6],
+      // 3: North Rec Yard inner apex (pApex — diagonal from pMid!)
       [-24.18, 14.6],
-      // 3: North Rec Yard Orondo (-X) corner (pStart)
+      // 4: North Rec Yard Orondo (-X) corner (pStart — perpendicular to Orondo Ave!)
       [-24.18, 0.4],
-      // 4: North Pod South-West corner at Central Notch
+      // 5: North Pod South-West corner at Central Notch
       [-20.96, 0.4],
-      // 5: Central Notch North inner corner
+      // 6: Central Notch North inner corner
       [-20.96, -3.65],
-      // 6: Central Notch South inner corner
+      // 7: Central Notch South inner corner
       [-24.38, -3.65],
-      // 7: South Pod North-West corner at Central Notch
+      // 8: South Pod North-West corner at Central Notch
       [-24.38, -18],
-      // 8: South Rec Yard Orondo (-X) corner (pStart)
-      [-20.3, -18],
-      // 9: South Rec Yard inner apex (pApex — straight +X from pStart!)
-      [-16.2, -25.6],
-      // 10: South wall inner corner at South Rec Yard (pEnd)
+      // 9: South Rec Yard Orondo (-X) corner (pStart — perpendicular to Orondo Ave!)
+      [-20.7, -18],
+      // 10: South Rec Yard inner apex (pApex — straight +X from pStart!)
+      [-18, -21.8],
+      // 11: South Rec Yard intermediate bend (pMid — diagonal from pApex!)
+      [-18, -25.6],
+      // 12: South wall inner corner at South Rec Yard (pEnd — parallel to Orondo Ave!)
       [-2.89, -25.6]
-      // 11: SE corner (steps 4.04m South of lz = -21.56m!)
+      // 13: SE corner (steps 4.04m South of lz = -21.56m!)
     ];
     const detWingShape = new Shape();
     detPolyPts.forEach(([px2, pz2], idx) => {
@@ -35423,7 +35453,7 @@ void main() {
     detFriezeMesh.receiveShadow = true;
     detFriezeMesh.userData = { isSelectableBuilding: true, building };
     arch.add(detFriezeMesh);
-    const addEdgeParapetAndCornice = (x0, z0, x1, z1, includeCornice = true) => {
+    const addEdgeParapetAndCornice = (x0, z0, x1, z1, includeCornice = true, edgeIdx = 0, includeParapet = true) => {
       const len = Math.hypot(x1 - x0, z1 - z0) + 0.34;
       const mx = (x0 + x1) * 0.5;
       const mz = (z0 + z1) * 0.5;
@@ -35431,21 +35461,25 @@ void main() {
       const eGrp = new Group();
       eGrp.position.set(mx, 0, mz);
       eGrp.rotation.y = rotY;
-      const pWall = new Mesh(new BoxGeometry(len, 0.2, 0.34), plinthBeigeMat);
-      pWall.position.y = 5.62;
-      eGrp.add(pWall);
-      const pCap = new Mesh(new BoxGeometry(len + 0.06, 0.1, 0.42), silverFlashingMat);
-      pCap.position.y = 5.75;
-      eGrp.add(pCap);
+      const dy = edgeIdx % 3 * 3e-3;
+      const dz = edgeIdx % 2 * 6e-3;
+      if (includeParapet) {
+        const pWall = new Mesh(new BoxGeometry(len, 0.2, 0.34 + dz), plinthBeigeMat);
+        pWall.position.y = 5.62 + dy;
+        eGrp.add(pWall);
+        const pCap = new Mesh(new BoxGeometry(len + 0.06, 0.1, 0.42 + dz), silverFlashingMat);
+        pCap.position.y = 5.75 + dy;
+        eGrp.add(pCap);
+      }
       if (includeCornice) {
-        const c1 = new Mesh(new BoxGeometry(len, 0.08, 0.38), plinthBeigeMat);
-        c1.position.y = 5.32;
+        const c1 = new Mesh(new BoxGeometry(len, 0.08, 0.38 + dz), plinthBeigeMat);
+        c1.position.y = 5.32 + dy;
         eGrp.add(c1);
-        const c2 = new Mesh(new BoxGeometry(len + 0.04, 0.08, 0.44), plinthBeigeMat);
-        c2.position.y = 5.41;
+        const c2 = new Mesh(new BoxGeometry(len + 0.04, 0.08, 0.44 + dz), plinthBeigeMat);
+        c2.position.y = 5.41 + dy;
         eGrp.add(c2);
-        const c3 = new Mesh(new BoxGeometry(len + 0.08, 0.08, 0.5), plinthBeigeMat);
-        c3.position.y = 5.49;
+        const c3 = new Mesh(new BoxGeometry(len + 0.08, 0.08, 0.5 + dz), plinthBeigeMat);
+        c3.position.y = 5.49 + dy;
         eGrp.add(c3);
       }
       arch.add(eGrp);
@@ -35453,10 +35487,10 @@ void main() {
     for (let i = 0; i < detPolyPts.length; i++) {
       const [x0, z0] = detPolyPts[i];
       const [x1, z1] = detPolyPts[(i + 1) % detPolyPts.length];
-      addEdgeParapetAndCornice(x0, z0, x1, z1, i < detPolyPts.length - 1);
+      addEdgeParapetAndCornice(x0, z0, x1, z1, i < detPolyPts.length - 1, i, true);
     }
-    addEdgeParapetAndCornice(-2.89, 18.78, -2.89, 22.28, true);
-    addEdgeParapetAndCornice(-2.89, -25.6, -2.89, -21.56, true);
+    addEdgeParapetAndCornice(-2.89, 18.78, -2.89, 22.28, true, 14, false);
+    addEdgeParapetAndCornice(-2.89, -25.6, -2.89, -21.56, true, 15, false);
     addBox(0.18, 4.65, 4.1, tanPrecastMat, -20.96, 2.395, -1.625);
     [-3.05, -1.625, -0.2].forEach((jz) => {
       addBox(0.22, 4.65, 0.03, plazaJointMat, -20.98, 2.395, jz);
@@ -35475,12 +35509,8 @@ void main() {
     ventCyl.position.set(-21, 3.55, -2.32);
     arch.add(ventCyl);
     addBox(0.45, 0.06, 0.45, plazaConcreteMat, -21.45, 0.03, -2.32, false);
-    addBox(18, 0.03, 0.12, plazaJointMat, -11.9, 5.56, -1.625, false);
-    for (let rz = -22; rz <= 19; rz += 3.8) {
-      addBox(13, 0.015, 0.04, plazaJointMat, -9.5, 5.555, rz, false);
-    }
-    addBox(0.85, 0.18, 1.25, darkFasciaMat, -9.6, 5.64, -10.8);
-    addBox(0.68, 0.2, 1.08, plinthBeigeMat, -9.6, 5.65, -10.8);
+    addBox(0.85, 0.18, 1.25, darkFasciaMat, -9.6, 5.64, 10.8);
+    addBox(0.68, 0.2, 1.08, plinthBeigeMat, -9.6, 5.66, 10.8);
     [
       [-6.2, 11.8],
       [-9.6, 16.4],
@@ -35560,8 +35590,10 @@ void main() {
     [
       [detPolyPts[1], detPolyPts[2]],
       [detPolyPts[2], detPolyPts[3]],
-      [detPolyPts[8], detPolyPts[9]],
-      [detPolyPts[9], detPolyPts[10]]
+      [detPolyPts[3], detPolyPts[4]],
+      [detPolyPts[9], detPolyPts[10]],
+      [detPolyPts[10], detPolyPts[11]],
+      [detPolyPts[11], detPolyPts[12]]
     ].forEach(([[x0, z0], [x1, z1]]) => {
       const mx = (x0 + x1) * 0.5;
       const mz = (z0 + z1) * 0.5;
@@ -35577,8 +35609,9 @@ void main() {
     });
     const buildChamferedCornerRecYard = (isNorth) => {
       const pStart = isNorth ? [-24.18, 14.6] : [-24.38, -18];
-      const pApex = isNorth ? [-20.1, 14.6] : [-20.3, -18];
-      const pEnd = isNorth ? [-16.2, 22.28] : [-16.2, -25.6];
+      const pApex = isNorth ? [-20.5, 14.6] : [-20.7, -18];
+      const pMid = isNorth ? [-17.8, 18.2] : [-18, -21.8];
+      const pEnd = isNorth ? [-17.8, 22.28] : [-18, -25.6];
       const centerArcX = pEnd[0];
       const centerArcZ = pStart[1];
       const rx = Math.abs(pStart[0] - centerArcX);
@@ -35662,6 +35695,7 @@ void main() {
       const fanShape = new Shape();
       fanShape.moveTo(pStart[0], -pStart[1]);
       fanShape.lineTo(pApex[0], -pApex[1]);
+      fanShape.lineTo(pMid[0], -pMid[1]);
       fanShape.lineTo(pEnd[0], -pEnd[1]);
       for (let s = segments - 1; s >= 1; s--) {
         fanShape.lineTo(arcPts[s][0], -arcPts[s][1]);
@@ -35674,15 +35708,19 @@ void main() {
       fanMesh.position.y = 4.74;
       fanMesh.receiveShadow = true;
       arch.add(fanMesh);
-      const midArc = arcPts[4];
-      const seamLen = Math.hypot(midArc[0] - pApex[0], midArc[1] - pApex[1]) - 0.2;
-      const seamMx = (pApex[0] + midArc[0]) * 0.5;
-      const seamMz = (pApex[1] + midArc[1]) * 0.5;
-      const seamRot = -Math.atan2(midArc[1] - pApex[1], midArc[0] - pApex[0]);
-      const seamBar = new Mesh(new BoxGeometry(seamLen, 0.03, 0.06), plazaJointMat);
-      seamBar.position.set(seamMx, 4.89, seamMz);
-      seamBar.rotation.y = seamRot;
-      arch.add(seamBar);
+      [
+        [pApex, arcPts[3]],
+        [pMid, arcPts[5]]
+      ].forEach(([pInner, pOuter]) => {
+        const seamLen = Math.hypot(pOuter[0] - pInner[0], pOuter[1] - pInner[1]) - 0.2;
+        const seamMx = (pInner[0] + pOuter[0]) * 0.5;
+        const seamMz = (pInner[1] + pOuter[1]) * 0.5;
+        const seamRot = -Math.atan2(pOuter[1] - pInner[1], pOuter[0] - pInner[0]);
+        const seamBar = new Mesh(new BoxGeometry(seamLen, 0.03, 0.06), plazaJointMat);
+        seamBar.position.set(seamMx, 4.89, seamMz);
+        seamBar.rotation.y = seamRot;
+        arch.add(seamBar);
+      });
     };
     buildChamferedCornerRecYard(true);
     buildChamferedCornerRecYard(false);
@@ -35711,7 +35749,7 @@ void main() {
     const coreShiftX = 4.572;
     addBox(17.6, 2.8, 18.6, tanPrecastMat, 13 + coreShiftX, 5.95, -5.5);
     addBox(17.78, 0.16, 18.78, plinthBeigeMat, 13 + coreShiftX, 7.38, -5.5);
-    addBox(17.2, 0.08, 18.2, roofMembraneMat, 13 + coreShiftX, 7.34, -5.5);
+    addBox(17.2, 0.08, 18.2, roofMembraneMat, 13 + coreShiftX, 7.43, -5.5);
     [-11.5, -7.8, -4.1, -0.4].forEach((jz) => {
       addBox(0.06, 2.8, 0.04, darkFasciaMat, 4.18 + coreShiftX, 5.95, jz);
     });
@@ -35739,8 +35777,8 @@ void main() {
     const gymCenterZ = (gymZMin + gymZMax) * 0.5;
     const gymEaveY = 8.4;
     const gymArchRise = 2.25;
-    addBox(gymW, gymEaveY, gymSpanZ, tanPrecastMat, gymCenterX, gymEaveY * 0.5, gymCenterZ);
-    addBox(gymW + 0.1, 0.72, gymSpanZ + 0.1, plinthBeigeMat, gymCenterX, 0.36, gymCenterZ);
+    const gymUpperH = gymEaveY - 4.55;
+    addBox(gymW, gymUpperH, gymSpanZ, tanPrecastMat, gymCenterX, 4.55 + gymUpperH * 0.5, gymCenterZ);
     const archShape = new Shape();
     const halfSpan = gymSpanZ * 0.5;
     const archSteps = 24;
@@ -35773,21 +35811,23 @@ void main() {
       const mz = (z0 + z1) * 0.5;
       const my = (y0 + y1) * 0.5;
       const tiltX = -Math.atan2(y1 - y0, z1 - z0);
+      const wJitter = i % 2 * 8e-3;
+      const yJitter = i % 2 * 2e-3;
       const roofSeg = new Mesh(
-        new BoxGeometry(gymW + 0.36, 0.18, segLen),
+        new BoxGeometry(gymW + 0.36 + wJitter, 0.18, segLen),
         gymRoofMat
       );
-      roofSeg.position.set(gymCenterX, my + 0.08, mz);
+      roofSeg.position.set(gymCenterX, my + 0.08 + yJitter, mz);
       roofSeg.rotation.x = tiltX;
       roofSeg.castShadow = true;
       roofSeg.receiveShadow = true;
       arch.add(roofSeg);
       [gymXMax + 0.14, gymXMin - 0.14].forEach((fx) => {
         const fasciaSeg = new Mesh(
-          new BoxGeometry(0.24, 0.34, segLen + 0.02),
+          new BoxGeometry(0.24 + wJitter * 0.5, 0.34, segLen + 0.02),
           darkFasciaMat
         );
-        fasciaSeg.position.set(fx, my - 0.02, mz);
+        fasciaSeg.position.set(fx, my - 0.02 + yJitter, mz);
         fasciaSeg.rotation.x = tiltX;
         arch.add(fasciaSeg);
       });
@@ -36542,8 +36582,8 @@ void main() {
       roughness: 0.86,
       metalness: 0.03,
       polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1
+      polygonOffsetFactor: 2,
+      polygonOffsetUnits: 2
     });
     const structuralFootingMat = new MeshStandardMaterial({
       map: concreteTex,
@@ -36553,8 +36593,8 @@ void main() {
       roughness: 0.82,
       metalness: 0.05,
       polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1
     });
     const stemWallMat = new MeshStandardMaterial({
       color: "#ded8ce",
@@ -36571,7 +36611,7 @@ void main() {
       new BoxGeometry(apronW, apronH, apronD),
       subMatSlabMat
     );
-    apronMesh.position.set(5.2, -0.1, 0.725);
+    apronMesh.position.set(5.2, -0.14, 0.725);
     apronMesh.receiveShadow = true;
     apronMesh.castShadow = true;
     fndGroup.add(apronMesh);
@@ -36610,7 +36650,7 @@ void main() {
     });
     slabGeo.rotateX(-Math.PI / 2);
     const slabMesh = new Mesh(slabGeo, structuralFootingMat);
-    slabMesh.position.set(0, 0.14, 0);
+    slabMesh.position.set(0, 0.08, 0);
     slabMesh.receiveShadow = true;
     slabMesh.castShadow = true;
     fndGroup.add(slabMesh);
@@ -36659,7 +36699,7 @@ void main() {
       });
       aGeo.rotateX(-Math.PI / 2);
       const aMesh = new Mesh(aGeo, subMatSlabMat);
-      aMesh.position.set(0, -0.12, 0);
+      aMesh.position.set(0, -0.22, 0);
       aMesh.receiveShadow = true;
       aMesh.castShadow = true;
       grp.add(aMesh);
@@ -36678,7 +36718,7 @@ void main() {
       });
       sGeo.rotateX(-Math.PI / 2);
       const sMesh = new Mesh(sGeo, structuralFootingMat);
-      sMesh.position.set(0, 0.14, 0);
+      sMesh.position.set(0, -0.08, 0);
       sMesh.receiveShadow = true;
       sMesh.castShadow = true;
       grp.add(sMesh);
@@ -36756,6 +36796,8 @@ void main() {
       this.innerTerrainMat = null;
       this.outerTerrainMat = null;
       this.mapStyle = "roadmap";
+      this.mapDarkness = 0;
+      this.topoDarkBgActive = false;
       this.textures = {};
       this.innerTerrainMesh = null;
       this.outerTerrainMesh = null;
@@ -36997,8 +37039,41 @@ void main() {
       this._buildInnerCampusTerrainMesh(envGroup);
       this._buildBuilding400FoundationPad(envGroup);
       this.contourLinesMesh = this._buildTopographicContours(envGroup);
+      this.applyGroundTheme();
       scene.add(envGroup);
       return envGroup;
+    }
+    setGroundTheme({ darkness = this.mapDarkness, topoActive = this.topoDarkBgActive } = {}) {
+      this.mapDarkness = MathUtils.clamp(darkness, 0, 0.92);
+      this.topoDarkBgActive = Boolean(topoActive);
+      this.applyGroundTheme();
+    }
+    applyGroundTheme() {
+      const effectiveDarkness = this.topoDarkBgActive ? Math.max(this.mapDarkness, 0.76) : this.mapDarkness;
+      const lightCol = new Color("#ffffff");
+      const darkCol = new Color(this.topoDarkBgActive ? "#151d2a" : "#18202c");
+      const tintCol = lightCol.clone().lerp(darkCol, effectiveDarkness);
+      if (this.innerTerrainMat) {
+        this.innerTerrainMat.color.copy(tintCol);
+        this.innerTerrainMat.roughness = MathUtils.lerp(0.88, 0.97, effectiveDarkness);
+        this.innerTerrainMat.needsUpdate = true;
+      }
+      if (this.outerTerrainMat) {
+        this.outerTerrainMat.color.copy(tintCol);
+        this.outerTerrainMat.roughness = MathUtils.lerp(0.92, 0.98, effectiveDarkness);
+        this.outerTerrainMat.needsUpdate = true;
+      }
+      if (this.contourLinesMesh && this.contourLinesMesh.material) {
+        const cMat = this.contourLinesMesh.material;
+        if (this.topoDarkBgActive || effectiveDarkness > 0.35) {
+          cMat.color.set("#fbbf24");
+          cMat.opacity = 0.86;
+        } else {
+          cMat.color.set("#d97706");
+          cMat.opacity = 0.42;
+        }
+        cMat.needsUpdate = true;
+      }
     }
     _buildOuterFoothillsMesh(parent) {
       if (!this.terrainData?.outer) return;
@@ -37021,7 +37096,10 @@ void main() {
       this.outerTerrainMat = new MeshStandardMaterial({
         map: outerTex,
         roughness: 0.92,
-        metalness: 0.02
+        metalness: 0.02,
+        polygonOffset: true,
+        polygonOffsetFactor: 6,
+        polygonOffsetUnits: 6
       });
       const mesh = new Mesh(geo, this.outerTerrainMat);
       mesh.receiveShadow = true;
@@ -37047,8 +37125,8 @@ void main() {
         roughness: 0.88,
         metalness: 0.04,
         polygonOffset: true,
-        polygonOffsetFactor: 2,
-        polygonOffsetUnits: 2
+        polygonOffsetFactor: 4,
+        polygonOffsetUnits: 4
       });
       const mesh = new Mesh(geo, this.innerTerrainMat);
       mesh.receiveShadow = true;
@@ -37217,6 +37295,10 @@ void main() {
       this.pointer = new Vector2();
       const savedGpu = localStorage.getItem("chelan_gpu_accel");
       this.gpuAccelerated = savedGpu !== null ? savedGpu === "true" : true;
+      this.currentHour = 14;
+      this.darkMapEnabled = false;
+      this.mapDarkness = 0.68;
+      this.topoActive = false;
       this._initScene();
       this._initSkyAndLights();
       this._buildCampusWorld();
@@ -37232,8 +37314,8 @@ void main() {
       this.camera = new PerspectiveCamera(
         45,
         window.innerWidth / window.innerHeight,
-        0.25,
-        15e3
+        0.8,
+        5500
       );
       this.camera.position.set(-14.5, 29.8, 39.5);
       this.renderer = new WebGLRenderer({
@@ -37321,6 +37403,7 @@ void main() {
       this.setTimeOfDay(14);
     }
     setTimeOfDay(hourFloat) {
+      this.currentHour = hourFloat;
       const normalized = (hourFloat - 6) / 16;
       const elevationDeg = Math.sin(normalized * Math.PI) * 58 - 6;
       const azimuthDeg = -75 + normalized * 190;
@@ -37339,18 +37422,48 @@ void main() {
       const nightFactor = MathUtils.clamp(1 - (elevationDeg + 4) / 22, 0, 1);
       this.sunLight.intensity = Math.max(0.12, (1 - nightFactor * 0.92) * 2.5);
       this.hemiLight.intensity = Math.max(0.22, (1 - nightFactor * 0.7) * 0.9);
-      if (nightFactor > 0.5) {
-        this.scene.fog.color.set("#0f172a");
-        this.renderer.toneMappingExposure = 0.82;
-      } else if (elevationDeg < 15) {
-        this.scene.fog.color.set("#f3c69f");
-        this.renderer.toneMappingExposure = 0.98;
+      if (this.topoActive || this.darkMapEnabled && this.mapDarkness >= 0.25) {
+        this.scene.background.set("#0b1120");
+        this.scene.fog.color.set("#0b1120");
+        if (this.sky) this.sky.visible = false;
+        this.renderer.toneMappingExposure = 1.02;
       } else {
-        this.scene.fog.color.set("#dce7f2");
-        this.renderer.toneMappingExposure = 1.05;
+        if (this.sky) this.sky.visible = this.gpuAccelerated;
+        if (nightFactor > 0.5) {
+          this.scene.background.set("#0f172a");
+          this.scene.fog.color.set("#0f172a");
+          this.renderer.toneMappingExposure = 0.82;
+        } else if (elevationDeg < 15) {
+          this.scene.background.set("#f3c69f");
+          this.scene.fog.color.set("#f3c69f");
+          this.renderer.toneMappingExposure = 0.98;
+        } else {
+          this.scene.background.set("#cce0f5");
+          this.scene.fog.color.set("#dce7f2");
+          this.renderer.toneMappingExposure = 1.05;
+        }
       }
       this.wallFoundry.updateFoundrySettings({ nightFactor });
       this.groundFoundry.setNightLighting(nightFactor);
+    }
+    _syncEnvironmentTheme() {
+      const activeDarkness = this.darkMapEnabled ? this.mapDarkness : 0;
+      this.groundFoundry.setGroundTheme({
+        darkness: activeDarkness,
+        topoActive: this.topoActive
+      });
+      this.setTimeOfDay(this.currentHour || 14);
+      const darkCheck = document.getElementById("toggle-dark-map");
+      if (darkCheck) darkCheck.checked = this.darkMapEnabled || this.topoActive;
+      const quickDarkBtn = document.getElementById("btn-quick-dark-map");
+      if (quickDarkBtn) quickDarkBtn.classList.toggle("active", this.darkMapEnabled || this.topoActive);
+      const darkSlider = document.getElementById("foundry-map-darken");
+      const darkVal = document.getElementById("foundry-map-darken-val");
+      const shownPct = Math.round(
+        (this.topoActive ? Math.max(activeDarkness, 0.76) : activeDarkness) * 100
+      );
+      if (darkSlider) darkSlider.value = String(shownPct);
+      if (darkVal) darkVal.textContent = `${shownPct}%`;
     }
     setGpuAcceleration(enabled) {
       this.gpuAccelerated = Boolean(enabled);
@@ -37377,7 +37490,7 @@ void main() {
         }
       }
       if (this.sky) {
-        this.sky.visible = this.gpuAccelerated;
+        this.sky.visible = this.gpuAccelerated && !this.topoActive && !(this.darkMapEnabled && this.mapDarkness >= 0.25);
       }
       const maxAniso = this.gpuAccelerated ? this.renderer.capabilities.getMaxAnisotropy() : 1;
       this.scene.traverse((obj) => {
@@ -37436,8 +37549,10 @@ void main() {
       this._createStreetLabels();
       const contourToggle = document.getElementById("toggle-contours");
       if (contourToggle && this.groundFoundry.contourLinesMesh) {
+        this.topoActive = contourToggle.checked;
         this.groundFoundry.contourLinesMesh.visible = contourToggle.checked;
       }
+      this._syncEnvironmentTheme();
       this.renderer.shadowMap.needsUpdate = true;
     }
     _spawnCampusBuilding(bldg) {
@@ -37523,12 +37638,43 @@ void main() {
           this.groundFoundry.setMapStyle(e.target.checked ? "satellite" : "roadmap");
         });
       }
+      const darkMapCheck = document.getElementById("toggle-dark-map");
+      if (darkMapCheck) {
+        darkMapCheck.addEventListener("change", (e) => {
+          this.darkMapEnabled = e.target.checked;
+          if (this.darkMapEnabled && this.mapDarkness < 0.15) {
+            this.mapDarkness = 0.68;
+          }
+          this._syncEnvironmentTheme();
+        });
+      }
+      const quickDarkBtn = document.getElementById("btn-quick-dark-map");
+      if (quickDarkBtn) {
+        quickDarkBtn.addEventListener("click", () => {
+          this.darkMapEnabled = !this.darkMapEnabled;
+          if (this.darkMapEnabled && this.mapDarkness < 0.15) {
+            this.mapDarkness = 0.68;
+          }
+          this._syncEnvironmentTheme();
+        });
+      }
+      const darkSlider = document.getElementById("foundry-map-darken");
+      if (darkSlider) {
+        darkSlider.addEventListener("input", (e) => {
+          const pct = parseFloat(e.target.value) || 0;
+          this.mapDarkness = pct / 100;
+          this.darkMapEnabled = pct > 0;
+          this._syncEnvironmentTheme();
+        });
+      }
       const contourCheck = document.getElementById("toggle-contours");
       if (contourCheck) {
         contourCheck.addEventListener("change", (e) => {
+          this.topoActive = e.target.checked;
           if (this.groundFoundry.contourLinesMesh) {
-            this.groundFoundry.contourLinesMesh.visible = e.target.checked;
+            this.groundFoundry.contourLinesMesh.visible = this.topoActive;
           }
+          this._syncEnvironmentTheme();
         });
       }
       const gpuToggle = document.getElementById("toggle-gpu");

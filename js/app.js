@@ -32,6 +32,10 @@ class ChelanCampus3DApp {
 
         const savedGpu = localStorage.getItem('chelan_gpu_accel');
         this.gpuAccelerated = savedGpu !== null ? savedGpu === 'true' : true;
+        this.currentHour = 14.0;
+        this.darkMapEnabled = false;
+        this.mapDarkness = 0.68;
+        this.topoActive = false;
 
         this._initScene();
         this._initSkyAndLights();
@@ -50,8 +54,8 @@ class ChelanCampus3DApp {
         this.camera = new THREE.PerspectiveCamera(
             45,
             window.innerWidth / window.innerHeight,
-            0.25,
-            15000
+            0.8,
+            5500
         );
         // Start zoomed-in on Building 400's front portico & left/front stairs so details are immediately visible
         this.camera.position.set(-14.5, 29.8, 39.5);
@@ -152,6 +156,7 @@ class ChelanCampus3DApp {
     }
 
     setTimeOfDay(hourFloat) {
+        this.currentHour = hourFloat;
         const normalized = (hourFloat - 6) / 16;
         const elevationDeg = Math.sin(normalized * Math.PI) * 58 - 6;
         const azimuthDeg = -75 + normalized * 190;
@@ -175,19 +180,51 @@ class ChelanCampus3DApp {
         this.sunLight.intensity = Math.max(0.12, (1 - nightFactor * 0.92) * 2.5);
         this.hemiLight.intensity = Math.max(0.22, (1 - nightFactor * 0.7) * 0.9);
 
-        if (nightFactor > 0.5) {
-            this.scene.fog.color.set('#0f172a');
-            this.renderer.toneMappingExposure = 0.82;
-        } else if (elevationDeg < 15) {
-            this.scene.fog.color.set('#f3c69f');
-            this.renderer.toneMappingExposure = 0.98;
+        if (this.topoActive || (this.darkMapEnabled && this.mapDarkness >= 0.25)) {
+            this.scene.background.set('#0b1120');
+            this.scene.fog.color.set('#0b1120');
+            if (this.sky) this.sky.visible = false;
+            this.renderer.toneMappingExposure = 1.02;
         } else {
-            this.scene.fog.color.set('#dce7f2');
-            this.renderer.toneMappingExposure = 1.05;
+            if (this.sky) this.sky.visible = this.gpuAccelerated;
+            if (nightFactor > 0.5) {
+                this.scene.background.set('#0f172a');
+                this.scene.fog.color.set('#0f172a');
+                this.renderer.toneMappingExposure = 0.82;
+            } else if (elevationDeg < 15) {
+                this.scene.background.set('#f3c69f');
+                this.scene.fog.color.set('#f3c69f');
+                this.renderer.toneMappingExposure = 0.98;
+            } else {
+                this.scene.background.set('#cce0f5');
+                this.scene.fog.color.set('#dce7f2');
+                this.renderer.toneMappingExposure = 1.05;
+            }
         }
 
         this.wallFoundry.updateFoundrySettings({ nightFactor });
         this.groundFoundry.setNightLighting(nightFactor);
+    }
+
+    _syncEnvironmentTheme() {
+        const activeDarkness = this.darkMapEnabled ? this.mapDarkness : 0.0;
+        this.groundFoundry.setGroundTheme({
+            darkness: activeDarkness,
+            topoActive: this.topoActive
+        });
+        this.setTimeOfDay(this.currentHour || 14.0);
+
+        const darkCheck = document.getElementById('toggle-dark-map');
+        if (darkCheck) darkCheck.checked = this.darkMapEnabled || this.topoActive;
+        const quickDarkBtn = document.getElementById('btn-quick-dark-map');
+        if (quickDarkBtn) quickDarkBtn.classList.toggle('active', this.darkMapEnabled || this.topoActive);
+        const darkSlider = document.getElementById('foundry-map-darken');
+        const darkVal = document.getElementById('foundry-map-darken-val');
+        const shownPct = Math.round(
+            (this.topoActive ? Math.max(activeDarkness, 0.76) : activeDarkness) * 100
+        );
+        if (darkSlider) darkSlider.value = String(shownPct);
+        if (darkVal) darkVal.textContent = `${shownPct}%`;
     }
 
     setGpuAcceleration(enabled) {
@@ -218,7 +255,7 @@ class ChelanCampus3DApp {
             }
         }
         if (this.sky) {
-            this.sky.visible = this.gpuAccelerated;
+            this.sky.visible = this.gpuAccelerated && !this.topoActive && !(this.darkMapEnabled && this.mapDarkness >= 0.25);
         }
 
         // 3. Hardware Anisotropic Texture Filtering & Material Shader Refresh
@@ -293,8 +330,10 @@ class ChelanCampus3DApp {
 
         const contourToggle = document.getElementById('toggle-contours');
         if (contourToggle && this.groundFoundry.contourLinesMesh) {
+            this.topoActive = contourToggle.checked;
             this.groundFoundry.contourLinesMesh.visible = contourToggle.checked;
         }
+        this._syncEnvironmentTheme();
 
         this.renderer.shadowMap.needsUpdate = true;
     }
@@ -399,12 +438,46 @@ class ChelanCampus3DApp {
             });
         }
 
+        const darkMapCheck = document.getElementById('toggle-dark-map');
+        if (darkMapCheck) {
+            darkMapCheck.addEventListener('change', (e) => {
+                this.darkMapEnabled = e.target.checked;
+                if (this.darkMapEnabled && this.mapDarkness < 0.15) {
+                    this.mapDarkness = 0.68;
+                }
+                this._syncEnvironmentTheme();
+            });
+        }
+
+        const quickDarkBtn = document.getElementById('btn-quick-dark-map');
+        if (quickDarkBtn) {
+            quickDarkBtn.addEventListener('click', () => {
+                this.darkMapEnabled = !this.darkMapEnabled;
+                if (this.darkMapEnabled && this.mapDarkness < 0.15) {
+                    this.mapDarkness = 0.68;
+                }
+                this._syncEnvironmentTheme();
+            });
+        }
+
+        const darkSlider = document.getElementById('foundry-map-darken');
+        if (darkSlider) {
+            darkSlider.addEventListener('input', (e) => {
+                const pct = parseFloat(e.target.value) || 0;
+                this.mapDarkness = pct / 100;
+                this.darkMapEnabled = pct > 0;
+                this._syncEnvironmentTheme();
+            });
+        }
+
         const contourCheck = document.getElementById('toggle-contours');
         if (contourCheck) {
             contourCheck.addEventListener('change', (e) => {
+                this.topoActive = e.target.checked;
                 if (this.groundFoundry.contourLinesMesh) {
-                    this.groundFoundry.contourLinesMesh.visible = e.target.checked;
+                    this.groundFoundry.contourLinesMesh.visible = this.topoActive;
                 }
+                this._syncEnvironmentTheme();
             });
         }
 

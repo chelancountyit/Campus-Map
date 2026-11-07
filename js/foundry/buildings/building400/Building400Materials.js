@@ -93,7 +93,10 @@ export function createBuilding400Context(foundry, group, building, trimMat, terr
             metalness: 0.04
         });
         const turfMat = new THREE.MeshLambertMaterial({
-            color: '#4b8638'
+            color: '#4b8638',
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2
         });
         const darkMetalMat = new THREE.MeshStandardMaterial({
             color: '#1e2226',

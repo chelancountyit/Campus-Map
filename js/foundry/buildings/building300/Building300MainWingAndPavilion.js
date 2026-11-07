@@ -208,8 +208,8 @@ export function buildBuilding300MainWingAndPavilion(ctx) {
         });
 
         // (a) Smooth Tan Precast Left Wall of Main Wing (lx = 2.71m, lz = 18.75m..29.89m) with vertical & horizontal panel joints and white coping cap
-        addBox(0.32, 4.55, 11.14, tanPrecastMat, 2.71, 2.275, 24.32);
-        addBox(0.38, 0.72, 11.20, plinthBeigeMat, 2.71, 0.36, 24.32);
+        addBox(0.32, 4.52, 11.10, tanPrecastMat, 2.71, 2.26, 24.32);
+        addBox(0.38, 0.70, 11.16, plinthBeigeMat, 2.71, 0.35, 24.32);
         addBox(0.44, 0.14, 11.24, whiteDoorMat, 2.71, 4.62, 24.32);
         [21.50, 25.20, 28.80].forEach((jz) => {
             addBox(0.36, 4.55, 0.04, darkFasciaMat, 2.68, 2.275, jz);

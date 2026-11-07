@@ -16,6 +16,7 @@
             <button id="btn-bulldozer-clear" class="btn-tool-pill hidden" title="Reset all bulldozed terrain">🗑 Reset</button>
             <span id="bulldozer-readout" class="bulldozer-readout hidden">Click 1m×1m square to lower 1 ft</span>
         </div>
+        <button id="btn-quick-dark-map" class="btn-tool-pill" title="Darken Google Map & Background">🌙 Dark Map</button>
         <button id="btn-toggle-options" class="btn-toggle-options" title="Show or Hide All Options">⚙️ Options</button>
     </div>
     <!-- 3D WebGL + CSS2D Viewport -->
@@ -43,7 +44,12 @@
                 <span>Satellite Texture</span>
             </label>
 
-            <label class="control-pill">
+            <label class="control-pill" title="Darken Google Map ground texture & background">
+                <input id="toggle-dark-map" type="checkbox" />
+                <span>🌙 Dark Map</span>
+            </label>
+
+            <label class="control-pill" title="Show 2m Topographic Contours with dark high-contrast background">
                 <input id="toggle-contours" type="checkbox" />
                 <span>Topo Contours (2m)</span>
             </label>
@@ -164,9 +170,14 @@
                 <label for="foundry-terrain-exag">Terrain Vertical Scale (<strong id="foundry-terrain-exag-val">1.0×</strong>):</label>
                 <input id="foundry-terrain-exag" type="range" min="1.0" max="3.0" step="0.25" value="1.0" />
             </div>
+
+            <div class="foundry-row">
+                <label for="foundry-map-darken">Google Map Darkness (<strong id="foundry-map-darken-val">0%</strong>):</label>
+                <input id="foundry-map-darken" type="range" min="0" max="90" step="5" value="0" />
+            </div>
         </div>
     </section>
 
-    <script defer src="./js/campus-bundle.js?v=92"></script>
+    <script defer src="./js/campus-bundle.js?v=94"></script>
 </body>
 </html>
