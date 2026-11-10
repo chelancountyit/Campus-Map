@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "bakedAt": "2026-11-10T07:51:26.553Z",
+  "buildings": {
+    "courthouse-350": {
+      "file": "courthouse-350.glb",
+      "bytes": 5020276,
+      "kb": 4902.6
+    },
+    "building-316": {
+      "file": "building-316.glb",
+      "bytes": 1328388,
+      "kb": 1297.3
+    },
+    "building-400": {
+      "file": "building-400.glb",
+      "bytes": 6803464,
+      "kb": 6644
+    },
+    "building-300": {
+      "file": "building-300.glb",
+      "bytes": 3997820,
+      "kb": 3904.1
+    },
+    "building-411-412": {
+      "file": "building-411-412.glb",
+      "bytes": 1082760,
+      "kb": 1057.4
+    },
+    "regional-jail-east": {
+      "file": "regional-jail-east.glb",
+      "bytes": 3295264,
+      "kb": 3218
+    },
+    "regional-jail-west": {
+      "file": "regional-jail-west.glb",
+      "bytes": 3244536,
+      "kb": 3168.5
+    },
+    "building-428": {
+      "file": "building-428.glb",
+      "bytes": 331400,
+      "kb": 323.6
+    },
+    "context-buildings": {
+      "file": "context-buildings.glb",
+      "bytes": 166792,
+      "kb": 162.9
+    }
+  }
+}

@@ -715,13 +715,13 @@ export class MigratingGeeseFoundry {
     }
 
     /**
-     * Initializes 16 resident campus Sparrows and Doves that continuously fly out from trees
+     * Initializes 8 resident campus Sparrows and Doves that continuously fly out from trees
      * to land on buildings, and fly from buildings back into trees.
      */
     _initCampusSparrowsAndDoves() {
-        const totalCount = 16; // 10 House Sparrows + 6 Mourning Doves
+        const totalCount = 8; // 5 House Sparrows + 3 Mourning Doves
         for (let i = 0; i < totalCount; i++) {
-            const species = i < 10 ? 'sparrow' : 'dove';
+            const species = i < 5 ? 'sparrow' : 'dove';
             const scale = species === 'sparrow'
                 ? 0.58 + Math.random() * 0.08
                 : 0.78 + Math.random() * 0.10;

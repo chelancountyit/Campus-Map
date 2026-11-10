@@ -57131,12 +57131,782 @@ ${I}`;
     }
   };
 
+  // js/foundry/glb/BuildingGlbCodec.js
+  var GLB_MAGIC = 1179937895;
+  var GLB_VERSION = 2;
+  var CHUNK_JSON = 1313821514;
+  var CHUNK_BIN = 5130562;
+  var COMPONENT_FLOAT = 5126;
+  var COMPONENT_USHORT = 5123;
+  var COMPONENT_UINT = 5125;
+  var TEXTURE_SLOTS = ["map", "bumpMap", "normalMap", "roughnessMap", "emissiveMap", "alphaMap"];
+  var GRASS_HEX_SET = /* @__PURE__ */ new Set([
+    5142834,
+    4949560,
+    3696166,
+    4881462,
+    5078066,
+    4749360,
+    4156970,
+    5011506
+  ]);
+  function padTo4Bytes(byteLength) {
+    return byteLength + 3 & ~3;
+  }
+  function base64ToUint8Array(base64) {
+    const binStr = atob(base64);
+    const len = binStr.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binStr.charCodeAt(i);
+    }
+    return bytes;
+  }
+  async function imageSourceToPngBytes(img) {
+    if (!img) return null;
+    const width = img.width || img.videoWidth || 0;
+    const height = img.height || img.videoHeight || 0;
+    if (width <= 0 || height <= 0) return null;
+    if (typeof img.toDataURL === "function") {
+      try {
+        const dataUrl = img.toDataURL("image/png");
+        const commaIdx = dataUrl.indexOf(",");
+        if (commaIdx > 0) {
+          return base64ToUint8Array(dataUrl.slice(commaIdx + 1));
+        }
+      } catch (_2) {
+      }
+    }
+    if (typeof img.convertToBlob === "function") {
+      try {
+        const blob = await img.convertToBlob({ type: "image/png" });
+        const ab = await blob.arrayBuffer();
+        return new Uint8Array(ab);
+      } catch (_2) {
+      }
+    }
+    if (typeof document !== "undefined") {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL("image/png");
+        const commaIdx = dataUrl.indexOf(",");
+        if (commaIdx > 0) {
+          return base64ToUint8Array(dataUrl.slice(commaIdx + 1));
+        }
+      } catch (_2) {
+      }
+    }
+    return null;
+  }
+  function computePositionMinMax(posArray) {
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    const len = posArray.length;
+    for (let i = 0; i < len; i += 3) {
+      const x = posArray[i];
+      const y = posArray[i + 1];
+      const z2 = posArray[i + 2];
+      if (x < min[0]) min[0] = x;
+      if (y < min[1]) min[1] = y;
+      if (z2 < min[2]) min[2] = z2;
+      if (x > max[0]) max[0] = x;
+      if (y > max[1]) max[1] = y;
+      if (z2 > max[2]) max[2] = z2;
+    }
+    if (!Number.isFinite(min[0])) {
+      return { min: [0, 0, 0], max: [0, 0, 0] };
+    }
+    return { min, max };
+  }
+  function isGrassMaterial(mat, meshName = "") {
+    if (!mat) return false;
+    if (mat.userData?.isCampusGrass) return true;
+    const hex = mat.color ? mat.color.getHex() : -1;
+    if (GRASS_HEX_SET.has(hex)) return true;
+    const lower = (meshName || "").toLowerCase();
+    return lower.includes("grass") || lower.includes("lawn") || lower.includes("turf");
+  }
+  async function exportBuildingGroupToGlbBuffer(bldgGroup, building = null) {
+    if (!bldgGroup) {
+      throw new Error("exportBuildingGroupToGlbBuffer: bldgGroup is required");
+    }
+    if (!bldgGroup.userData?.workerStats) {
+      optimizeBuildingGroup(bldgGroup, building);
+    }
+    const bufferViews = [];
+    const accessors = [];
+    const images = [];
+    const samplers = [];
+    const textures = [];
+    const materials = [];
+    const meshes = [];
+    const nodes = [];
+    const rootNodeIndices = [];
+    const bakedLights = [];
+    const binChunks = [];
+    let currentByteOffset = 0;
+    const appendBinChunk = (uint8Bytes, target = void 0) => {
+      const byteOffset = currentByteOffset;
+      const byteLength = uint8Bytes.byteLength;
+      const paddedLength = padTo4Bytes(byteLength);
+      binChunks.push(uint8Bytes);
+      if (paddedLength > byteLength) {
+        binChunks.push(new Uint8Array(paddedLength - byteLength));
+      }
+      currentByteOffset += paddedLength;
+      const bv = {
+        buffer: 0,
+        byteOffset,
+        byteLength
+      };
+      if (target !== void 0) bv.target = target;
+      const bvIndex = bufferViews.length;
+      bufferViews.push(bv);
+      return bvIndex;
+    };
+    const texUuidToGlbIndex = /* @__PURE__ */ new Map();
+    const texUuidToMeta = /* @__PURE__ */ new Map();
+    const matUuidToGlbIndex = /* @__PURE__ */ new Map();
+    const registerTextureAsync = async (tex) => {
+      if (!tex || !tex.isTexture) return null;
+      if (texUuidToGlbIndex.has(tex.uuid)) {
+        return texUuidToGlbIndex.get(tex.uuid);
+      }
+      const pngBytes = await imageSourceToPngBytes(tex.image);
+      if (!pngBytes) return null;
+      const bvIndex = appendBinChunk(pngBytes);
+      const imgIndex = images.length;
+      images.push({
+        bufferView: bvIndex,
+        mimeType: "image/png",
+        name: tex.name || `tex_${imgIndex}`
+      });
+      const samplerIndex = samplers.length;
+      samplers.push({
+        magFilter: 9729,
+        // LINEAR
+        minFilter: 9987,
+        // LINEAR_MIPMAP_LINEAR
+        wrapS: tex.wrapS === RepeatWrapping ? 10497 : 33071,
+        wrapT: tex.wrapT === RepeatWrapping ? 10497 : 33071
+      });
+      const meta = {
+        wrapS: tex.wrapS,
+        wrapT: tex.wrapT,
+        repeat: [tex.repeat.x, tex.repeat.y],
+        offset: [tex.offset.x, tex.offset.y],
+        center: [tex.center.x, tex.center.y],
+        rotation: tex.rotation || 0,
+        anisotropy: tex.anisotropy || 1,
+        colorSpace: tex.colorSpace || NoColorSpace,
+        flipY: tex.flipY !== false
+      };
+      const glbTexIndex = textures.length;
+      textures.push({
+        sampler: samplerIndex,
+        source: imgIndex,
+        extras: meta
+      });
+      texUuidToGlbIndex.set(tex.uuid, glbTexIndex);
+      texUuidToMeta.set(tex.uuid, meta);
+      return glbTexIndex;
+    };
+    const registerMaterialAsync = async (mat, meshName = "") => {
+      if (!mat) return 0;
+      if (matUuidToGlbIndex.has(mat.uuid)) {
+        return matUuidToGlbIndex.get(mat.uuid);
+      }
+      const grassMat = isGrassMaterial(mat, meshName);
+      const texRefs = {};
+      if (!grassMat) {
+        for (const slot of TEXTURE_SLOTS) {
+          if (mat[slot]) {
+            const tIdx = await registerTextureAsync(mat[slot]);
+            if (tIdx !== null) {
+              texRefs[slot] = tIdx;
+            }
+          }
+        }
+      }
+      const safeUserData = {};
+      if (mat.userData) {
+        for (const [k2, v2] of Object.entries(mat.userData)) {
+          if (k2 !== "building" && (typeof v2 === "number" || typeof v2 === "string" || typeof v2 === "boolean")) {
+            safeUserData[k2] = v2;
+          }
+        }
+      }
+      if (grassMat) {
+        safeUserData.isCampusGrass = true;
+      }
+      const colorObj = mat.color ? mat.color : new Color(16777215);
+      const displayColor = grassMat ? new Color("#4a7c36") : colorObj;
+      const opacity = mat.opacity ?? 1;
+      const emissiveObj = mat.emissive ? mat.emissive : new Color(0);
+      const pbrMetallicRoughness = {
+        baseColorFactor: [displayColor.r, displayColor.g, displayColor.b, opacity],
+        metallicFactor: mat.metalness ?? 0.1,
+        roughnessFactor: mat.roughness ?? 0.8
+      };
+      if (texRefs.map !== void 0) {
+        pbrMetallicRoughness.baseColorTexture = { index: texRefs.map };
+      }
+      if (texRefs.roughnessMap !== void 0) {
+        pbrMetallicRoughness.metallicRoughnessTexture = { index: texRefs.roughnessMap };
+      }
+      const gltfMat = {
+        name: mat.name || `mat_${materials.length}`,
+        pbrMetallicRoughness,
+        emissiveFactor: [emissiveObj.r, emissiveObj.g, emissiveObj.b],
+        doubleSided: mat.side === DoubleSide,
+        extras: {
+          threeType: grassMat ? "MeshStandardMaterial" : mat.type || "MeshStandardMaterial",
+          colorHex: grassMat ? 15267292 : colorObj.getHex(),
+          roughness: grassMat ? 0.86 : mat.roughness ?? 0.8,
+          metalness: grassMat ? 0.02 : mat.metalness ?? 0.1,
+          emissiveHex: emissiveObj.getHex(),
+          emissiveIntensity: mat.emissiveIntensity ?? 1,
+          bumpScale: grassMat ? 0.085 : mat.bumpScale ?? 1,
+          opacity,
+          transparent: Boolean(mat.transparent),
+          alphaTest: mat.alphaTest ?? 0,
+          side: mat.side ?? FrontSide,
+          depthWrite: mat.depthWrite !== false,
+          depthTest: mat.depthTest !== false,
+          polygonOffset: Boolean(mat.polygonOffset),
+          polygonOffsetFactor: mat.polygonOffsetFactor || 0,
+          polygonOffsetUnits: mat.polygonOffsetUnits || 0,
+          wireframe: Boolean(mat.wireframe),
+          vertexColors: Boolean(mat.vertexColors),
+          flatShading: Boolean(mat.flatShading),
+          texRefs,
+          userData: safeUserData
+        }
+      };
+      if (mat.transparent && opacity < 1) {
+        gltfMat.alphaMode = "BLEND";
+      } else if (mat.alphaTest && mat.alphaTest > 0) {
+        gltfMat.alphaMode = "MASK";
+        gltfMat.alphaCutoff = mat.alphaTest;
+      }
+      if (texRefs.normalMap !== void 0) {
+        gltfMat.normalTexture = { index: texRefs.normalMap };
+      } else if (texRefs.bumpMap !== void 0) {
+        gltfMat.normalTexture = { index: texRefs.bumpMap };
+      }
+      if (texRefs.emissiveMap !== void 0) {
+        gltfMat.emissiveTexture = { index: texRefs.emissiveMap };
+      }
+      const matIdx = materials.length;
+      materials.push(gltfMat);
+      matUuidToGlbIndex.set(mat.uuid, matIdx);
+      return matIdx;
+    };
+    const serializeGeometryToAccessors = (geo) => {
+      const gltfAttrs = {};
+      const customAttrMap = {};
+      for (const [attrName, attr] of Object.entries(geo.attributes)) {
+        if (!attr || !attr.array || attr.count === 0) continue;
+        const f32 = attr.array instanceof Float32Array ? attr.array : new Float32Array(attr.array);
+        const rawBytes = new Uint8Array(f32.buffer, f32.byteOffset, f32.byteLength);
+        const bvIndex = appendBinChunk(rawBytes, 34962);
+        const itemSize = attr.itemSize;
+        const accType = itemSize === 1 ? "SCALAR" : itemSize === 2 ? "VEC2" : itemSize === 3 ? "VEC3" : "VEC4";
+        const acc = {
+          bufferView: bvIndex,
+          byteOffset: 0,
+          componentType: COMPONENT_FLOAT,
+          count: attr.count,
+          type: accType
+        };
+        if (attrName === "position" && itemSize === 3) {
+          const { min, max } = computePositionMinMax(f32);
+          acc.min = min;
+          acc.max = max;
+        }
+        const accIndex = accessors.length;
+        accessors.push(acc);
+        if (attrName === "position") {
+          gltfAttrs.POSITION = accIndex;
+        } else if (attrName === "normal") {
+          gltfAttrs.NORMAL = accIndex;
+        } else if (attrName === "uv") {
+          gltfAttrs.TEXCOORD_0 = accIndex;
+        } else if (attrName === "color") {
+          gltfAttrs.COLOR_0 = accIndex;
+        } else {
+          const key = `_${attrName.toUpperCase()}`;
+          gltfAttrs[key] = accIndex;
+          customAttrMap[key] = attrName;
+        }
+      }
+      let indexAccIndex = void 0;
+      if (geo.index && geo.index.array && geo.index.count > 0) {
+        const idxArr = geo.index.array;
+        const isUint32 = idxArr instanceof Uint32Array;
+        const typedIdx = isUint32 ? idxArr : idxArr instanceof Uint16Array ? idxArr : new Uint32Array(idxArr);
+        const rawBytes = new Uint8Array(typedIdx.buffer, typedIdx.byteOffset, typedIdx.byteLength);
+        const bvIndex = appendBinChunk(rawBytes, 34963);
+        indexAccIndex = accessors.length;
+        accessors.push({
+          bufferView: bvIndex,
+          byteOffset: 0,
+          componentType: typedIdx instanceof Uint32Array ? COMPONENT_UINT : COMPONENT_USHORT,
+          count: typedIdx.length,
+          type: "SCALAR"
+        });
+      }
+      const groups = Array.isArray(geo.groups) && geo.groups.length > 0 ? geo.groups.map((g) => ({
+        start: g.start,
+        count: g.count,
+        materialIndex: g.materialIndex || 0
+      })) : [];
+      return { gltfAttrs, customAttrMap, indexAccIndex, groups };
+    };
+    for (const child of bldgGroup.children) {
+      if (child.isLight) {
+        bakedLights.push({
+          color: child.color ? child.color.getHex() : 16764806,
+          intensity: child.intensity ?? 0,
+          distance: child.distance ?? 12,
+          decay: child.decay ?? 1.7,
+          position: [child.position.x, child.position.y, child.position.z],
+          userData: {
+            isEntranceNightLight: Boolean(child.userData?.isEntranceNightLight),
+            maxIntensity: child.userData?.maxIntensity ?? 2.2
+          }
+        });
+        continue;
+      }
+      if (!child.isMesh && !child.isLineSegments) continue;
+      if (!child.geometry || !child.material) continue;
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      const hasGrass = mats.some((m) => isGrassMaterial(m, child.name));
+      if (hasGrass && !child.geometry.userData?.hasPlanarGrassUVs) {
+        ensurePlanarGrassUVs(child.geometry, 0.45);
+        child.geometry.userData = {
+          ...child.geometry.userData || {},
+          hasPlanarGrassUVs: true
+        };
+      }
+      const isMulti = Array.isArray(child.material);
+      const matIndices = [];
+      for (const m of mats) {
+        const mIdx = await registerMaterialAsync(m, child.name);
+        matIndices.push(mIdx);
+      }
+      const { gltfAttrs, customAttrMap, indexAccIndex, groups } = serializeGeometryToAccessors(child.geometry);
+      const mode = child.isLineSegments ? 1 : 4;
+      const primitive = {
+        attributes: gltfAttrs,
+        material: matIndices[0] ?? 0,
+        mode
+      };
+      if (indexAccIndex !== void 0) {
+        primitive.indices = indexAccIndex;
+      }
+      const meshIdx = meshes.length;
+      meshes.push({
+        name: child.name || `mesh_${meshIdx}`,
+        primitives: [primitive],
+        extras: {
+          customAttrMap
+        }
+      });
+      child.updateMatrix();
+      const nodeIdx = nodes.length;
+      nodes.push({
+        name: child.name || `node_${nodeIdx}`,
+        mesh: meshIdx,
+        matrix: child.matrix.toArray(),
+        extras: {
+          kind: child.isLineSegments ? "lineSegments" : "mesh",
+          isMultiMat: isMulti,
+          matIndices,
+          groups,
+          hasPlanarGrassUVs: Boolean(child.geometry.userData?.hasPlanarGrassUVs),
+          castShadow: Boolean(child.castShadow),
+          receiveShadow: Boolean(child.receiveShadow),
+          renderOrder: child.renderOrder || 0,
+          userData: {
+            isSelectableBuilding: Boolean(child.userData?.isSelectableBuilding),
+            ...child.userData?.floorLayer !== void 0 ? { floorLayer: child.userData.floorLayer } : {},
+            ...child.userData?.isAnimatedFlag ? {
+              isAnimatedFlag: true,
+              flagWidth: child.userData.flagWidth,
+              flagHeight: child.userData.flagHeight,
+              hoistSide: child.userData.hoistSide,
+              phaseOffset: child.userData.phaseOffset,
+              droop: child.userData.droop,
+              ampZ: child.userData.ampZ,
+              ampY: child.userData.ampY
+            } : {}
+          }
+        }
+      });
+      rootNodeIndices.push(nodeIdx);
+    }
+    const gltfJson = {
+      asset: {
+        version: "2.0",
+        generator: "ChelanCountyCampus-BuildingGlbCodec-2.0"
+      },
+      scene: 0,
+      scenes: [
+        {
+          name: building?.id || bldgGroup.name || "CampusBuildingScene",
+          nodes: rootNodeIndices,
+          extras: {
+            buildingId: building?.id || bldgGroup.name || null,
+            groupPosition: [bldgGroup.position.x, bldgGroup.position.y, bldgGroup.position.z],
+            workerStats: bldgGroup.userData?.workerStats || null,
+            bakedLights
+          }
+        }
+      ],
+      nodes,
+      meshes,
+      materials,
+      accessors,
+      bufferViews,
+      buffers: [
+        {
+          byteLength: currentByteOffset
+        }
+      ]
+    };
+    if (textures.length > 0) gltfJson.textures = textures;
+    if (images.length > 0) gltfJson.images = images;
+    if (samplers.length > 0) gltfJson.samplers = samplers;
+    const jsonEncoder = new TextEncoder();
+    const rawJsonBytes = jsonEncoder.encode(JSON.stringify(gltfJson));
+    const paddedJsonLen = padTo4Bytes(rawJsonBytes.byteLength);
+    const jsonChunkBytes = new Uint8Array(paddedJsonLen);
+    jsonChunkBytes.set(rawJsonBytes, 0);
+    for (let i = rawJsonBytes.byteLength; i < paddedJsonLen; i++) {
+      jsonChunkBytes[i] = 32;
+    }
+    const totalByteLength = 12 + 8 + paddedJsonLen + 8 + currentByteOffset;
+    const glbBuffer = new ArrayBuffer(totalByteLength);
+    const headerView = new DataView(glbBuffer);
+    const outBytes = new Uint8Array(glbBuffer);
+    headerView.setUint32(0, GLB_MAGIC, true);
+    headerView.setUint32(4, GLB_VERSION, true);
+    headerView.setUint32(8, totalByteLength, true);
+    headerView.setUint32(12, paddedJsonLen, true);
+    headerView.setUint32(16, CHUNK_JSON, true);
+    outBytes.set(jsonChunkBytes, 20);
+    const binHeaderOffset = 20 + paddedJsonLen;
+    headerView.setUint32(binHeaderOffset, currentByteOffset, true);
+    headerView.setUint32(binHeaderOffset + 4, CHUNK_BIN, true);
+    let writePos = binHeaderOffset + 8;
+    for (const chunk of binChunks) {
+      outBytes.set(chunk, writePos);
+      writePos += chunk.byteLength;
+    }
+    return glbBuffer;
+  }
+  async function decodeGlbTextureToCanvasTexture(pngBytes, mimeType, meta = {}) {
+    if (typeof createImageBitmap === "function") {
+      const blob = new Blob([pngBytes], { type: mimeType || "image/png" });
+      const shouldFlipY = meta.flipY !== false;
+      let bitmap;
+      try {
+        bitmap = await createImageBitmap(blob, {
+          imageOrientation: shouldFlipY ? "flipY" : "none",
+          premultiplyAlpha: "none"
+        });
+      } catch (_2) {
+        bitmap = await createImageBitmap(blob);
+      }
+      const tex = new Texture(bitmap);
+      tex.wrapS = meta.wrapS ?? RepeatWrapping;
+      tex.wrapT = meta.wrapT ?? RepeatWrapping;
+      if (Array.isArray(meta.repeat)) tex.repeat.set(meta.repeat[0], meta.repeat[1]);
+      if (Array.isArray(meta.offset)) tex.offset.set(meta.offset[0], meta.offset[1]);
+      if (Array.isArray(meta.center)) tex.center.set(meta.center[0], meta.center[1]);
+      tex.rotation = meta.rotation || 0;
+      tex.anisotropy = meta.anisotropy || 1;
+      tex.colorSpace = meta.colorSpace || NoColorSpace;
+      tex.flipY = false;
+      tex.needsUpdate = true;
+      return tex;
+    }
+    return null;
+  }
+  async function parseBuildingGroupFromGlbBuffer(arrayBuffer, building = null, wallFoundry = null) {
+    const t0 = performance.now();
+    const view = new DataView(arrayBuffer);
+    const magic = view.getUint32(0, true);
+    const version = view.getUint32(4, true);
+    if (magic !== GLB_MAGIC || version !== GLB_VERSION) {
+      throw new Error("Invalid glTF 2.0 .glb header");
+    }
+    const jsonLen = view.getUint32(12, true);
+    const jsonType = view.getUint32(16, true);
+    if (jsonType !== CHUNK_JSON) {
+      throw new Error("Missing JSON chunk in .glb");
+    }
+    const jsonBytes = new Uint8Array(arrayBuffer, 20, jsonLen);
+    const gltf = JSON.parse(new TextDecoder().decode(jsonBytes));
+    const binHeaderOffset = 20 + jsonLen;
+    const binDataOffset = binHeaderOffset + 8;
+    const sceneDef = gltf.scenes && gltf.scenes[gltf.scene || 0] || {};
+    const sceneExtras = sceneDef.extras || {};
+    const gltfTextures = gltf.textures || [];
+    const gltfImages = gltf.images || [];
+    const gltfBufferViews = gltf.bufferViews || [];
+    const decodedTextures = await Promise.all(
+      gltfTextures.map(async (texDef) => {
+        const imgDef = gltfImages[texDef.source];
+        if (!imgDef || imgDef.bufferView === void 0) return null;
+        const bv = gltfBufferViews[imgDef.bufferView];
+        if (!bv) return null;
+        const pngBytes = new Uint8Array(arrayBuffer, binDataOffset + (bv.byteOffset || 0), bv.byteLength);
+        return decodeGlbTextureToCanvasTexture(pngBytes, imgDef.mimeType, texDef.extras || {});
+      })
+    );
+    const gltfMaterials = gltf.materials || [];
+    const builtMaterials = gltfMaterials.map((matDef) => {
+      const ext = matDef.extras || {};
+      const pbr = matDef.pbrMetallicRoughness || {};
+      const baseFactor = pbr.baseColorFactor || [1, 1, 1, 1];
+      const fallbackColorHex = new Color(baseFactor[0], baseFactor[1], baseFactor[2]).getHex();
+      const mType = ext.threeType || "MeshStandardMaterial";
+      const color = ext.colorHex !== void 0 ? ext.colorHex : fallbackColorHex;
+      const opacity = ext.opacity !== void 0 ? ext.opacity : baseFactor[3] ?? 1;
+      const transparent = ext.transparent !== void 0 ? Boolean(ext.transparent) : matDef.alphaMode === "BLEND";
+      const side = ext.side !== void 0 ? ext.side : matDef.doubleSided ? DoubleSide : FrontSide;
+      let mat;
+      if (mType === "MeshBasicMaterial") {
+        mat = new MeshBasicMaterial({
+          name: matDef.name || "",
+          color,
+          opacity,
+          transparent,
+          alphaTest: ext.alphaTest ?? 0,
+          side,
+          depthWrite: ext.depthWrite !== false,
+          depthTest: ext.depthTest !== false,
+          polygonOffset: Boolean(ext.polygonOffset),
+          polygonOffsetFactor: ext.polygonOffsetFactor || 0,
+          polygonOffsetUnits: ext.polygonOffsetUnits || 0,
+          wireframe: Boolean(ext.wireframe),
+          vertexColors: Boolean(ext.vertexColors)
+        });
+      } else if (mType === "LineBasicMaterial") {
+        mat = new LineBasicMaterial({
+          name: matDef.name || "",
+          color,
+          opacity,
+          transparent,
+          depthWrite: ext.depthWrite !== false,
+          depthTest: ext.depthTest !== false,
+          vertexColors: Boolean(ext.vertexColors)
+        });
+      } else if (mType === "MeshLambertMaterial") {
+        mat = new MeshLambertMaterial({
+          name: matDef.name || "",
+          color,
+          emissive: ext.emissiveHex ?? 0,
+          emissiveIntensity: ext.emissiveIntensity ?? 1,
+          opacity,
+          transparent,
+          side,
+          polygonOffset: Boolean(ext.polygonOffset),
+          polygonOffsetFactor: ext.polygonOffsetFactor || 0,
+          polygonOffsetUnits: ext.polygonOffsetUnits || 0,
+          flatShading: Boolean(ext.flatShading)
+        });
+      } else {
+        mat = new MeshStandardMaterial({
+          name: matDef.name || "",
+          color,
+          roughness: ext.roughness ?? pbr.roughnessFactor ?? 0.8,
+          metalness: ext.metalness ?? pbr.metallicFactor ?? 0.1,
+          emissive: ext.emissiveHex ?? 0,
+          emissiveIntensity: ext.emissiveIntensity ?? 1,
+          bumpScale: ext.bumpScale ?? 1,
+          opacity,
+          transparent,
+          alphaTest: ext.alphaTest ?? 0,
+          side,
+          depthWrite: ext.depthWrite !== false,
+          depthTest: ext.depthTest !== false,
+          polygonOffset: Boolean(ext.polygonOffset),
+          polygonOffsetFactor: ext.polygonOffsetFactor || 0,
+          polygonOffsetUnits: ext.polygonOffsetUnits || 0,
+          wireframe: Boolean(ext.wireframe),
+          vertexColors: Boolean(ext.vertexColors),
+          flatShading: Boolean(ext.flatShading)
+        });
+      }
+      if (ext.texRefs) {
+        for (const [slot, texIdx] of Object.entries(ext.texRefs)) {
+          const tex = decodedTextures[texIdx];
+          if (tex) mat[slot] = tex;
+        }
+      } else if (pbr.baseColorTexture && decodedTextures[pbr.baseColorTexture.index]) {
+        mat.map = decodedTextures[pbr.baseColorTexture.index];
+      }
+      mat.userData = { ...ext.userData || {} };
+      if (wallFoundry && building && mat.name && mat.name.startsWith("Wall_")) {
+        wallFoundry.materialCache.set(`${mat.name}_${building.id}`, mat);
+      }
+      return mat;
+    });
+    const group = new Group();
+    group.name = building?.id || sceneDef.name || "CampusBuildingGroup";
+    const gltfNodes = gltf.nodes || [];
+    const gltfMeshes = gltf.meshes || [];
+    const gltfAccessors = gltf.accessors || [];
+    const readAccessorTypedArray = (accIndex, copyBuffer = false) => {
+      const acc = gltfAccessors[accIndex];
+      if (!acc || acc.bufferView === void 0) return null;
+      const bv = gltfBufferViews[acc.bufferView];
+      if (!bv) return null;
+      const byteOffset = binDataOffset + (bv.byteOffset || 0) + (acc.byteOffset || 0);
+      const itemSize = acc.type === "SCALAR" ? 1 : acc.type === "VEC2" ? 2 : acc.type === "VEC3" ? 3 : 4;
+      const length = acc.count * itemSize;
+      if (acc.componentType === COMPONENT_USHORT) {
+        const byteLen2 = length * 2;
+        const array2 = copyBuffer || (byteOffset & 1) !== 0 ? new Uint16Array(arrayBuffer.slice(byteOffset, byteOffset + byteLen2)) : new Uint16Array(arrayBuffer, byteOffset, length);
+        return { array: array2, itemSize };
+      }
+      if (acc.componentType === COMPONENT_UINT) {
+        const byteLen2 = length * 4;
+        const array2 = copyBuffer || (byteOffset & 3) !== 0 ? new Uint32Array(arrayBuffer.slice(byteOffset, byteOffset + byteLen2)) : new Uint32Array(arrayBuffer, byteOffset, length);
+        return { array: array2, itemSize };
+      }
+      const byteLen = length * 4;
+      const array = copyBuffer || (byteOffset & 3) !== 0 ? new Float32Array(arrayBuffer.slice(byteOffset, byteOffset + byteLen)) : new Float32Array(arrayBuffer, byteOffset, length);
+      return { array, itemSize };
+    };
+    for (const nodeDef of gltfNodes) {
+      if (nodeDef.mesh === void 0) continue;
+      const meshDef = gltfMeshes[nodeDef.mesh];
+      if (!meshDef || !meshDef.primitives || meshDef.primitives.length === 0) continue;
+      const prim = meshDef.primitives[0];
+      const nodeExt = nodeDef.extras || {};
+      const isMutableMesh = Boolean(nodeExt.userData?.isAnimatedFlag);
+      const customAttrMap = meshDef.extras?.customAttrMap || {};
+      const geo = new BufferGeometry();
+      if (nodeExt.hasPlanarGrassUVs) {
+        geo.userData.hasPlanarGrassUVs = true;
+      }
+      for (const [gltfAttrName, accIdx] of Object.entries(prim.attributes || {})) {
+        const parsed = readAccessorTypedArray(accIdx, isMutableMesh);
+        if (!parsed) continue;
+        let threeAttrName = gltfAttrName.toLowerCase();
+        if (gltfAttrName === "POSITION") threeAttrName = "position";
+        else if (gltfAttrName === "NORMAL") threeAttrName = "normal";
+        else if (gltfAttrName === "TEXCOORD_0") threeAttrName = "uv";
+        else if (gltfAttrName === "COLOR_0") threeAttrName = "color";
+        else if (customAttrMap[gltfAttrName]) threeAttrName = customAttrMap[gltfAttrName];
+        geo.setAttribute(threeAttrName, new BufferAttribute(parsed.array, parsed.itemSize));
+      }
+      if (prim.indices !== void 0) {
+        const parsedIdx = readAccessorTypedArray(prim.indices);
+        if (parsedIdx) {
+          geo.setIndex(new BufferAttribute(parsedIdx.array, 1));
+        }
+      }
+      if (Array.isArray(nodeExt.groups)) {
+        for (const g of nodeExt.groups) {
+          geo.addGroup(g.start, g.count, g.materialIndex || 0);
+        }
+      }
+      const isMulti = Boolean(nodeExt.isMultiMat && Array.isArray(nodeExt.matIndices));
+      const resolvedMat = isMulti ? nodeExt.matIndices.map((idx) => builtMaterials[idx] || builtMaterials[0]) : builtMaterials[prim.material ?? 0] || new MeshStandardMaterial();
+      const isLine = nodeExt.kind === "lineSegments" || prim.mode === 1;
+      const obj = isLine ? new LineSegments(geo, resolvedMat) : new Mesh(geo, resolvedMat);
+      obj.name = nodeDef.name || meshDef.name || "";
+      obj.castShadow = Boolean(nodeExt.castShadow);
+      obj.receiveShadow = Boolean(nodeExt.receiveShadow);
+      obj.renderOrder = nodeExt.renderOrder || 0;
+      if (Array.isArray(nodeDef.matrix) && nodeDef.matrix.length === 16) {
+        obj.matrix.fromArray(nodeDef.matrix);
+        obj.matrix.decompose(obj.position, obj.quaternion, obj.scale);
+      }
+      if (nodeExt.userData?.isSelectableBuilding && building) {
+        obj.userData = {
+          ...nodeExt.userData,
+          isSelectableBuilding: true,
+          building
+        };
+      } else if (nodeExt.userData) {
+        obj.userData = { ...nodeExt.userData };
+      }
+      group.add(obj);
+    }
+    if (Array.isArray(sceneExtras.bakedLights)) {
+      for (const l2 of sceneExtras.bakedLights) {
+        const ptLight = new PointLight(l2.color, l2.intensity, l2.distance, l2.decay);
+        ptLight.position.set(l2.position[0], l2.position[1], l2.position[2]);
+        ptLight.userData = { ...l2.userData || {} };
+        group.add(ptLight);
+      }
+    }
+    if (Array.isArray(sceneExtras.groupPosition)) {
+      group.position.set(
+        sceneExtras.groupPosition[0],
+        sceneExtras.groupPosition[1],
+        sceneExtras.groupPosition[2]
+      );
+    }
+    const elapsedMs = Math.round((performance.now() - t0) * 10) / 10;
+    const baseStats = sceneExtras.workerStats || {
+      rawMeshCount: group.children.length,
+      optimizedMeshCount: group.children.length
+    };
+    group.userData = {
+      building,
+      loadedFromGlb: true,
+      workerStats: {
+        ...baseStats,
+        source: "glb",
+        workerBuildMs: elapsedMs,
+        workerTimeMs: elapsedMs
+      }
+    };
+    return group;
+  }
+  async function fetchBuildingGroupFromGlb(url, building = null, wallFoundry = null) {
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} fetching ${url}`);
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    return parseBuildingGroupFromGlbBuffer(arrayBuffer, building, wallFoundry);
+  }
+  function downloadGlbBuffer(glbBuffer, filename) {
+    if (typeof document === "undefined") return;
+    const safeName = filename.endsWith(".glb") ? filename : `${filename}.glb`;
+    const blob = new Blob([glbBuffer], { type: "model/gltf-binary" });
+    const url = URL.createObjectURL(blob);
+    const a2 = document.createElement("a");
+    a2.href = url;
+    a2.download = safeName;
+    document.body.appendChild(a2);
+    a2.click();
+    document.body.removeChild(a2);
+    setTimeout(() => URL.revokeObjectURL(url), 4e3);
+  }
+
   // js/foundry/workers/BuildingWorkerPool.js
   var BuildingWorkerPool = class {
-    constructor(wallFoundry, groundFoundry, workerScriptUrl = "./js/building-worker-bundle.js?v=215") {
+    constructor(wallFoundry, groundFoundry, workerScriptUrl = "./js/building-worker-bundle.js?v=217") {
       this.wallFoundry = wallFoundry;
       this.groundFoundry = groundFoundry;
       this.workerScriptUrl = workerScriptUrl;
+      this.glbBaseUrl = "./assets/models/buildings";
+      this.glbCacheVersion = "1";
+      this.useGlbFastPath = true;
+      this.glbLoadedCount = 0;
       this.workers = [];
       this.pendingJobs = /* @__PURE__ */ new Map();
       this.nextJobId = 1;
@@ -57144,7 +57914,28 @@ ${I}`;
       this.workersSupported = this._detectWorkerSupport();
       this.initialized = false;
       this.warmWorkers = 0;
-      this.prewarm(10);
+      if (!this._isHttpProtocol()) {
+        this.prewarm(10);
+      }
+    }
+    _isHttpProtocol() {
+      return Boolean(
+        typeof window !== "undefined" && window.location && (window.location.protocol === "http:" || window.location.protocol === "https:")
+      );
+    }
+    _canUseGlbFastPath(forceProcedural = false) {
+      if (forceProcedural || !this.useGlbFastPath || !this._isHttpProtocol()) {
+        return false;
+      }
+      const exag = this.groundFoundry?.exaggeration ?? 1;
+      if (Math.abs(exag - 1) > 1e-4) {
+        return false;
+      }
+      const bulldozedCount = this.groundFoundry?.bulldozedCells?.size || 0;
+      if (bulldozedCount > 0) {
+        return false;
+      }
+      return true;
     }
     _detectWorkerSupport() {
       try {
@@ -57296,11 +58087,21 @@ ${I}`;
       return bldgGroup;
     }
     /**
-     * Builds the Downtown Wenatchee Context Buildings batch in a dedicated background Web Worker.
+     * Builds the Downtown Wenatchee Context Buildings batch (loads pre-baked `.glb` first, with Worker fallback).
      */
-    buildContextBuildingsAsync(contextBuildings, includeState = false) {
+    async buildContextBuildingsAsync(contextBuildings, includeState = false) {
+      if (this._canUseGlbFastPath(includeState)) {
+        try {
+          const glbUrl = `${this.glbBaseUrl}/context-buildings.glb?v=${this.glbCacheVersion}`;
+          const group = await fetchBuildingGroupFromGlb(glbUrl, null, this.wallFoundry);
+          group.name = "ContextBuildingsGroup";
+          this.glbLoadedCount++;
+          return group;
+        } catch (_2) {
+        }
+      }
       if (!this._ensurePool(10)) {
-        return Promise.resolve(this._buildContextFallbackOnMainThread(contextBuildings));
+        return this._buildContextFallbackOnMainThread(contextBuildings);
       }
       return new Promise((resolve) => {
         const jobId = this.nextJobId++;
@@ -57327,11 +58128,23 @@ ${I}`;
       });
     }
     /**
-     * Builds a single campus building in a dedicated Web Worker (with automatic fallback).
+     * Builds a single campus building (loads pre-baked `.glb` first when eligible, with Worker fallback).
      */
-    buildBuildingAsync(building, terrainY, includeState = false, preferredWorkerIdx = null) {
+    async buildBuildingAsync(building, terrainY, includeState = false, preferredWorkerIdx = null) {
+      if (this._canUseGlbFastPath(includeState)) {
+        try {
+          const glbUrl = `${this.glbBaseUrl}/${building.id}.glb?v=${this.glbCacheVersion}`;
+          const group = await fetchBuildingGroupFromGlb(glbUrl, building, this.wallFoundry);
+          if (terrainY !== void 0 && Number.isFinite(terrainY)) {
+            group.position.set(building.center[0], terrainY, building.center[1]);
+          }
+          this.glbLoadedCount++;
+          return group;
+        } catch (_2) {
+        }
+      }
       if (!this._ensurePool(10)) {
-        return Promise.resolve(this._buildFallbackOnMainThread(building, terrainY));
+        return this._buildFallbackOnMainThread(building, terrainY);
       }
       return new Promise((resolve) => {
         const jobId = this.nextJobId++;
@@ -57359,24 +58172,26 @@ ${I}`;
       });
     }
     /**
-     * Builds all campus buildings concurrently across dedicated 1:1 Web Workers using
-     * Heavy-First (Longest Processing Time first) scheduling so the most detailed complexes
-     * (350 Courthouse, 401 Law & Justice, CCRJ-W, 400 Admin) begin at T=0us.
+     * Loads all campus buildings concurrently (via pre-baked `.glb` binary fast-path when at default
+     * terrain, or across 1:1 parallel Web Workers when dynamically re-grading).
      */
     async buildAllBuildingsParallel(buildings, getTerrainYFn, onBuildingReady) {
       const total = buildings.length;
-      if (!this._ensurePool(total + 2)) {
-        for (let i = 0; i < total; i++) {
-          const bldg = buildings[i];
-          const ty = getTerrainYFn(bldg);
-          const group = this._buildFallbackOnMainThread(bldg, ty);
-          if (onBuildingReady) {
-            await onBuildingReady(bldg, group, i + 1, total);
+      const useGlb = this._canUseGlbFastPath(false);
+      if (!useGlb) {
+        if (!this._ensurePool(total + 2)) {
+          for (let i = 0; i < total; i++) {
+            const bldg = buildings[i];
+            const ty = getTerrainYFn(bldg);
+            const group = this._buildFallbackOnMainThread(bldg, ty);
+            if (onBuildingReady) {
+              await onBuildingReady(bldg, group, i + 1, total);
+            }
           }
+          return;
         }
-        return;
+        this.syncEnvironmentState();
       }
-      this.syncEnvironmentState();
       const priorityWeights = {
         "courthouse-350": 100,
         "regional-jail-east": 95,
@@ -57906,13 +58721,13 @@ ${I}`;
       }
     }
     /**
-     * Initializes 16 resident campus Sparrows and Doves that continuously fly out from trees
+     * Initializes 8 resident campus Sparrows and Doves that continuously fly out from trees
      * to land on buildings, and fly from buildings back into trees.
      */
     _initCampusSparrowsAndDoves() {
-      const totalCount = 16;
+      const totalCount = 8;
       for (let i = 0; i < totalCount; i++) {
-        const species = i < 10 ? "sparrow" : "dove";
+        const species = i < 5 ? "sparrow" : "dove";
         const scale = species === "sparrow" ? 0.58 + Math.random() * 0.08 : 0.78 + Math.random() * 0.1;
         const actor = this._createBirdActor(species, Math.random() * Math.PI * 2, scale);
         const birdGroup = new Group();
@@ -58572,6 +59387,13 @@ ${I}`;
       this.wallFoundry = new WallFoundry(this.textureLoader);
       this.groundFoundry = new CampusGroundFoundry(this.textureLoader);
       this.buildingWorkerPool = new BuildingWorkerPool(this.wallFoundry, this.groundFoundry);
+      this.isGlbBakeMode = Boolean(
+        typeof window !== "undefined" && window.location && window.location.search.includes("bakeGlb=1")
+      );
+      if (this.isGlbBakeMode) {
+        this.buildingWorkerPool.useGlbFastPath = false;
+        this.buildingWorkerPool.workersSupported = false;
+      }
       this.campusBuildingMeshes = /* @__PURE__ */ new Map();
       this.selectableMeshes = [];
       this.animatedFlags = [];
@@ -58617,7 +59439,7 @@ ${I}`;
         elapsedEl.textContent = `${sec}s`;
       }
       if (badgeEl && this.buildingWorkerPool) {
-        badgeEl.textContent = `\u26A1 ${this.buildingWorkerPool.maxWorkers} Parallel Workers`;
+        badgeEl.textContent = this.buildingWorkerPool._canUseGlbFastPath() ? "\u{1F4E6} Pre-Baked .GLB Fast-Loader" : `\u26A1 ${this.buildingWorkerPool.maxWorkers} Parallel Workers`;
       }
     }
     _setWorkerPillStatus(workerId, state, statusText) {
@@ -58692,6 +59514,9 @@ ${I}`;
         this._updateLoadingModal(100, "Campus Map Ready!", "Welcome to the Chelan County 3D Campus");
         await this._yieldFrame();
         this._hideLoadingModal();
+        if (this.isGlbBakeMode) {
+          await this._runAutomatedGlbBakeIfRequested();
+        }
       } catch (err) {
         console.error("Error during campus boot:", err);
         this._hideLoadingModal();
@@ -59156,15 +59981,16 @@ ${I}`;
         const splitRoadY = this.groundFoundry.getBuildingRoadHeight(bldg.id);
         return splitRoadY !== null ? splitRoadY : this.groundFoundry.getTerrainHeight(bldg.center[0], bldg.center[1]);
       };
+      const isGlbFast = this.buildingWorkerPool._canUseGlbFastPath();
       this._updateLoadingModal(
         24,
-        `Dispatching ${this.buildingWorkerPool.maxWorkers} Parallel Web Workers...`,
-        `Building ${sortedBldgs.length} campus structures + ${CAMPUS_DATA.contextBuildings.length} context blocks concurrently`
+        isGlbFast ? "Loading Pre-Baked .GLB Campus Models..." : `Dispatching ${this.buildingWorkerPool.maxWorkers} Parallel Web Workers...`,
+        isGlbFast ? `Streaming ${sortedBldgs.length} binary glTF 2.0 campus buildings + ${CAMPUS_DATA.contextBuildings.length} context blocks` : `Building ${sortedBldgs.length} campus structures + ${CAMPUS_DATA.contextBuildings.length} context blocks concurrently`
       );
       for (const b2 of sortedBldgs) {
-        this._setWorkerPillStatus(b2.id, "running", "building");
+        this._setWorkerPillStatus(b2.id, "running", isGlbFast ? ".glb" : "building");
       }
-      this._setWorkerPillStatus("context-batch", "running", "batching");
+      this._setWorkerPillStatus("context-batch", "running", isGlbFast ? ".glb" : "batching");
       await this._yieldFrame();
       const campusBuildingsPromise = this.buildingWorkerPool.buildAllBuildingsParallel(
         sortedBldgs,
@@ -59173,13 +59999,15 @@ ${I}`;
           const splitRoadY = this.groundFoundry.getBuildingRoadHeight(bldg.id);
           this._attachCampusBuildingGroup(bldg, bldgGroup, splitRoadY);
           const stats = bldgGroup.userData?.workerStats;
-          const msText = stats?.workerBuildMs ? `${stats.workerBuildMs}ms` : "done";
+          const isFromGlb = Boolean(bldgGroup.userData?.loadedFromGlb || stats?.source === "glb");
+          const msVal = stats?.workerBuildMs ?? stats?.workerTimeMs;
+          const msText = msVal !== void 0 ? isFromGlb ? `GLB ${msVal}ms` : `${msVal}ms` : isFromGlb ? "GLB" : "done";
           this._setWorkerPillStatus(bldg.id, "done", msText);
-          const statSuffix = stats ? ` [${stats.rawMeshCount} \u2192 ${stats.optimizedMeshCount} draw calls in ${stats.workerBuildMs || 0}ms]` : "";
+          const statSuffix = stats ? ` [${isFromGlb ? ".GLB Binary" : `${stats.rawMeshCount} \u2192 ${stats.optimizedMeshCount} draw calls`} in ${msVal || 0}ms]` : "";
           const pct = 26 + Math.round(completedCount / totalCount * 58);
           this._updateLoadingModal(
             pct,
-            `Worker Completed Building ${bldg.code}...`,
+            `${isFromGlb ? "Loaded .GLB" : "Worker Completed"} Building ${bldg.code}...`,
             `${bldg.name || bldg.shortName} (${completedCount} of ${totalCount})${statSuffix}`
           );
         }
@@ -59187,10 +60015,12 @@ ${I}`;
       const contextBuildingsPromise = this.buildingWorkerPool.buildContextBuildingsAsync(CAMPUS_DATA.contextBuildings).then((ctxGroup) => {
         this.contextGroup = ctxGroup;
         const ctxStats = ctxGroup.userData?.workerStats;
+        const isFromGlb = Boolean(ctxGroup.userData?.loadedFromGlb || ctxStats?.source === "glb");
+        const msVal = ctxStats?.workerBuildMs ?? ctxStats?.workerTimeMs;
         this._setWorkerPillStatus(
           "context-batch",
           "done",
-          ctxStats?.workerBuildMs ? `${ctxStats.workerBuildMs}ms` : "done"
+          msVal !== void 0 ? isFromGlb ? `GLB ${msVal}ms` : `${msVal}ms` : "done"
         );
         const ctxToggle = document.getElementById("toggle-context");
         this.contextGroup.visible = ctxToggle ? ctxToggle.checked : false;
@@ -59296,6 +60126,65 @@ ${I}`;
         (x, z2) => this.groundFoundry.getTerrainHeight(x, z2)
       );
       this._attachCampusBuildingGroup(bldg, bldgGroup, splitRoadY);
+    }
+    async exportBuildingToGlb(buildingId = null, triggerDownload = true) {
+      const targetId = buildingId || this.selectedBuilding?.id || "courthouse-350";
+      if (targetId === "context-buildings" && this.contextGroup) {
+        const glbBuf2 = await exportBuildingGroupToGlbBuffer(this.contextGroup, null);
+        if (triggerDownload) {
+          downloadGlbBuffer(glbBuf2, "context-buildings.glb");
+        }
+        return glbBuf2;
+      }
+      const entry = this.campusBuildingMeshes.get(targetId);
+      if (!entry || !entry.group) {
+        return null;
+      }
+      const glbBuf = await exportBuildingGroupToGlbBuffer(entry.group, entry.data);
+      if (triggerDownload) {
+        downloadGlbBuffer(glbBuf, `${targetId}.glb`);
+        this.announceToScreenReader(`Exported ${entry.data?.shortName || targetId} as ${targetId}.glb`);
+      }
+      return glbBuf;
+    }
+    async exportAllBuildingsToGlb({ triggerDownload = true, postToServer = false } = {}) {
+      const results = {};
+      for (const [bldgId, entry] of this.campusBuildingMeshes.entries()) {
+        const buf = await exportBuildingGroupToGlbBuffer(entry.group, entry.data);
+        results[bldgId] = buf;
+        if (postToServer) {
+          await fetch(`/__bake_glb__?name=${encodeURIComponent(bldgId)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/octet-stream" },
+            body: buf
+          });
+        } else if (triggerDownload) {
+          downloadGlbBuffer(buf, `${bldgId}.glb`);
+          await new Promise((r) => setTimeout(r, 180));
+        }
+      }
+      if (this.contextGroup) {
+        const ctxBuf = await exportBuildingGroupToGlbBuffer(this.contextGroup, null);
+        results["context-buildings"] = ctxBuf;
+        if (postToServer) {
+          await fetch("/__bake_glb__?name=context-buildings", {
+            method: "POST",
+            headers: { "Content-Type": "application/octet-stream" },
+            body: ctxBuf
+          });
+        } else if (triggerDownload) {
+          downloadGlbBuffer(ctxBuf, "context-buildings.glb");
+        }
+      }
+      return results;
+    }
+    async _runAutomatedGlbBakeIfRequested() {
+      try {
+        await this.exportAllBuildingsToGlb({ triggerDownload: false, postToServer: true });
+        await fetch("/__bake_done__", { method: "POST" });
+      } catch (err) {
+        console.error("Automated GLB bake error:", err);
+      }
     }
     _createStreetLabels() {
       const streetMarkers = [
@@ -59521,6 +60410,19 @@ ${I}`;
         exagSlider.addEventListener("input", (e) => {
           const v2 = parseFloat(e.target.value);
           if (exagVal) exagVal.textContent = `${v2.toFixed(1)}\xD7`;
+        });
+      }
+      const exportSelGlbBtn = document.getElementById("btn-export-selected-glb");
+      if (exportSelGlbBtn) {
+        exportSelGlbBtn.addEventListener("click", () => {
+          const id = this.selectedBuilding?.id || "courthouse-350";
+          this.exportBuildingToGlb(id, true);
+        });
+      }
+      const exportAllGlbBtn = document.getElementById("btn-export-all-glb");
+      if (exportAllGlbBtn) {
+        exportAllGlbBtn.addEventListener("click", () => {
+          this.exportAllBuildingsToGlb({ triggerDownload: true, postToServer: false });
         });
       }
       document.getElementById("close-detail-btn").addEventListener("click", () => {

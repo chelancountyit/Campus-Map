@@ -1,18 +1,26 @@
 import { optimizeBuildingGroup, reconstructBuildingGroupFromWorker } from './BuildingMeshOptimizer.js';
+import { fetchBuildingGroupFromGlb } from '../glb/BuildingGlbCodec.js';
 
 /**
- * BuildingWorkerPool — Manages 10 Parallel Per-Building & Context Web Workers
+ * BuildingWorkerPool — Pre-Baked .GLB Fast-Loader + 10-Worker Procedural Fallback Pool
  *
- * Pre-warms 10 dedicated Web Worker threads at application boot (T=0ms) so every
- * Chelan County campus building (350, 401, CCRJ-W, 400, 316, 300, 411/412, 428)
- * plus the Downtown Wenatchee Context Buildings batch run 100% concurrently across
- * dedicated background threads without cold-start delay.
+ * 1. Fast-Path (.GLB): When served over HTTP/HTTPS at default terrain (1.0x exaggeration,
+ *    no bulldozer edits), loads pre-baked binary glTF 2.0 models (`./assets/models/buildings/<id>.glb`)
+ *    directly into WebGL with zero procedural CPU or Worker startup overhead.
+ * 2. Procedural Worker Fallback: Lazily spins up dedicated Web Worker threads whenever
+ *    dynamic terrain re-grading (Bulldozer / Exaggeration) or live Wall Foundry edits occur,
+ *    or if a `.glb` asset is not yet baked on disk.
  */
 export class BuildingWorkerPool {
-    constructor(wallFoundry, groundFoundry, workerScriptUrl = './js/building-worker-bundle.js?v=215') {
+    constructor(wallFoundry, groundFoundry, workerScriptUrl = './js/building-worker-bundle.js?v=217') {
         this.wallFoundry = wallFoundry;
         this.groundFoundry = groundFoundry;
         this.workerScriptUrl = workerScriptUrl;
+        this.glbBaseUrl = './assets/models/buildings';
+        this.glbCacheVersion = '1';
+        this.useGlbFastPath = true;
+        this.glbLoadedCount = 0;
+
         this.workers = [];
         this.pendingJobs = new Map();
         this.nextJobId = 1;
@@ -21,8 +29,33 @@ export class BuildingWorkerPool {
         this.initialized = false;
         this.warmWorkers = 0;
 
-        // Pre-warm the worker pool immediately at T=0ms while the main thread sets up WebGL & terrain
-        this.prewarm(10);
+        // Only pre-warm Web Workers immediately if running on file:// where fetch(.glb) is unavailable
+        if (!this._isHttpProtocol()) {
+            this.prewarm(10);
+        }
+    }
+
+    _isHttpProtocol() {
+        return Boolean(
+            typeof window !== 'undefined' &&
+            window.location &&
+            (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+        );
+    }
+
+    _canUseGlbFastPath(forceProcedural = false) {
+        if (forceProcedural || !this.useGlbFastPath || !this._isHttpProtocol()) {
+            return false;
+        }
+        const exag = this.groundFoundry?.exaggeration ?? 1.0;
+        if (Math.abs(exag - 1.0) > 1e-4) {
+            return false;
+        }
+        const bulldozedCount = this.groundFoundry?.bulldozedCells?.size || 0;
+        if (bulldozedCount > 0) {
+            return false;
+        }
+        return true;
     }
 
     _detectWorkerSupport() {
@@ -194,11 +227,23 @@ export class BuildingWorkerPool {
     }
 
     /**
-     * Builds the Downtown Wenatchee Context Buildings batch in a dedicated background Web Worker.
+     * Builds the Downtown Wenatchee Context Buildings batch (loads pre-baked `.glb` first, with Worker fallback).
      */
-    buildContextBuildingsAsync(contextBuildings, includeState = false) {
+    async buildContextBuildingsAsync(contextBuildings, includeState = false) {
+        if (this._canUseGlbFastPath(includeState)) {
+            try {
+                const glbUrl = `${this.glbBaseUrl}/context-buildings.glb?v=${this.glbCacheVersion}`;
+                const group = await fetchBuildingGroupFromGlb(glbUrl, null, this.wallFoundry);
+                group.name = 'ContextBuildingsGroup';
+                this.glbLoadedCount++;
+                return group;
+            } catch (_) {
+                // Fall through to Web Worker procedural build if .glb is not yet baked
+            }
+        }
+
         if (!this._ensurePool(10)) {
-            return Promise.resolve(this._buildContextFallbackOnMainThread(contextBuildings));
+            return this._buildContextFallbackOnMainThread(contextBuildings);
         }
 
         return new Promise((resolve) => {
@@ -230,11 +275,25 @@ export class BuildingWorkerPool {
     }
 
     /**
-     * Builds a single campus building in a dedicated Web Worker (with automatic fallback).
+     * Builds a single campus building (loads pre-baked `.glb` first when eligible, with Worker fallback).
      */
-    buildBuildingAsync(building, terrainY, includeState = false, preferredWorkerIdx = null) {
+    async buildBuildingAsync(building, terrainY, includeState = false, preferredWorkerIdx = null) {
+        if (this._canUseGlbFastPath(includeState)) {
+            try {
+                const glbUrl = `${this.glbBaseUrl}/${building.id}.glb?v=${this.glbCacheVersion}`;
+                const group = await fetchBuildingGroupFromGlb(glbUrl, building, this.wallFoundry);
+                if (terrainY !== undefined && Number.isFinite(terrainY)) {
+                    group.position.set(building.center[0], terrainY, building.center[1]);
+                }
+                this.glbLoadedCount++;
+                return group;
+            } catch (_) {
+                // Fall through to Web Worker procedural build if .glb is not yet baked
+            }
+        }
+
         if (!this._ensurePool(10)) {
-            return Promise.resolve(this._buildFallbackOnMainThread(building, terrainY));
+            return this._buildFallbackOnMainThread(building, terrainY);
         }
 
         return new Promise((resolve) => {
@@ -268,28 +327,30 @@ export class BuildingWorkerPool {
     }
 
     /**
-     * Builds all campus buildings concurrently across dedicated 1:1 Web Workers using
-     * Heavy-First (Longest Processing Time first) scheduling so the most detailed complexes
-     * (350 Courthouse, 401 Law & Justice, CCRJ-W, 400 Admin) begin at T=0us.
+     * Loads all campus buildings concurrently (via pre-baked `.glb` binary fast-path when at default
+     * terrain, or across 1:1 parallel Web Workers when dynamically re-grading).
      */
     async buildAllBuildingsParallel(buildings, getTerrainYFn, onBuildingReady) {
         const total = buildings.length;
-        if (!this._ensurePool(total + 2)) {
-            for (let i = 0; i < total; i++) {
-                const bldg = buildings[i];
-                const ty = getTerrainYFn(bldg);
-                const group = this._buildFallbackOnMainThread(bldg, ty);
-                if (onBuildingReady) {
-                    await onBuildingReady(bldg, group, i + 1, total);
+        const useGlb = this._canUseGlbFastPath(false);
+
+        if (!useGlb) {
+            if (!this._ensurePool(total + 2)) {
+                for (let i = 0; i < total; i++) {
+                    const bldg = buildings[i];
+                    const ty = getTerrainYFn(bldg);
+                    const group = this._buildFallbackOnMainThread(bldg, ty);
+                    if (onBuildingReady) {
+                        await onBuildingReady(bldg, group, i + 1, total);
+                    }
                 }
+                return;
             }
-            return;
+            // Sync latest terrain & foundry state once to all workers before parallel dispatch
+            this.syncEnvironmentState();
         }
 
-        // Sync latest terrain & foundry state once to all workers before parallel dispatch
-        this.syncEnvironmentState();
-
-        // Heavy-First priority weights so the heaviest procedural models dispatch first
+        // Heavy-First priority weights so the heaviest architectural complexes dispatch first
         const priorityWeights = {
             'courthouse-350': 100,
             'regional-jail-east': 95,

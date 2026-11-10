@@ -11,6 +11,7 @@ import { AdaAccessibilityFoundry, ADA_CAMPUS_FEATURES, BUILDING_ADA_SUMMARY } fr
 import { LumaRealismFoundry } from './foundry/LumaRealismFoundry.js';
 import { WenatcheeBackdropFoundry } from './foundry/WenatcheeBackdropFoundry.js';
 import { BuildingWorkerPool } from './foundry/workers/BuildingWorkerPool.js';
+import { exportBuildingGroupToGlbBuffer, downloadGlbBuffer } from './foundry/glb/BuildingGlbCodec.js';
 import { upgradeObjectGrassWithLumaTexture } from './foundry/materials/GrassMaterial.js';
 import { MigratingGeeseFoundry } from './foundry/MigratingGeeseFoundry.js';
 
@@ -27,6 +28,15 @@ class ChelanCampus3DApp {
         this.wallFoundry = new WallFoundry(this.textureLoader);
         this.groundFoundry = new CampusGroundFoundry(this.textureLoader);
         this.buildingWorkerPool = new BuildingWorkerPool(this.wallFoundry, this.groundFoundry);
+        this.isGlbBakeMode = Boolean(
+            typeof window !== 'undefined' &&
+            window.location &&
+            window.location.search.includes('bakeGlb=1')
+        );
+        if (this.isGlbBakeMode) {
+            this.buildingWorkerPool.useGlbFastPath = false;
+            this.buildingWorkerPool.workersSupported = false;
+        }
 
         this.campusBuildingMeshes = new Map();
         this.selectableMeshes = [];
@@ -79,7 +89,9 @@ class ChelanCampus3DApp {
             elapsedEl.textContent = `${sec}s`;
         }
         if (badgeEl && this.buildingWorkerPool) {
-            badgeEl.textContent = `⚡ ${this.buildingWorkerPool.maxWorkers} Parallel Workers`;
+            badgeEl.textContent = this.buildingWorkerPool._canUseGlbFastPath()
+                ? '📦 Pre-Baked .GLB Fast-Loader'
+                : `⚡ ${this.buildingWorkerPool.maxWorkers} Parallel Workers`;
         }
     }
 
@@ -166,6 +178,10 @@ class ChelanCampus3DApp {
             this._updateLoadingModal(100, 'Campus Map Ready!', 'Welcome to the Chelan County 3D Campus');
             await this._yieldFrame();
             this._hideLoadingModal();
+
+            if (this.isGlbBakeMode) {
+                await this._runAutomatedGlbBakeIfRequested();
+            }
         } catch (err) {
             console.error('Error during campus boot:', err);
             this._hideLoadingModal();
@@ -723,18 +739,23 @@ class ChelanCampus3DApp {
                 : this.groundFoundry.getTerrainHeight(bldg.center[0], bldg.center[1]);
         };
 
+        const isGlbFast = this.buildingWorkerPool._canUseGlbFastPath();
         this._updateLoadingModal(
             24,
-            `Dispatching ${this.buildingWorkerPool.maxWorkers} Parallel Web Workers...`,
-            `Building ${sortedBldgs.length} campus structures + ${CAMPUS_DATA.contextBuildings.length} context blocks concurrently`
+            isGlbFast
+                ? 'Loading Pre-Baked .GLB Campus Models...'
+                : `Dispatching ${this.buildingWorkerPool.maxWorkers} Parallel Web Workers...`,
+            isGlbFast
+                ? `Streaming ${sortedBldgs.length} binary glTF 2.0 campus buildings + ${CAMPUS_DATA.contextBuildings.length} context blocks`
+                : `Building ${sortedBldgs.length} campus structures + ${CAMPUS_DATA.contextBuildings.length} context blocks concurrently`
         );
         for (const b of sortedBldgs) {
-            this._setWorkerPillStatus(b.id, 'running', 'building');
+            this._setWorkerPillStatus(b.id, 'running', isGlbFast ? '.glb' : 'building');
         }
-        this._setWorkerPillStatus('context-batch', 'running', 'batching');
+        this._setWorkerPillStatus('context-batch', 'running', isGlbFast ? '.glb' : 'batching');
         await this._yieldFrame();
 
-        // 2 & 3. Run all 8 campus building workers AND the dedicated Downtown Wenatchee context worker concurrently!
+        // 2 & 3. Load all 8 campus buildings AND the Downtown Wenatchee context batch concurrently!
         const campusBuildingsPromise = this.buildingWorkerPool.buildAllBuildingsParallel(
             sortedBldgs,
             getBuildingTerrainY,
@@ -742,16 +763,20 @@ class ChelanCampus3DApp {
                 const splitRoadY = this.groundFoundry.getBuildingRoadHeight(bldg.id);
                 this._attachCampusBuildingGroup(bldg, bldgGroup, splitRoadY);
                 const stats = bldgGroup.userData?.workerStats;
-                const msText = stats?.workerBuildMs ? `${stats.workerBuildMs}ms` : 'done';
+                const isFromGlb = Boolean(bldgGroup.userData?.loadedFromGlb || stats?.source === 'glb');
+                const msVal = stats?.workerBuildMs ?? stats?.workerTimeMs;
+                const msText = msVal !== undefined
+                    ? (isFromGlb ? `GLB ${msVal}ms` : `${msVal}ms`)
+                    : (isFromGlb ? 'GLB' : 'done');
                 this._setWorkerPillStatus(bldg.id, 'done', msText);
 
                 const statSuffix = stats
-                    ? ` [${stats.rawMeshCount} → ${stats.optimizedMeshCount} draw calls in ${stats.workerBuildMs || 0}ms]`
+                    ? ` [${isFromGlb ? '.GLB Binary' : `${stats.rawMeshCount} → ${stats.optimizedMeshCount} draw calls`} in ${msVal || 0}ms]`
                     : '';
                 const pct = 26 + Math.round((completedCount / totalCount) * 58);
                 this._updateLoadingModal(
                     pct,
-                    `Worker Completed Building ${bldg.code}...`,
+                    `${isFromGlb ? 'Loaded .GLB' : 'Worker Completed'} Building ${bldg.code}...`,
                     `${bldg.name || bldg.shortName} (${completedCount} of ${totalCount})${statSuffix}`
                 );
             }
@@ -762,10 +787,12 @@ class ChelanCampus3DApp {
             .then((ctxGroup) => {
                 this.contextGroup = ctxGroup;
                 const ctxStats = ctxGroup.userData?.workerStats;
+                const isFromGlb = Boolean(ctxGroup.userData?.loadedFromGlb || ctxStats?.source === 'glb');
+                const msVal = ctxStats?.workerBuildMs ?? ctxStats?.workerTimeMs;
                 this._setWorkerPillStatus(
                     'context-batch',
                     'done',
-                    ctxStats?.workerBuildMs ? `${ctxStats.workerBuildMs}ms` : 'done'
+                    msVal !== undefined ? (isFromGlb ? `GLB ${msVal}ms` : `${msVal}ms`) : 'done'
                 );
                 const ctxToggle = document.getElementById('toggle-context');
                 this.contextGroup.visible = ctxToggle ? ctxToggle.checked : false;
@@ -897,6 +924,69 @@ class ChelanCampus3DApp {
             (x, z) => this.groundFoundry.getTerrainHeight(x, z)
         );
         this._attachCampusBuildingGroup(bldg, bldgGroup, splitRoadY);
+    }
+
+    async exportBuildingToGlb(buildingId = null, triggerDownload = true) {
+        const targetId = buildingId || this.selectedBuilding?.id || 'courthouse-350';
+        if (targetId === 'context-buildings' && this.contextGroup) {
+            const glbBuf = await exportBuildingGroupToGlbBuffer(this.contextGroup, null);
+            if (triggerDownload) {
+                downloadGlbBuffer(glbBuf, 'context-buildings.glb');
+            }
+            return glbBuf;
+        }
+
+        const entry = this.campusBuildingMeshes.get(targetId);
+        if (!entry || !entry.group) {
+            return null;
+        }
+        const glbBuf = await exportBuildingGroupToGlbBuffer(entry.group, entry.data);
+        if (triggerDownload) {
+            downloadGlbBuffer(glbBuf, `${targetId}.glb`);
+            this.announceToScreenReader(`Exported ${entry.data?.shortName || targetId} as ${targetId}.glb`);
+        }
+        return glbBuf;
+    }
+
+    async exportAllBuildingsToGlb({ triggerDownload = true, postToServer = false } = {}) {
+        const results = {};
+        for (const [bldgId, entry] of this.campusBuildingMeshes.entries()) {
+            const buf = await exportBuildingGroupToGlbBuffer(entry.group, entry.data);
+            results[bldgId] = buf;
+            if (postToServer) {
+                await fetch(`/__bake_glb__?name=${encodeURIComponent(bldgId)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: buf
+                });
+            } else if (triggerDownload) {
+                downloadGlbBuffer(buf, `${bldgId}.glb`);
+                await new Promise((r) => setTimeout(r, 180));
+            }
+        }
+        if (this.contextGroup) {
+            const ctxBuf = await exportBuildingGroupToGlbBuffer(this.contextGroup, null);
+            results['context-buildings'] = ctxBuf;
+            if (postToServer) {
+                await fetch('/__bake_glb__?name=context-buildings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: ctxBuf
+                });
+            } else if (triggerDownload) {
+                downloadGlbBuffer(ctxBuf, 'context-buildings.glb');
+            }
+        }
+        return results;
+    }
+
+    async _runAutomatedGlbBakeIfRequested() {
+        try {
+            await this.exportAllBuildingsToGlb({ triggerDownload: false, postToServer: true });
+            await fetch('/__bake_done__', { method: 'POST' });
+        } catch (err) {
+            console.error('Automated GLB bake error:', err);
+        }
     }
 
     _createStreetLabels() {
@@ -1145,6 +1235,21 @@ class ChelanCampus3DApp {
             exagSlider.addEventListener('input', (e) => {
                 const v = parseFloat(e.target.value);
                 if (exagVal) exagVal.textContent = `${v.toFixed(1)}×`;
+            });
+        }
+
+        const exportSelGlbBtn = document.getElementById('btn-export-selected-glb');
+        if (exportSelGlbBtn) {
+            exportSelGlbBtn.addEventListener('click', () => {
+                const id = this.selectedBuilding?.id || 'courthouse-350';
+                this.exportBuildingToGlb(id, true);
+            });
+        }
+
+        const exportAllGlbBtn = document.getElementById('btn-export-all-glb');
+        if (exportAllGlbBtn) {
+            exportAllGlbBtn.addEventListener('click', () => {
+                this.exportAllBuildingsToGlb({ triggerDownload: true, postToServer: false });
             });
         }
 

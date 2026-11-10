@@ -4,8 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chelan County Campus — Interactive 3D Map & Terrain</title>
-    <link rel="stylesheet" href="./css/styles.css?v=22" />
-    <link rel="preload" href="./js/building-worker-bundle.js?v=215" as="script" />
+    <link rel="stylesheet" href="./css/styles.css?v=23" />
 </head>
 <body>
     <!-- Progressive Multi-Worker 3D Campus Loading Modal -->
@@ -199,6 +198,10 @@
                                 <input id="foundry-map-darken" type="range" min="0" max="90" step="5" value="0" aria-label="Google Map Darkness" />
                                 <strong id="foundry-map-darken-val" class="foundry-slider-val">0%</strong>
                             </label>
+                        </div>
+                        <div class="foundry-glb-actions" style="display:flex; gap:6px; margin-top:6px;">
+                            <button id="btn-export-selected-glb" class="tree-action-btn" type="button" style="flex:1; font-size:11px; padding:4px 6px;" title="Export selected building as binary glTF 2.0 (.glb)">📦 Export .GLB</button>
+                            <button id="btn-export-all-glb" class="tree-action-btn" type="button" style="flex:1; font-size:11px; padding:4px 6px;" title="Export all campus buildings as .glb files">📦 Export All .GLB</button>
                         </div>
                     </div>
                 </section>
@@ -405,6 +408,6 @@
         <button id="btn-bird-exit" class="bird-view-hud-btn exit" type="button" title="Exit Migratory Bird View (Esc)">Exit ✕</button>
     </div>
 
-    <script defer src="./js/campus-bundle.js?v=215"></script>
+    <script defer src="./js/campus-bundle.js?v=217"></script>
 </body>
 </html>
