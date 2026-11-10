@@ -108,8 +108,29 @@ export function buildBuilding400Structure(ctx) {
         });
         brickEntablatureShape.closePath();
 
+        // Front Pavilion Water-Table Plinth Shape (wraps only the front pavilion lz >= 7.30m so it never cuts across
+        // the sunken basement windows or sunken entry doors in the NE and SW lightwells!)
+        const frontPlinthLocalPts = [
+            [-3.24, frontWingZ],
+            [-0.35, frontWingZ],
+            [-0.35, wallZ],
+            [9.35, wallZ],
+            [9.35, frontWingZ],
+            [12.61, frontWingZ],
+            [12.61, 7.30],
+            [-3.24, 7.30]
+        ];
+        const frontPlinthShape = new THREE.Shape();
+        frontPlinthLocalPts.forEach(([lx, lz], idx) => {
+            const sx = lx * cosArch + lz * sinArch;
+            const sy = lx * sinArch - lz * cosArch;
+            if (idx === 0) frontPlinthShape.moveTo(sx, sy);
+            else frontPlinthShape.lineTo(sx, sy);
+        });
+        frontPlinthShape.closePath();
+
         const beltBands = [
-            { y: -0.05, depth: 0.62, overhang: 0.08, mat: plinthConcreteMat, fullFootprint: true }, // Smooth concrete water-table plinth at road level
+            { y: -0.05, depth: 0.62, overhang: 0.08, mat: plinthConcreteMat, shape: frontPlinthShape }, // Smooth concrete water-table plinth along front wings
             { y: 7.45, depth: 0.26, overhang: 0.22, mat: trimMat },            // Lower limestone architrave band
             { y: 7.71, depth: 0.52, overhang: 0.12, mat: creamBrickSolidMat }, // Dentil brick frieze band
             { y: 8.23, depth: 0.32, overhang: 0.46, mat: trimMat },            // Main projecting classical limestone cornice ledge
@@ -118,7 +139,7 @@ export function buildBuilding400Structure(ctx) {
         ];
 
         beltBands.forEach((b) => {
-            const bGeo = new THREE.ExtrudeGeometry(b.fullFootprint ? bldg400Shape : brickEntablatureShape, {
+            const bGeo = new THREE.ExtrudeGeometry(b.shape || brickEntablatureShape, {
                 depth: b.depth,
                 bevelEnabled: true,
                 bevelThickness: 0.06,
@@ -132,6 +153,14 @@ export function buildBuilding400Structure(ctx) {
             bMesh.receiveShadow = true;
             group.add(bMesh);
         });
+
+        // Smooth concrete water-table foundation plinth along the Rear Alley Wall (lz = -16.64m, lx = -5.35m..+12.61m),
+        // Washington St Rear Pavilion (lx = +11.20m..+12.61m, lz = -16.64m..-11.20m), SW Rear Box (lx = -5.35m, lz = -16.64m..-11.20m),
+        // and SW Front Pavilion (lx = -3.24m, lz = +7.30m..+14.14m)
+        addBox(18.04, 2.38, 0.24, plinthConcreteMat, 3.63, -0.61, -16.64);
+        addBox(1.48, 2.38, 5.52, plinthConcreteMat, 11.92, -0.61, -13.92);
+        addBox(0.24, 2.38, 5.52, plinthConcreteMat, -5.35, -0.61, -13.92);
+        addBox(0.24, 2.38, 6.90, plinthConcreteMat, -3.24, -0.61, 10.72);
 
         // Stepped Corner Brick Quoins on the indented Front Left (lx = -3.24m) and Front Right (lx = +12.61m) corners
         for (let qy = 0.75; qy < 7.35; qy += 0.52) {
@@ -556,29 +585,27 @@ export function buildBuilding400Structure(ctx) {
         addBox(0.32, 0.14, entabD + 0.52, trimMat, portX, pedBaseY + pedH + 0.22, wallZ + entabD * 0.5 + 0.04);
 
         // --- B. RECESSED PORTICO ENTRY DOORS, S-SCROLL CONSOLE BRACKETS, TRANSOM & ORNATE SCONCES (3b9c07db.jpg, f097f1e6.jpg) ---
-        // Raised stone threshold step (+0.14m above deckY) running along the back wall between the columns and entry doors (28f96301.jpg)
-        addBox(portW - 0.4, 0.14, 1.35, plazaConcreteMat, portX, deckY + 0.07, wallZ + 0.68);
-        const doorBaseY = deckY + 0.14;
+        const doorBaseY = deckY;
 
         // Central Grand Entrance (lx = +4.50m): Molded Limestone Architrave Surround + Paneled White Double Doors + 12-Pane Transom
-        addBox(2.68, 4.75, 0.22, trimMat, portX, doorBaseY + 2.38, wallZ + 0.06);     // Outer carved stone door architrave
-        addBox(2.34, 4.52, 0.18, whiteCurbMat, portX, doorBaseY + 2.26, wallZ + 0.08); // White wood door & transom frame
+        addBox(2.68, 4.75, 0.20, trimMat, portX, doorBaseY + 2.38, wallZ + 0.05);     // Outer carved stone door architrave
+        addBox(2.34, 4.52, 0.16, whiteCurbMat, portX, doorBaseY + 2.26, wallZ + 0.07); // White wood door & transom frame
         // Left & right white paneled doors with upper dark glass lites, lower recessed panels & black pull handles
         [-0.54, 0.54].forEach((dx) => {
-            addBox(0.98, 2.38, 0.14, whiteCurbMat, portX + dx, doorBaseY + 1.19, wallZ + 0.11); // Door stile/rail leaf
-            addBox(0.74, 1.24, 0.16, glassMat, portX + dx, doorBaseY + 1.62, wallZ + 0.12);     // Upper glass window lite
-            addBox(0.74, 0.58, 0.12, plinthConcreteMat, portX + dx, doorBaseY + 0.48, wallZ + 0.12); // Lower recessed panel
+            addBox(0.98, 2.38, 0.14, whiteCurbMat, portX + dx, doorBaseY + 1.19, wallZ + 0.10); // Door stile/rail leaf
+            addBox(0.74, 1.24, 0.18, glassMat, portX + dx, doorBaseY + 1.62, wallZ + 0.14);     // Upper glass window lite
+            addBox(0.74, 0.58, 0.16, plinthConcreteMat, portX + dx, doorBaseY + 0.48, wallZ + 0.13); // Lower recessed panel
             // Vertical black iron door pull handle near center astragal
-            addBox(0.035, 0.34, 0.06, darkMetalMat, portX + dx * 0.22, doorBaseY + 1.05, wallZ + 0.18);
+            addBox(0.035, 0.34, 0.06, darkMetalMat, portX + dx * 0.22, doorBaseY + 1.05, wallZ + 0.20);
         });
-        addBox(0.10, 2.42, 0.20, whiteCurbMat, portX, doorBaseY + 1.21, wallZ + 0.13); // Center door astragal post
-        addBox(2.28, 0.16, 0.22, whiteCurbMat, portX, doorBaseY + 2.46, wallZ + 0.13); // Heavy transom division bar
+        addBox(0.10, 2.42, 0.22, whiteCurbMat, portX, doorBaseY + 1.21, wallZ + 0.14); // Center door astragal post
+        addBox(2.28, 0.16, 0.24, whiteCurbMat, portX, doorBaseY + 2.46, wallZ + 0.15); // Heavy transom division bar
 
         // 12-Pane (6x2) Rectangular Transom Window with Crisp White Muntin Grid above Central Doors (3b9c07db.jpg)
-        addBox(2.08, 1.38, 0.16, glassMat, portX, doorBaseY + 3.28, wallZ + 0.11);
-        addBox(2.10, 0.055, 0.20, whiteCurbMat, portX, doorBaseY + 3.28, wallZ + 0.13); // Horizontal transom muntin
+        addBox(2.08, 1.38, 0.18, glassMat, portX, doorBaseY + 3.28, wallZ + 0.13);
+        addBox(2.10, 0.055, 0.22, whiteCurbMat, portX, doorBaseY + 3.28, wallZ + 0.15); // Horizontal transom muntin
         for (let m = -2; m <= 2; m++) {
-            addBox(0.048, 1.38, 0.20, whiteCurbMat, portX + m * 0.345, doorBaseY + 3.28, wallZ + 0.13);
+            addBox(0.048, 1.38, 0.22, whiteCurbMat, portX + m * 0.345, doorBaseY + 3.28, wallZ + 0.15);
         }
 
         // Deep Projecting Classical Limestone Cornice Hood & Sculpted S-Scroll Console Brackets (Ancones) (3b9c07db.jpg, f097f1e6.jpg)
@@ -623,11 +650,11 @@ export function buildBuilding400Structure(ctx) {
 
         // 2 Side Entry Doors (lx = +1.65m and lx = +7.35m) with Molded Stone Surround, Upper/Lower Glass Lites & Lintel (28f96301.jpg)
         [1.65, 7.35].forEach((sx) => {
-            addBox(1.52, 3.35, 0.18, trimMat, sx, doorBaseY + 1.67, wallZ + 0.05);      // Stone architrave surround
-            addBox(1.28, 3.18, 0.16, whiteCurbMat, sx, doorBaseY + 1.59, wallZ + 0.07); // White door leaf
-            addBox(0.88, 1.32, 0.18, glassMat, sx, doorBaseY + 2.18, wallZ + 0.09);     // Upper glass lite
-            addBox(0.88, 0.82, 0.18, glassMat, sx, doorBaseY + 0.78, wallZ + 0.09);     // Lower glass lite
-            addBox(1.66, 0.26, 0.26, trimMat, sx, doorBaseY + 3.42, wallZ + 0.11);      // Projecting stone lintel
+            addBox(1.52, 3.35, 0.16, trimMat, sx, doorBaseY + 1.67, wallZ + 0.05);      // Stone architrave surround
+            addBox(1.28, 3.18, 0.16, whiteCurbMat, sx, doorBaseY + 1.59, wallZ + 0.08); // White door leaf
+            addBox(0.88, 1.32, 0.18, glassMat, sx, doorBaseY + 2.18, wallZ + 0.12);     // Upper glass lite
+            addBox(0.88, 0.82, 0.18, glassMat, sx, doorBaseY + 0.78, wallZ + 0.12);     // Lower glass lite
+            addBox(1.66, 0.26, 0.28, trimMat, sx, doorBaseY + 3.42, wallZ + 0.12);      // Projecting stone lintel
         });
 
         // Indented Left Front Wing Details (lx = -3.24m..-0.35m, at lz = frontWingZ = 14.14m; 3b9c07db.jpg & 687b2a06.jpg):
@@ -667,7 +694,7 @@ export function buildBuilding400Structure(ctx) {
 
         // --- C. 3D MONUMENTAL ROUND-ARCHED WINDOWS, SILL-BALCONIES & SUNKEN LIGHTWELLS ON NE (+X) & SW (-X) SIDES ---
         // Helper to build a true 3D round-arched window with brick archivolt, keystone, white sash & optional bracketed sill-balcony
-        const addMonumentalArchedWindow = (wx, wy, wz, sideDir = 1, hasBalcony = false) => {
+        const addMonumentalArchedWindow = (wx, wy, wz, sideDir = 1, hasBalcony = false, showBrickSpandrel = true) => {
             const wGroup = new THREE.Group();
             wGroup.position.set(wx, wy, wz);
             // sideDir = +1 for NE Washington St (+X), -1 for SW Parking Lot (-X)
@@ -677,46 +704,46 @@ export function buildBuilding400Structure(ctx) {
             const rectH = 2.65;
             const archR = winW * 0.5;
 
-            // Brick soldier-course surround + recessed white sash frame + dark glass pane
-            addBox(winW + 0.28, rectH, 0.10, creamBrickSolidMat, 0, rectH * 0.5, 0.02, wGroup);
-            addBox(winW + 0.16, rectH, 0.14, whiteCurbMat, 0, rectH * 0.5, 0.03, wGroup);
-            addBox(winW, rectH - 0.12, 0.18, glassMat, 0, rectH * 0.5, 0.045, wGroup);
-            // Interior light-colored window blind visible in the upper half of the rectangular sash (seen in af89d0d1.jpg & c962dc65.jpg)
-            addBox(winW - 0.08, rectH * 0.42, 0.17, plinthConcreteMat, 0, rectH * 0.74, 0.042, wGroup);
+            // Brick soldier-course surround + recessed white sash frame + unobstructed dark glass pane
+            addBox(winW + 0.28, rectH, 0.12, creamBrickSolidMat, 0, rectH * 0.5, 0.04, wGroup);
+            addBox(winW + 0.16, rectH, 0.16, whiteCurbMat, 0, rectH * 0.5, 0.06, wGroup);
+            addBox(winW, rectH - 0.12, 0.20, glassMat, 0, rectH * 0.5, 0.09, wGroup);
+            // Crisp white horizontal meeting rail across mid-sash
+            addBox(winW + 0.04, 0.045, 0.22, whiteCurbMat, 0, rectH * 0.52, 0.10, wGroup);
             // Prominent horizontal white transom bar separating rectangular sash from semicircular fanlight
-            addBox(winW + 0.12, 0.10, 0.24, whiteCurbMat, 0, rectH - 0.03, 0.07, wGroup);
+            addBox(winW + 0.12, 0.10, 0.26, whiteCurbMat, 0, rectH - 0.03, 0.11, wGroup);
 
             // Semicircular arched glass fanlight + brick soldier-course archivolt + projecting trapezoidal limestone keystone
             const archDisc = new THREE.Mesh(
-                new THREE.CylinderGeometry(archR + 0.16, archR + 0.16, 0.15, 24, 1, false, 0, Math.PI),
+                new THREE.CylinderGeometry(archR + 0.16, archR + 0.16, 0.16, 24, 1, false, 0, Math.PI),
                 creamBrickSolidMat
             );
             archDisc.rotation.z = Math.PI * 0.5;
             archDisc.rotation.y = Math.PI * 0.5;
-            archDisc.position.set(0, rectH, 0.03);
+            archDisc.position.set(0, rectH, 0.05);
             wGroup.add(archDisc);
 
             const sashDisc = new THREE.Mesh(
-                new THREE.CylinderGeometry(archR + 0.06, archR + 0.06, 0.17, 22, 1, false, 0, Math.PI),
+                new THREE.CylinderGeometry(archR + 0.06, archR + 0.06, 0.18, 22, 1, false, 0, Math.PI),
                 whiteCurbMat
             );
             sashDisc.rotation.z = Math.PI * 0.5;
             sashDisc.rotation.y = Math.PI * 0.5;
-            sashDisc.position.set(0, rectH, 0.04);
+            sashDisc.position.set(0, rectH, 0.07);
             wGroup.add(sashDisc);
 
             const glassDisc = new THREE.Mesh(
-                new THREE.CylinderGeometry(archR - 0.02, archR - 0.02, 0.20, 20, 1, false, 0, Math.PI),
+                new THREE.CylinderGeometry(archR - 0.02, archR - 0.02, 0.22, 20, 1, false, 0, Math.PI),
                 glassMat
             );
             glassDisc.rotation.z = Math.PI * 0.5;
             glassDisc.rotation.y = Math.PI * 0.5;
-            glassDisc.position.set(0, rectH, 0.05);
+            glassDisc.position.set(0, rectH, 0.09);
             wGroup.add(glassDisc);
 
             // Projecting sculpted limestone keystone at crown of arch (c962dc65.jpg)
-            addBox(0.28, 0.44, 0.26, trimMat, 0, rectH + archR + 0.08, 0.08, wGroup);
-            addBox(0.34, 0.16, 0.28, trimMat, 0, rectH + archR + 0.24, 0.09, wGroup);
+            addBox(0.28, 0.44, 0.28, trimMat, 0, rectH + archR + 0.08, 0.11, wGroup);
+            addBox(0.34, 0.16, 0.30, trimMat, 0, rectH + archR + 0.24, 0.12, wGroup);
 
             if (hasBalcony) {
                 // Solid Molded Classical Limestone Pedestal Sill-Balcony Apron (seen in close-up 19a77a6c.jpg!):
@@ -731,18 +758,18 @@ export function buildBuilding400Structure(ctx) {
                 addBox(2.40, 0.16, 0.50, trimMat, 0, -0.92, 0.21, wGroup);            // Flared bottom plinth molding
                 addBox(2.18, 0.08, 0.38, plinthConcreteMat, 0, -1.04, 0.15, wGroup);  // Under-apron drip molding
             } else {
-                // Projecting limestone window sill + True 3D Recessed Brick Spandrel Indentation below sill (seen in 19a77a6c.jpg!):
-                // - Top projecting stone sill
-                // - Recessed brick apron panel framed on left, right, and bottom by raised brick border piers/rails
-                addBox(winW + 0.34, 0.15, 0.26, trimMat, 0, -0.075, 0.09, wGroup);
-                // Recessed shadow backing + inset brick panel
-                addBox(winW - 0.12, 0.58, 0.03, plinthConcreteMat, 0, -0.44, 0.015, wGroup);
-                addBox(winW - 0.16, 0.52, 0.04, creamBrickSolidMat, 0, -0.44, 0.02, wGroup);
-                // Raised left & right vertical brick border piers + bottom horizontal brick sill rail framing the indentation
-                [-winW * 0.5 - 0.04, winW * 0.5 + 0.04].forEach((bx) => {
-                    addBox(0.18, 0.64, 0.09, creamBrickSolidMat, bx, -0.44, 0.045, wGroup);
-                });
-                addBox(winW + 0.26, 0.11, 0.10, creamBrickSolidMat, 0, -0.78, 0.05, wGroup);
+                // Projecting limestone window sill
+                addBox(winW + 0.34, 0.15, 0.28, trimMat, 0, -0.075, 0.11, wGroup);
+                if (showBrickSpandrel) {
+                    // True 3D Recessed Brick Spandrel Indentation below sill on NE Washington St brick wall (seen in 19a77a6c.jpg!)
+                    addBox(winW - 0.12, 0.58, 0.03, plinthConcreteMat, 0, -0.44, 0.015, wGroup);
+                    addBox(winW - 0.16, 0.52, 0.04, creamBrickSolidMat, 0, -0.44, 0.02, wGroup);
+                    // Raised left & right vertical brick border piers + bottom horizontal brick sill rail framing the indentation
+                    [-winW * 0.5 - 0.04, winW * 0.5 + 0.04].forEach((bx) => {
+                        addBox(0.18, 0.64, 0.09, creamBrickSolidMat, bx, -0.44, 0.045, wGroup);
+                    });
+                    addBox(winW + 0.26, 0.11, 0.10, creamBrickSolidMat, 0, -0.78, 0.05, wGroup);
+                }
             }
 
             arch.add(wGroup);
@@ -794,15 +821,14 @@ export function buildBuilding400Structure(ctx) {
 
         // 6 Monumental Round-Arched Windows along SW Parking Lot Side (-X side, seen in 3fb3243e.jpg, 0885db8a.jpg & 6aac1e2a.jpg):
         // 1 on SW Brick Front Pavilion (lx = -3.24m, lz = +10.72m, with solid molded pedestal balcony) +
-        // 5 recessed directly into the smooth weathered concrete/stucco SW Central Wall (lx = -2.86m) with flat concrete sills & lower basement windows!
-        addMonumentalArchedWindow(-3.24, 2.55, 10.72, -1, true);
+        // 5 mounted on the outer face of the smooth weathered concrete/stucco SW Central Wall (lx = -2.91m) with flat concrete sills & lower basement windows!
+        addMonumentalArchedWindow(-3.24, 2.55, 10.72, -1, true, false);
         [4.8, 1.2, -2.4, -6.0, -9.6].forEach((wz) => {
-            addMonumentalArchedWindow(-2.86, 2.55, wz, -1, false);
-            // Smooth stucco mask over the brick spandrel below each SW central window so only the flat concrete sill shows (3fb3243e.jpg)
-            addBox(0.16, 0.78, 2.15, weatheredStuccoMat, -2.86, 2.08, wz);
+            addMonumentalArchedWindow(-2.91, 2.55, wz, -1, false, false);
             // Recessed square basement window directly below each arched window in the SW gravel lightwell (0885db8a.jpg & 3fb3243e.jpg)
-            addBox(0.18, 1.05, 1.22, whiteCurbMat, -2.88, -0.52, wz);
-            addBox(0.22, 0.88, 1.04, glassMat, -2.90, -0.52, wz);
+            addBox(0.16, 1.05, 1.22, whiteCurbMat, -2.93, -0.52, wz);
+            addBox(0.20, 0.88, 1.04, glassMat, -2.96, -0.52, wz);
+            addBox(0.24, 0.10, 1.32, trimMat, -2.97, -1.08, wz); // Projecting stone sill
         });
 
         // =========================================================================
@@ -858,8 +884,9 @@ export function buildBuilding400Structure(ctx) {
         // 3. SW (-X, lx = -5.35m) Face of the Rear Box & Black Chain-Link Fenced Utility Enclosure (Photo 2: 6aac1e2a.jpg)
         //    - Two upper side windows near the rear of the SW face (lz = -15.6m & -14.3m, y = 6.6m..8.0m, 6aac1e2a.jpg)
         [-15.65, -14.35].forEach((wz) => {
-            addBox(0.12, 1.42, 0.96, whiteCurbMat, -5.36, 7.30, wz);
-            addBox(0.14, 1.26, 0.82, glassMat, -5.37, 7.30, wz);
+            addBox(0.12, 1.42, 0.96, whiteCurbMat, -5.38, 7.30, wz);
+            addBox(0.16, 1.26, 0.82, glassMat, -5.42, 7.30, wz);
+            addBox(0.20, 0.08, 1.04, trimMat, -5.43, 6.56, wz);
         });
         //    - Concrete pad + Tall White Double-Door Switchgear Cabinet + Olive-Green Transformer Box inside Black Chain-Link Fence (6aac1e2a.jpg & 0885db8a.jpg)
         const utilPadY = getConcreteTopY(-6.6, -12.6);
@@ -904,11 +931,18 @@ export function buildBuilding400Structure(ctx) {
         //    - Smooth gray-cream painted concrete/stucco cladding across lx = -0.35m..+11.20m (up to the pitched A-frame gable!)
         addBox(11.55, 12.25, 0.18, weatheredStuccoMat, 5.425, 2.525, -16.62);
         //    - Two Upper Square Blue-Reflective Windows on the Rear Box back wall (lx = -4.45m & -2.55m, y = 6.55m..8.15m, ef31cc76.jpg)
-        const blueReflGlassMat = new THREE.MeshStandardMaterial({ color: '#3b6e8c', roughness: 0.15, metalness: 0.45 });
+        const blueReflGlassMat = new THREE.MeshStandardMaterial({
+            color: '#3b6e8c',
+            roughness: 0.15,
+            metalness: 0.45,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1
+        });
         [-4.45, -2.55].forEach((wx) => {
-            addBox(1.36, 1.58, 0.12, weatheredStuccoMat, wx, 7.35, -16.68);
-            addBox(1.24, 1.44, 0.14, blueReflGlassMat, wx, 7.35, -16.69);
-            addBox(1.42, 0.10, 0.18, trimMat, wx, 6.54, -16.71); // Window sill
+            addBox(1.36, 1.58, 0.12, whiteCurbMat, wx, 7.35, -16.69);
+            addBox(1.24, 1.44, 0.16, blueReflGlassMat, wx, 7.35, -16.73);
+            addBox(1.42, 0.10, 0.22, trimMat, wx, 6.54, -16.75); // Window sill
         });
         //    - Large Projecting Cylindrical Galvanized Exhaust Fan Housing below the right upper window (lx = -4.45m, y = 5.15m, ef31cc76.jpg!)
         const fanDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.50, 0.50, 0.58, 24), galvSteelMat);
@@ -922,13 +956,16 @@ export function buildBuilding400Structure(ctx) {
         arch.add(fanCap);
         //    - Painted-Over Blind Window Panels on Rear Box & Gable Wall (ef31cc76.jpg)
         [-4.45, -2.55].forEach((wx) => {
-            addBox(1.32, 1.48, 0.06, rearBoxStuccoMat, wx, 3.35, -16.68);
-            addBox(1.38, 0.06, 0.09, whiteCurbMat, wx, 2.60, -16.69);
+            addBox(1.32, 1.48, 0.08, rearBoxStuccoMat, wx, 3.35, -16.72);
+            addBox(1.38, 0.08, 0.12, whiteCurbMat, wx, 2.60, -16.74);
         });
         [3.15, 5.45].forEach((wx) => {
-            addBox(1.32, 1.42, 0.06, rearBoxStuccoMat, wx, 6.35, -16.68); // Upper blind panels
-            addBox(1.32, 1.48, 0.06, rearBoxStuccoMat, wx, 3.35, -16.68); // Mid blind panels
-            addBox(0.92, 1.05, 0.06, rearBoxStuccoMat, wx, 1.10, -16.68); // Lower small blind panels
+            addBox(1.32, 1.42, 0.08, rearBoxStuccoMat, wx, 6.35, -16.73); // Upper blind panels
+            addBox(1.38, 0.08, 0.12, trimMat, wx, 5.62, -16.75);
+            addBox(1.32, 1.48, 0.08, rearBoxStuccoMat, wx, 3.35, -16.73); // Mid blind panels
+            addBox(1.38, 0.08, 0.12, trimMat, wx, 2.60, -16.75);
+            addBox(0.92, 1.05, 0.08, rearBoxStuccoMat, wx, 1.10, -16.73); // Lower small blind panels
+            addBox(0.98, 0.08, 0.12, trimMat, wx, 0.56, -16.75);
         });
         //    - Bottom White Louvered Intake Vent Grille + Two White Pipe Guard Bollards with Crossbar + 4 Conduit Boxes (ef31cc76.jpg!)
         addBox(0.96, 1.32, 0.08, whiteCurbMat, -2.45, 0.92, -16.68);

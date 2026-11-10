@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createLumaGrassMaterial } from '../../materials/GrassMaterial.js';
 
 export function createBuilding400Context(foundry, group, building, trimMat, terrainY, getTerrainHeightFn) {
         const storyH = 4.2;
@@ -67,10 +68,7 @@ export function createBuilding400Context(foundry, group, building, trimMat, terr
         const plinthConcreteMat = new THREE.MeshStandardMaterial({
             color: '#d5d0c5',
             roughness: 0.88,
-            metalness: 0.03,
-            polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: -1
+            metalness: 0.03
         });
         const slateGableMat = new THREE.MeshStandardMaterial({
             color: '#535961',
@@ -84,16 +82,15 @@ export function createBuilding400Context(foundry, group, building, trimMat, terr
             roughness: 0.86,
             metalness: 0.03,
             polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: -1
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2
         });
         const whiteCurbMat = new THREE.MeshStandardMaterial({
             color: '#f2eee6',
             roughness: 0.75,
             metalness: 0.04
         });
-        const turfMat = new THREE.MeshLambertMaterial({
-            color: '#4b8638',
+        const turfMat = createLumaGrassMaterial({
             polygonOffset: true,
             polygonOffsetFactor: -2,
             polygonOffsetUnits: -2
@@ -124,7 +121,10 @@ export function createBuilding400Context(foundry, group, building, trimMat, terr
         const glassMat = new THREE.MeshStandardMaterial({
             color: '#1b2e40',
             roughness: 0.2,
-            metalness: 0.35
+            metalness: 0.35,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1
         });
 
         // Build custom photo-accurate stepped footprint for Building 400 (in group's 2D shape coordinates):
@@ -159,13 +159,34 @@ export function createBuilding400Context(foundry, group, building, trimMat, terr
         const lowerStepRun = 0.42;
 
         // Helper to sample the topography-following concrete top surface height at local (lx, lz)
+        // Samples a ±1.0m neighborhood window so 4m terrain grid triangles never clip through the concrete,
+        // while keeping the lower portico stair landing (lx = -0.25..9.76, lz <= 20.15) below the bottom step (-0.34m).
         const cosT = 0.5842;
         const sinT = 0.8116;
+        const sampleRelTerrainY = (sx, sz) => {
+            const wx = building.center[0] + sx * cosT + sz * sinT;
+            const wz = building.center[1] - sx * sinT + sz * cosT;
+            return getTerrainHeightFn(wx, wz) - terrainY;
+        };
         const getConcreteTopY = (lx, lz) => {
             if (!getTerrainHeightFn) return lowerPlazaY;
-            const wx = building.center[0] + lx * cosT + lz * sinT;
-            const wz = building.center[1] - lx * sinT + lz * cosT;
-            return (getTerrainHeightFn(wx, wz) - terrainY) + 0.06;
+            const cY = sampleRelTerrainY(lx, lz);
+            const nY1 = sampleRelTerrainY(lx - 0.9, lz);
+            const nY2 = sampleRelTerrainY(lx + 0.9, lz);
+            const nY3 = sampleRelTerrainY(lx, lz - 0.9);
+            const nY4 = sampleRelTerrainY(lx, lz + 0.9);
+            const envY = Math.max(cY, (cY + nY1 + nY2 + nY3 + nY4) * 0.2, nY1, nY2, nY3, nY4);
+            let topY = Math.max(lowerPlazaY, envY + 0.10);
+
+            // Ensure the landing immediately in front of the 3-step forecourt stairs (ls=2 top at -0.34m)
+            // stays cleanly below the bottom step tread while blending smoothly outward.
+            const stairXWeight =
+                THREE.MathUtils.smoothstep(lx, -0.85, -0.15) *
+                (1.0 - THREE.MathUtils.smoothstep(lx, 9.65, 10.35));
+            const stairZWeight =
+                1.0 - THREE.MathUtils.smoothstep(lz, 20.15, 21.45);
+            const stairLandingCap = THREE.MathUtils.lerp(topY, Math.min(topY, lowerPlazaY + 0.04), stairXWeight * stairZWeight);
+            return stairLandingCap;
         };
 
         // Procedural Weathered Tan/Buff Concrete-Stucco Material for SW Central Wall & Rear Gable/Box (0885db8a.jpg, 6aac1e2a.jpg, ef31cc76.jpg, 3fb3243e.jpg)

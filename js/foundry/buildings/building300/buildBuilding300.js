@@ -3,8 +3,8 @@ import { buildBuilding300MainWingAndPavilion } from './Building300MainWingAndPav
 import { buildBuilding300GroundsAndGrading } from './Building300GroundsAndGrading.js';
 import { buildBuilding300DetentionAndGym } from './Building300DetentionAndGym.js';
 
-export function buildPhotoRealisticBuilding300(foundry, group, building, shape, wallMat, trimMat) {
-    const ctx = createBuilding300Context(foundry, group, building, shape);
+export function buildPhotoRealisticBuilding300(foundry, group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
+    const ctx = createBuilding300Context(foundry, group, building, shape, terrainY, getTerrainHeightFn);
     buildBuilding300MainWingAndPavilion(ctx);
     buildBuilding300GroundsAndGrading(ctx);
     buildBuilding300DetentionAndGym(ctx);

@@ -4,93 +4,366 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chelan County Campus — Interactive 3D Map & Terrain</title>
-    <link rel="stylesheet" href="./css/styles.css?v=8" />
+    <link rel="stylesheet" href="./css/styles.css?v=22" />
+    <link rel="preload" href="./js/building-worker-bundle.js?v=215" as="script" />
 </head>
-<body class="options-hidden">
-    <div class="floating-top-tools">
-        <div class="bulldoze-toolbar">
-            <button id="btn-bulldozer-tool" class="btn-tool-pill" title="Bulldozer Tool: Click or drag on terrain to lower 1m × 1m square by 1 foot (Hold Shift to raise 1 ft)">
-                🚜 Bulldozer (1m×1m • -1 ft)
-            </button>
-            <button id="btn-bulldozer-undo" class="btn-tool-pill hidden" title="Undo last bulldoze step">↩ Undo</button>
-            <button id="btn-bulldozer-clear" class="btn-tool-pill hidden" title="Reset all bulldozed terrain">🗑 Reset</button>
-            <span id="bulldozer-readout" class="bulldozer-readout hidden">Click 1m×1m square to lower 1 ft</span>
+<body>
+    <!-- Progressive Multi-Worker 3D Campus Loading Modal -->
+    <div id="campus-loading-modal" class="campus-loading-modal" role="dialog" aria-modal="true" aria-labelledby="loading-modal-title" aria-live="polite">
+        <div class="campus-loading-card">
+            <div class="campus-loading-top-row">
+                <div class="campus-loading-spinner-wrap" aria-hidden="true">
+                    <div class="campus-loading-ring-outer"></div>
+                    <div class="campus-loading-ring-inner"></div>
+                    <span class="campus-loading-icon">🏛️</span>
+                </div>
+                <div class="campus-loading-header-text">
+                    <h2 id="loading-modal-title" class="campus-loading-title">Chelan County 3D Campus</h2>
+                    <div class="campus-loading-meta-row">
+                        <span id="loading-worker-badge" class="loading-worker-badge">⚡ 10 Parallel Workers</span>
+                        <span id="loading-elapsed-time" class="loading-elapsed-time">0.0s</span>
+                    </div>
+                </div>
+            </div>
+            <div id="loading-step-title" class="campus-loading-step">Pre-warming 10 Web Workers &amp; 3D Viewport...</div>
+            <div id="loading-step-detail" class="campus-loading-detail">Parallel OffscreenCanvas textures &amp; BufferGeometry batching</div>
+            <div class="campus-loading-bar-row">
+                <div class="campus-loading-bar-track">
+                    <div id="loading-progress-fill" class="campus-loading-bar-fill" style="width: 6%"></div>
+                </div>
+                <span id="loading-progress-pct" class="campus-loading-pct">6%</span>
+            </div>
+            <div id="loading-worker-grid" class="loading-worker-grid" aria-label="Parallel building worker status">
+                <div class="worker-pill" data-worker-id="courthouse-350"><span class="wp-dot"></span><span class="wp-code">350</span><span class="wp-time">Queue</span></div>
+                <div class="worker-pill" data-worker-id="regional-jail-east"><span class="wp-dot"></span><span class="wp-code">401</span><span class="wp-time">Queue</span></div>
+                <div class="worker-pill" data-worker-id="regional-jail-west"><span class="wp-dot"></span><span class="wp-code">CCRJ-W</span><span class="wp-time">Queue</span></div>
+                <div class="worker-pill" data-worker-id="building-400"><span class="wp-dot"></span><span class="wp-code">400</span><span class="wp-time">Queue</span></div>
+                <div class="worker-pill" data-worker-id="building-316"><span class="wp-dot"></span><span class="wp-code">316</span><span class="wp-time">Queue</span></div>
+                <div class="worker-pill" data-worker-id="building-300"><span class="wp-dot"></span><span class="wp-code">300</span><span class="wp-time">Queue</span></div>
+                <div class="worker-pill" data-worker-id="building-411-412"><span class="wp-dot"></span><span class="wp-code">411/412</span><span class="wp-time">Queue</span></div>
+                <div class="worker-pill" data-worker-id="building-428"><span class="wp-dot"></span><span class="wp-code">428</span><span class="wp-time">Queue</span></div>
+                <div class="worker-pill" data-worker-id="context-batch"><span class="wp-dot"></span><span class="wp-code">CTX</span><span class="wp-time">Queue</span></div>
+            </div>
         </div>
-        <button id="btn-quick-dark-map" class="btn-tool-pill" title="Darken Google Map & Background">🌙 Dark Map</button>
-        <button id="btn-toggle-options" class="btn-toggle-options" title="Show or Hide All Options">⚙️ Options</button>
     </div>
+
+    <a href="#campus-search" id="skip-to-directory" class="skip-link">Skip to Campus Directory &amp; ADA Accessibility</a>
+    <div id="sr-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+    <div class="floating-top-tools">
+        <div class="floating-top-triggers-row">
+            <button id="btn-bird-view-top" class="tools-trigger bird-view-pill-trigger" type="button" aria-pressed="false" aria-label="Toggle Follow Migratory Bird View" title="Follow Migratory Bird View (Aerial Chase Camera)" data-tooltip="Follow Migratory Bird View">
+                <span aria-hidden="true">🦅</span>
+                <span class="bird-trigger-label">Bird View</span>
+            </button>
+            <button id="btn-open-tools" class="tools-trigger icon-only-trigger" type="button" aria-expanded="false" aria-controls="map-tools-panel" aria-label="Open campus tools" title="Map Tools &amp; Scene Controls" data-tooltip="Map Tools &amp; Scene Controls">
+                <span aria-hidden="true">🛠️</span>
+                <span class="sr-only">Tools</span>
+            </button>
+        </div>
+        <section id="map-tools-panel" class="map-tools-panel hidden" aria-label="Map tools and scene controls">
+            <div class="tools-panel-header">
+                <div class="tools-panel-title-wrap">
+                    <h2><span aria-hidden="true">🛠️</span> Tools</h2>
+                </div>
+                <div class="tools-panel-actions">
+                    <button id="btn-toggle-options" class="tools-hide-ui icon-tool-btn" type="button" aria-label="Hide map controls and directory" title="Hide Map Controls &amp; Directory" data-tooltip="Hide UI Controls">
+                        <span aria-hidden="true">👁️</span>
+                        <span class="sr-only">Hide UI</span>
+                    </button>
+                    <button id="btn-close-tools" class="close-btn icon-tool-btn" type="button" aria-label="Close map tools" title="Close Tools" data-tooltip="Close Tools">✕</button>
+                </div>
+            </div>
+
+            <div class="map-tools-panel-body">
+                <section class="map-tools-group" aria-labelledby="campus-tools-title">
+                    <h3 id="campus-tools-title">Campus tools</h3>
+                    <div class="map-tool-grid iconized-tool-grid">
+                        <button id="btn-bulldozer-tool" class="tool-action-button icon-tool-btn" type="button" aria-label="Bulldozer terrain tool" aria-pressed="false" title="Bulldozer Terrain Tool (Click: -1ft, Shift+Click: +1ft)" data-tooltip="Terrain Bulldozer (-1ft / Shift +1ft)"><span aria-hidden="true">🚜</span><span class="sr-only">Terrain</span></button>
+                        <button id="btn-bulldozer-undo" class="tool-action-button icon-tool-btn hidden" type="button" aria-label="Undo last bulldoze" title="Undo Last Terrain Edit" data-tooltip="Undo Terrain Edit"><span aria-hidden="true">↩️</span><span class="sr-only">Undo</span></button>
+                        <button id="btn-bulldozer-clear" class="tool-action-button icon-tool-btn hidden" type="button" aria-label="Reset bulldozed terrain" title="Reset All Terrain Edits" data-tooltip="Reset Terrain Edits"><span aria-hidden="true">🗑️</span><span class="sr-only">Reset</span></button>
+                        <button id="btn-luma-tool" class="tool-action-button icon-tool-btn luma-tool-btn" type="button" aria-label="Open photorealism studio" aria-pressed="false" aria-controls="luma-panel" title="Photorealism Studio (Luma 3D &amp; PBR)" data-tooltip="Photorealism Studio"><span aria-hidden="true">✨</span><span class="sr-only">Photorealism</span></button>
+                        <button id="btn-ada-tool" class="tool-action-button icon-tool-btn ada-tool-btn" type="button" aria-label="Open ADA accessibility tools" aria-pressed="false" aria-controls="ada-panel" title="ADA Accessibility &amp; Wayfinding" data-tooltip="ADA Accessibility"><span aria-hidden="true">♿</span><span class="sr-only">Accessibility</span></button>
+                        <button id="btn-tree-planter-tool" class="tool-action-button icon-tool-btn" type="button" aria-label="Open tree and bush planter" aria-pressed="false" aria-controls="tree-planter-panel" title="Plant or Remove Trees &amp; Bushes" data-tooltip="Tree &amp; Bush Planter"><span aria-hidden="true">🌳</span><span class="sr-only">Planting tool</span></button>
+                        <button id="btn-backdrop-theme" class="tool-action-button icon-tool-btn" type="button" aria-label="Cycle backdrop theme" title="Cycle Wenatchee Foothills, Golden Hour &amp; Dark Showcase" data-tooltip="Cycle Backdrop Theme"><span aria-hidden="true">🏔️</span><span class="sr-only">Backdrop</span></button>
+                        <button id="btn-bird-cam" class="tool-action-button icon-tool-btn" type="button" aria-pressed="false" aria-label="Follow migratory bird view" title="Follow Migratory Bird View (Aerial Chase Camera)" data-tooltip="Follow Migratory Bird View"><span aria-hidden="true">🦅</span><span class="sr-only">Bird view</span></button>
+                        <button id="btn-top-cam" class="tool-action-button icon-tool-btn" type="button" aria-label="Top-down camera view" title="Switch to Top-Down Camera View" data-tooltip="Top-Down View"><span aria-hidden="true">🧭</span><span class="sr-only">Top view</span></button>
+                        <button id="btn-reset-cam" class="tool-action-button icon-tool-btn" type="button" aria-label="Reset camera orbit" title="Reset Camera to Campus Overview" data-tooltip="Reset Camera View"><span aria-hidden="true">🔄</span><span class="sr-only">Reset view</span></button>
+                    </div>
+                    <span id="bulldozer-readout" class="bulldozer-readout hidden" role="status" aria-live="polite">Click terrain to lower 1 ft</span>
+                </section>
+
+                <section class="map-tools-group" aria-labelledby="scene-controls-title">
+                    <h3 id="scene-controls-title">Scene controls</h3>
+                    <label class="tool-time-control compact-time-control" for="time-slider" title="Sun Position &amp; Time of Day" data-tooltip="Sun &amp; Time of Day">
+                        <span class="time-icon-badge" aria-hidden="true">☀️</span>
+                        <input id="time-slider" type="range" min="6" max="22" step="0.25" value="14.5" aria-label="Sun and time of day" />
+                        <strong id="time-display">2:30 PM</strong>
+                    </label>
+                    <div class="tool-setting-grid iconized-setting-grid">
+                        <label class="tool-setting icon-toggle-pill" title="Toggle Satellite Imagery" data-tooltip="Satellite Imagery">
+                            <span aria-hidden="true">🛰️</span>
+                            <span class="sr-only">Satellite imagery</span>
+                            <input id="toggle-satellite" type="checkbox" aria-label="Toggle satellite imagery" />
+                        </label>
+                        <label class="tool-setting icon-toggle-pill" title="Switch to Dark Map Theme" data-tooltip="Dark Map Theme">
+                            <span aria-hidden="true">🌙</span>
+                            <span class="sr-only">Dark map</span>
+                            <input id="toggle-dark-map" type="checkbox" aria-label="Toggle dark map theme" />
+                        </label>
+                        <label class="tool-setting icon-toggle-pill" title="Show Solid 3D Terrain Without Google Map Image" data-tooltip="Solid 3D Terrain">
+                            <span aria-hidden="true">🏞️</span>
+                            <span class="sr-only">Draw terrain</span>
+                            <input id="toggle-draw-terrain" type="checkbox" aria-label="Show solid 3D terrain without Google Map image" />
+                        </label>
+                        <label class="tool-setting icon-toggle-pill" title="Show 2m Topographic Elevation Contours" data-tooltip="Terrain Contours">
+                            <span aria-hidden="true">🏔️</span>
+                            <span class="sr-only">Terrain contours</span>
+                            <input id="toggle-contours" type="checkbox" aria-label="Show terrain contours" />
+                        </label>
+                        <label class="tool-setting icon-toggle-pill" title="Show Nearby City Context Buildings" data-tooltip="Nearby Buildings">
+                            <span aria-hidden="true">🏙️</span>
+                            <span class="sr-only">Nearby buildings</span>
+                            <input id="toggle-context" type="checkbox" aria-label="Show nearby city buildings" />
+                        </label>
+                        <label class="tool-setting icon-toggle-pill" title="Show Building &amp; Street Labels" data-tooltip="Building Labels">
+                            <span aria-hidden="true">📍</span>
+                            <span class="sr-only">Building labels</span>
+                            <input id="toggle-labels" type="checkbox" aria-label="Show building labels" />
+                        </label>
+                        <label class="tool-setting icon-toggle-pill" title="Enable 4096×4096 Ultra-Crisp Shadows, 2× Retina DPI &amp; Sky/Sun PBR Reflections" data-tooltip="High-Quality Mode (4K + IBL)">
+                            <span aria-hidden="true">⚡</span>
+                            <span class="sr-only">High-quality mode (4K + IBL)</span>
+                            <input id="toggle-gpu" type="checkbox" aria-label="Toggle high-quality 4K shadow and PBR reflection mode" />
+                        </label>
+                        <label class="tool-setting icon-toggle-pill" title="Show or Hide Outer 500ft Perimeter White Fog" data-tooltip="Outer Perimeter Fog">
+                            <span aria-hidden="true">🌫️</span>
+                            <span class="sr-only">Outer perimeter fog</span>
+                            <input id="toggle-fog" type="checkbox" checked aria-label="Toggle outer perimeter fog" />
+                        </label>
+                    </div>
+                </section>
+
+                <section id="foundry-drawer" class="map-tools-group foundry-tools-compact" aria-labelledby="foundry-tools-title">
+                    <div class="foundry-compact-header">
+                        <h3 id="foundry-tools-title" title="3D Wall &amp; Terrain Foundry">
+                            <span aria-hidden="true">🧱⛰️</span> Wall &amp; Terrain Foundry
+                        </h3>
+                        <div class="foundry-compact-header-right">
+                            <span id="foundry-target-name" class="foundry-target-pill" title="Selected building for wall customization" data-tooltip="Selected Building">350 Orondo</span>
+                            <button id="btn-toggle-foundry" class="foundry-collapse-btn" type="button" aria-expanded="true" aria-label="Toggle 3D Wall and Terrain Foundry" title="Minimize or expand Foundry" data-tooltip="Collapse / Expand">▴</button>
+                        </div>
+                    </div>
+
+                    <div class="foundry-body foundry-compact-body">
+                        <div class="foundry-compact-top-row">
+                            <label class="foundry-compact-select-wrap" for="foundry-wall-style" title="Wall Architecture Style" data-tooltip="Wall Architecture Style">
+                                <span class="foundry-icon-badge" aria-hidden="true">🏛️</span>
+                                <select id="foundry-wall-style" aria-label="Wall Architecture Style">
+                                    <option value="classical-cream-brick">Classical Cream Brick</option>
+                                    <option value="historic-brick-limestone">Historic Brick &amp; Limestone</option>
+                                    <option value="civic-brick-precast">Civic Brick &amp; Precast</option>
+                                    <option value="ribbed-concrete-brick">Ribbed Concrete &amp; Masonry</option>
+                                    <option value="fortified-precast">Fortified Security Precast</option>
+                                    <option value="modern-brick-curtainwall">Modern Curtain Wall</option>
+                                </select>
+                            </label>
+                            <div class="foundry-compact-swatches" role="group" aria-label="Masonry and Trim Colors">
+                                <label class="foundry-swatch-pill" for="foundry-wall-color" title="Primary Masonry Wall Color" data-tooltip="Primary Wall Color">
+                                    <span aria-hidden="true">🧱</span>
+                                    <input id="foundry-wall-color" type="color" value="#b85d43" aria-label="Primary Wall Color" />
+                                </label>
+                                <label class="foundry-swatch-pill" for="foundry-trim-color" title="Limestone / Trim Color" data-tooltip="Limestone / Trim Color">
+                                    <span aria-hidden="true">🎨</span>
+                                    <input id="foundry-trim-color" type="color" value="#e6dec8" aria-label="Limestone and Trim Color" />
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="foundry-compact-sliders">
+                            <label class="foundry-compact-slider" for="foundry-mortar-depth" title="Wall Relief / Mortar Bump Depth" data-tooltip="Wall Relief / Mortar Bump">
+                                <span class="foundry-slider-icon" aria-hidden="true">🧱</span>
+                                <input id="foundry-mortar-depth" type="range" min="0" max="1.5" step="0.05" value="0.65" aria-label="Wall Relief and Mortar Bump" />
+                            </label>
+                            <label class="foundry-compact-slider" for="foundry-window-glow" title="Office Window Illumination" data-tooltip="Office Window Illumination">
+                                <span class="foundry-slider-icon" aria-hidden="true">💡</span>
+                                <input id="foundry-window-glow" type="range" min="0" max="1.5" step="0.05" value="0.35" aria-label="Office Window Illumination" />
+                            </label>
+                            <label class="foundry-compact-slider" for="foundry-terrain-exag" title="Terrain Vertical Scale Exaggeration" data-tooltip="Terrain Vertical Scale">
+                                <span class="foundry-slider-icon" aria-hidden="true">⛰️</span>
+                                <input id="foundry-terrain-exag" type="range" min="1.0" max="3.0" step="0.25" value="1.0" aria-label="Terrain Vertical Scale" />
+                                <strong id="foundry-terrain-exag-val" class="foundry-slider-val">1.0×</strong>
+                            </label>
+                            <label class="foundry-compact-slider" for="foundry-map-darken" title="Google Map Darkness" data-tooltip="Map Imagery Darkness">
+                                <span class="foundry-slider-icon" aria-hidden="true">🌑</span>
+                                <input id="foundry-map-darken" type="range" min="0" max="90" step="5" value="0" aria-label="Google Map Darkness" />
+                                <strong id="foundry-map-darken-val" class="foundry-slider-val">0%</strong>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </section>
+    </div>
+
+    <!-- Interactive Luma 3D Gaussian Splat & Photorealism Studio Panel (@lumaai/luma-web) -->
+    <section id="luma-panel" class="luma-panel hidden" role="dialog" aria-label="Luma 3D Gaussian Splat and Photorealism Studio">
+        <div class="luma-panel-header">
+            <span>✨ Luma 3D Gaussian Splat &amp; PBR Studio</span>
+            <button id="btn-close-luma-panel" class="close-btn" aria-label="Close Luma Studio Panel" title="Close Luma Panel">✕</button>
+        </div>
+
+        <div class="ada-wcag-toggles" role="group" aria-label="Photorealistic Rendering Options">
+            <label class="ada-switch-row">
+                <input id="toggle-luma-pbr" type="checkbox" />
+                <span>HDR Environment Reflections &amp; Luma Pop (Sky IBL / Bloom / Shadows)</span>
+            </label>
+            <label class="ada-switch-row">
+                <input id="toggle-luma-foreground" type="checkbox" checked />
+                <span>Foreground Semantic Mask (Strip Splat Sky/BG)</span>
+            </label>
+            <label class="ada-switch-row">
+                <input id="toggle-luma-probe" type="checkbox" />
+                <span>Use Splat Cubemap as Live HDR Reflection Probe</span>
+            </label>
+            <label class="ada-switch-row">
+                <input id="toggle-luma-hide-mesh" type="checkbox" />
+                <span>Hide Procedural Building Mesh Under Splat</span>
+            </label>
+        </div>
+
+        <div class="tree-planter-controls">
+            <label for="luma-bloom-slider">HDR Specular Bloom (<strong id="luma-bloom-val">34%</strong>):</label>
+            <input id="luma-bloom-slider" type="range" min="0.0" max="0.85" step="0.02" value="0.34" />
+        </div>
+
+        <div class="luma-control-block">
+            <label for="luma-preset-select">Luma Showcase Presets or Custom Capture:</label>
+            <select id="luma-preset-select" class="luma-select">
+                <option value="https://lumalabs.ai/capture/d80d4876-cf71-4b8a-8b5b-49ffac44cd4a">🏛️ Luma Showcase — Architectural Courtyard</option>
+                <option value="https://lumalabs.ai/capture/ca9ea966-ca24-4ec1-ab0f-af665cb546ff">🚓 Luma Showcase — Photorealistic Street Vehicle</option>
+                <option value="https://lumalabs.ai/capture/4da7cf32-865a-4515-8cb9-9dfc574c90c2">🌿 Luma Showcase — Botanical Garden &amp; Stone</option>
+                <option value="custom">🔗 Custom Chelan County Luma Capture URL / UUID...</option>
+            </select>
+            <input
+                id="luma-source-input"
+                type="text"
+                class="luma-input"
+                value="https://lumalabs.ai/capture/d80d4876-cf71-4b8a-8b5b-49ffac44cd4a"
+                placeholder="Paste https://lumalabs.ai/capture/<uuid> or UUID"
+                aria-label="Luma Capture URL or UUID"
+            />
+        </div>
+
+        <div class="tree-planter-controls">
+            <label for="luma-scale-slider">Splat Scale (<strong id="luma-scale-val">4.5×</strong>):</label>
+            <input id="luma-scale-slider" type="range" min="0.5" max="25.0" step="0.5" value="4.5" />
+        </div>
+
+        <div class="tree-planter-controls">
+            <label for="luma-y-slider">Elevation Offset (<strong id="luma-y-val">+1.6m</strong>):</label>
+            <input id="luma-y-slider" type="range" min="-5.0" max="15.0" step="0.2" value="1.6" />
+        </div>
+
+        <div id="luma-status-readout" class="tree-planter-readout" role="status" aria-live="polite">
+            Ready • Select a building (or default 400 Plaza) &amp; click Spawn Luma Splat
+        </div>
+
+        <div class="tree-planter-actions">
+            <button id="btn-luma-spawn" class="tree-action-btn primary-luma" type="button">✨ Spawn Luma Splat</button>
+            <button id="btn-luma-clear" class="tree-action-btn" type="button">🗑️ Remove Splat</button>
+        </div>
+    </section>
+
+    <!-- Interactive ADA Accessibility & Wayfinding Panel (ADA Title II + Physical Campus Guide) -->
+    <section id="ada-panel" class="ada-panel hidden" role="dialog" aria-label="ADA Accessibility and Campus Wayfinding">
+        <div class="ada-panel-header">
+            <span>♿ ADA Accessibility &amp; Wayfinding</span>
+            <button id="btn-close-ada-panel" class="close-btn" aria-label="Close ADA Accessibility Panel" title="Close ADA Panel">✕</button>
+        </div>
+
+        <div class="ada-wcag-toggles" role="group" aria-label="Digital Accessibility Preferences">
+            <label class="ada-switch-row">
+                <input id="toggle-ada-3d-markers" type="checkbox" checked />
+                <span>Show 3D ♿ Entrances, Ramps &amp; Parking on Map</span>
+            </label>
+            <label class="ada-switch-row">
+                <input id="toggle-ada-high-contrast" type="checkbox" />
+                <span>High-Contrast UI Mode (WCAG AAA Contrast)</span>
+            </label>
+            <label class="ada-switch-row">
+                <input id="toggle-ada-reduced-motion" type="checkbox" />
+                <span>Reduced Motion (Instant Camera Jumps)</span>
+            </label>
+        </div>
+
+        <div class="ada-filter-tabs" role="tablist" aria-label="Filter Campus ADA Features">
+            <button type="button" class="ada-filter-btn active" data-filter="all" role="tab" aria-selected="true">All (11)</button>
+            <button type="button" class="ada-filter-btn" data-filter="entrance" role="tab" aria-selected="false">🛗 Entries</button>
+            <button type="button" class="ada-filter-btn" data-filter="parking" role="tab" aria-selected="false">🅿️ Parking</button>
+            <button type="button" class="ada-filter-btn" data-filter="ramp" role="tab" aria-selected="false">♿ Ramps</button>
+        </div>
+
+        <div id="ada-feature-list" class="ada-feature-list" role="list" aria-label="Campus Accessible Entrances, Parking, and Ramps"></div>
+
+        <div class="ada-kbd-help">
+            <strong>Keyboard Shortcuts:</strong> <kbd>A</kbd> ADA Layer • <kbd>1</kbd>–<kbd>7</kbd> Buildings • <kbd>↑↓←→</kbd> Pan/Orbit • <kbd>+</kbd>/<kbd>-</kbd> Zoom • <kbd>Esc</kbd> Close
+        </div>
+    </section>
+
+    <!-- Interactive 3D Tree Planter Panel (12 Species + JSON Save/Reload) -->
+    <section id="tree-planter-panel" class="tree-planter-panel hidden" role="dialog" aria-label="Tree and Bush Planter">
+        <div class="tree-planter-header">
+            <span>🌳🌿 Tree &amp; Bush Planter (<strong id="tree-count-badge">0</strong> planted)</span>
+            <button id="btn-close-tree-planter" class="close-btn" aria-label="Close Tree Planter" title="Exit Tree Planter">✕</button>
+        </div>
+        <div id="tree-species-grid" class="tree-species-grid" role="group" aria-label="Select Tree or Bush Species"></div>
+        <div class="tree-planter-controls">
+            <label for="tree-scale-slider">Tree Scale (<strong id="tree-scale-val">1.0×</strong>):</label>
+            <input id="tree-scale-slider" type="range" min="0.5" max="2.0" step="0.1" value="1.0" />
+        </div>
+        <div id="tree-planter-readout" class="tree-planter-readout" role="status" aria-live="polite">
+            Click terrain to plant • Shift+Click to remove nearest
+        </div>
+        <div class="tree-planter-actions">
+            <button id="btn-tree-save-json" class="tree-action-btn primary-green" title="Save planted tree coordinates &amp; types to planted-trees.json">💾 Save JSON</button>
+            <button id="btn-tree-load-json" class="tree-action-btn" title="Reload planted trees from a JSON file">📂 Load JSON</button>
+            <button id="btn-tree-undo" class="tree-action-btn" title="Undo last planted tree">↩️ Undo</button>
+            <button id="btn-tree-clear" class="tree-action-btn" title="Clear all planted trees">🗑️ Clear</button>
+            <input id="tree-json-file-input" type="file" accept=".json,application/json" style="display: none;" aria-label="Load planted trees JSON file" />
+        </div>
+    </section>
     <!-- 3D WebGL + CSS2D Viewport -->
-    <div id="viewport-container"></div>
-
-    <!-- Top Civic Header Bar -->
-    <header class="top-header">
-        <div class="brand-group">
-            <div class="brand-crest">CC</div>
-            <div class="brand-titles">
-                <h1>Chelan County Government Campus — 3D Topographic Space</h1>
-                <p>USGS 3DEP Elevation (660–790 ft ASL) • 350 Orondo • 400 Douglas • 300–412 Washington St</p>
-            </div>
-        </div>
-
-        <div class="header-controls">
-            <div class="control-pill" title="Adjust Sun & Time of Day">
-                <span>☀️ Time:</span>
-                <input id="time-slider" type="range" min="6" max="22" step="0.25" value="14" />
-                <strong id="time-display">2:00 PM</strong>
-            </div>
-
-            <label class="control-pill">
-                <input id="toggle-satellite" type="checkbox" />
-                <span>Satellite Texture</span>
-            </label>
-
-            <label class="control-pill" title="Darken Google Map ground texture & background">
-                <input id="toggle-dark-map" type="checkbox" />
-                <span>🌙 Dark Map</span>
-            </label>
-
-            <label class="control-pill" title="Show 2m Topographic Contours with dark high-contrast background">
-                <input id="toggle-contours" type="checkbox" />
-                <span>Topo Contours (2m)</span>
-            </label>
-
-            <label class="control-pill">
-                <input id="toggle-context" type="checkbox" />
-                <span>Surrounding City</span>
-            </label>
-
-            <label class="control-pill">
-                <input id="toggle-labels" type="checkbox" />
-                <span>3D Pins</span>
-            </label>
-
-            <label class="control-pill" title="Toggle High-Performance GPU Acceleration (Shadows, High-DPI, Anisotropy & Sky Shader)">
-                <input id="toggle-gpu" type="checkbox" checked />
-                <span>⚡ GPU Accel</span>
-            </label>
-
-            <button id="btn-top-cam" class="btn-action">Top View</button>
-            <button id="btn-reset-cam" class="btn-action primary">Reset Orbit</button>
-        </div>
-    </header>
+    <div id="viewport-container" role="region" tabindex="0" aria-label="Interactive 3D Chelan County Campus Map. Use arrow keys to pan, Shift plus arrow keys to rotate, plus and minus to zoom, numbers 1 through 7 to select campus buildings, or A to toggle ADA accessibility markers."></div>
 
     <!-- Left Sidebar: Campus Buildings & Departments Directory -->
-    <aside class="sidebar-left">
+    <aside id="sidebar-directory" class="sidebar-left collapsed" aria-label="Campus Buildings and Departments Directory">
         <div class="sidebar-search">
             <input
                 id="campus-search"
                 type="text"
-                placeholder="Search buildings, addresses, departments (e.g. 300, 316, 400, 411/412)..."
+                aria-label="Search campus buildings, addresses, and departments"
+                placeholder="Search buildings, departments..."
             />
+            <button
+                id="btn-toggle-directory"
+                type="button"
+                class="btn-action sidebar-toggle-btn"
+                aria-expanded="false"
+                aria-controls="building-list"
+                title="Expand or Minimize Campus Directory"
+            >
+                ▾
+            </button>
         </div>
-        <div id="building-list" class="building-list"></div>
+        <div id="building-list" class="building-list" role="list" aria-label="Campus Buildings"></div>
     </aside>
 
     <!-- Right Inspector: Selected Building Details & Floor Directory -->
-    <section id="building-detail-card" class="detail-card hidden">
+    <section id="building-detail-card" class="detail-card hidden" role="region" aria-label="Selected Building Details and ADA Information">
         <div class="detail-top">
             <span id="detail-code" class="bldg-badge">350</span>
-            <button id="close-detail-btn" class="close-btn" title="Close Inspector">✕</button>
+            <button id="close-detail-btn" class="close-btn" aria-label="Close Building Inspector" title="Close Inspector">✕</button>
         </div>
         <h2 id="detail-name">Chelan County Courthouse (350 Orondo)</h2>
         <div id="detail-address">350 Orondo Ave, Wenatchee, WA 98801</div>
@@ -115,69 +388,23 @@
             </div>
         </div>
 
-        <div class="dept-section-title">Floor & Department Directory</div>
+        <div id="detail-ada-box" class="detail-ada-box"></div>
+
+        <div class="dept-section-title">Floor &amp; Department Directory</div>
         <div id="detail-departments" class="dept-list"></div>
     </section>
 
-    <!-- Bottom-Right: 3D Wall & Terrain Foundry Studio -->
-    <section id="foundry-drawer" class="foundry-drawer collapsed">
-        <div class="foundry-header">
-            <h3>🧱⛰️ 3D Wall & Terrain Foundry</h3>
-            <button id="btn-toggle-foundry" class="btn-action" style="padding: 3px 9px; font-size: 11px;">
-                Minimize / Expand
-            </button>
+    <!-- Floating Migratory Bird View HUD Banner -->
+    <div id="bird-view-hud" class="bird-view-hud hidden" role="region" aria-label="Migratory Bird View Controls">
+        <span id="bird-view-icon" class="bird-view-hud-icon" aria-hidden="true">🦅</span>
+        <div class="bird-view-hud-info">
+            <span class="bird-view-hud-kicker">Migratory Bird View</span>
+            <strong id="bird-view-species-label">Bald Eagle</strong>
         </div>
+        <button id="btn-bird-next" class="bird-view-hud-btn" type="button" title="Switch to next migratory bird species">Next Bird ↻</button>
+        <button id="btn-bird-exit" class="bird-view-hud-btn exit" type="button" title="Exit Migratory Bird View (Esc)">Exit ✕</button>
+    </div>
 
-        <div class="foundry-body foundry-grid">
-            <div class="foundry-row">
-                <span>Selected Building:</span>
-                <strong id="foundry-target-name" style="color: #38bdf8;">350 Orondo — Courthouse</strong>
-            </div>
-
-            <div class="foundry-row">
-                <label for="foundry-wall-style">Wall Architecture:</label>
-                <select id="foundry-wall-style">
-                    <option value="classical-cream-brick">Classical Cream Brick & Arches</option>
-                    <option value="historic-brick-limestone">Historic Brick & Limestone</option>
-                    <option value="civic-brick-precast">Civic Brick & Precast</option>
-                    <option value="ribbed-concrete-brick">Ribbed Concrete & Masonry</option>
-                    <option value="fortified-precast">Fortified Security Precast</option>
-                    <option value="modern-brick-curtainwall">Modern Curtain Wall & Brick</option>
-                </select>
-            </div>
-
-            <div class="foundry-row">
-                <span>Masonry & Trim Colors:</span>
-                <div style="display: flex; gap: 6px;">
-                    <input id="foundry-wall-color" type="color" value="#b85d43" title="Primary Wall Color" />
-                    <input id="foundry-trim-color" type="color" value="#e6dec8" title="Limestone / Trim Color" />
-                </div>
-            </div>
-
-            <div class="foundry-row">
-                <label for="foundry-mortar-depth">Wall Relief / Mortar Bump:</label>
-                <input id="foundry-mortar-depth" type="range" min="0" max="1.5" step="0.05" value="0.65" />
-            </div>
-
-            <div class="foundry-row">
-                <label for="foundry-window-glow">Office Window Illumination:</label>
-                <input id="foundry-window-glow" type="range" min="0" max="1.5" step="0.05" value="0.35" />
-            </div>
-
-            <div class="foundry-divider"></div>
-
-            <div class="foundry-row">
-                <label for="foundry-terrain-exag">Terrain Vertical Scale (<strong id="foundry-terrain-exag-val">1.0×</strong>):</label>
-                <input id="foundry-terrain-exag" type="range" min="1.0" max="3.0" step="0.25" value="1.0" />
-            </div>
-
-            <div class="foundry-row">
-                <label for="foundry-map-darken">Google Map Darkness (<strong id="foundry-map-darken-val">0%</strong>):</label>
-                <input id="foundry-map-darken" type="range" min="0" max="90" step="5" value="0" />
-            </div>
-        </div>
-    </section>
-
-    <script defer src="./js/campus-bundle.js?v=94"></script>
+    <script defer src="./js/campus-bundle.js?v=215"></script>
 </body>
 </html>

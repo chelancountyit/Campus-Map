@@ -595,7 +595,10 @@ export function buildBuilding300DetentionAndGym(ctx) {
         }
 
         //   - Concrete sidewalk apron along the base of the +X Gym & Sallyport wall (lx = 28.45m..29.95m, lz = -35.94m..-5.00m, f4e9b73e.jpg)
-        addBox(1.55, 0.18, 31.00, plinthBeigeMat, 29.20, 0.09, -20.47, false);
+        addBox(1.55, 0.18, 31.00, plazaConcreteMat, 29.20, 0.09, -20.47, false);
+        for (let sz = -34.50; sz <= -6.00; sz += 1.75) {
+            addBox(1.42, 0.012, 0.025, plazaJointMat, 29.18, 0.185, sz, false);
+        }
 
         // 4. -Z (SW Rear) Gymnasium Wall Louvers (lz = -35.94m, visible on right side of f4e9b73e.jpg):
         //   - Pair of large upper aluminum intake/exhaust louvers (lx = 23.0m & 26.0m, y = 6.25m) + lower louver (y = 2.65m)

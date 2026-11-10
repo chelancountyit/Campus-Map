@@ -1,8 +1,14 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { optimizeBuildingGroup } from './workers/BuildingMeshOptimizer.js';
 import { buildPhotoRealisticBuilding400 } from './buildings/building400/buildBuilding400.js';
 import { buildPhotoRealisticBuilding316 } from './buildings/building316/buildBuilding316.js';
 import { buildPhotoRealisticBuilding300 } from './buildings/building300/buildBuilding300.js';
+import { buildPhotoRealisticBuilding428 } from './buildings/building428/buildBuilding428.js';
+import { buildPhotoRealisticBuilding411_412 } from './buildings/building411_412/buildBuilding411_412.js';
+import { buildPhotoRealisticBuilding350 } from './buildings/building350/buildBuilding350.js';
+import { buildPhotoRealisticWestWing } from './buildings/westWing/buildWestWing.js';
+import { buildPhotoRealisticBuilding401 } from './buildings/building401/buildBuilding401.js';
 
 /**
  * WallFoundry — Procedural + Image-Backed PBR Architectural Wall & Building Generator
@@ -401,6 +407,7 @@ export class WallFoundry {
         // Photo-Realistic Custom Architecture for Building 400 (400 Douglas St — County Administration)
         if (building.id === 'building-400' || building.code === '400') {
             this._buildPhotoRealisticBuilding400(group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+            optimizeBuildingGroup(group, building);
             group.position.set(cx, terrainY, cz);
             return group;
         }
@@ -408,6 +415,7 @@ export class WallFoundry {
         // Photo-Realistic Custom Architecture for Building 316 (316 Washington St — Community Development & Public Works)
         if (building.id === 'building-316' || building.code === '316') {
             this._buildPhotoRealisticBuilding316(group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+            optimizeBuildingGroup(group, building);
             group.position.set(cx, terrainY, cz);
             return group;
         }
@@ -415,6 +423,47 @@ export class WallFoundry {
         // Photo-Realistic Custom Architecture for Building 300 (300 Washington St — Juvenile Justice Center & Rear Gymnasium)
         if (building.id === 'building-300' || building.code === '300') {
             this._buildPhotoRealisticBuilding300(group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+            optimizeBuildingGroup(group, building);
+            group.position.set(cx, terrainY, cz);
+            return group;
+        }
+
+        // Photo-Realistic Custom Architecture for Building 428 (428 Orondo Ave — Campus Annex)
+        if (building.id === 'building-428' || building.code === '428') {
+            this._buildPhotoRealisticBuilding428(group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+            optimizeBuildingGroup(group, building);
+            group.position.set(cx, terrainY, cz);
+            return group;
+        }
+
+        // Photo-Realistic Custom Architecture for Building 411/412 (410/411/412 Washington St — Natural Resources & WSU Extension)
+        if (building.id === 'building-411-412' || building.code === '411/412') {
+            this._buildPhotoRealisticBuilding411_412(group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+            optimizeBuildingGroup(group, building);
+            group.position.set(cx, terrainY, cz);
+            return group;
+        }
+
+        // Photo-Realistic Custom Architecture for Building 350 (350 Orondo Ave — Chelan County Courthouse)
+        if (building.id === 'courthouse-350' || building.code === '350') {
+            this._buildPhotoRealisticBuilding350(group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+            optimizeBuildingGroup(group, building);
+            group.position.set(cx, terrainY, cz);
+            return group;
+        }
+
+        // Photo-Realistic Custom Architecture for Regional Justice Center — West Wing (413–415 Washington St / CCRJ-W)
+        if (building.id === 'regional-jail-west' || building.code === 'CCRJ-W') {
+            this._buildPhotoRealisticWestWing(group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+            optimizeBuildingGroup(group, building);
+            group.position.set(cx, terrainY, cz);
+            return group;
+        }
+
+        // Photo-Realistic Custom Architecture for Building 401 (401 Washington St — Law & Justice / Regional Justice Center)
+        if (building.id === 'regional-jail-east' || building.code === '401') {
+            this._buildPhotoRealisticBuilding401(group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+            optimizeBuildingGroup(group, building);
             group.position.set(cx, terrainY, cz);
             return group;
         }
@@ -833,7 +882,27 @@ export class WallFoundry {
         buildPhotoRealisticBuilding316(this, group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
     }
 
-    _buildPhotoRealisticBuilding300(group, building, shape, wallMat, trimMat) {
-        buildPhotoRealisticBuilding300(this, group, building, shape, wallMat, trimMat);
+    _buildPhotoRealisticBuilding300(group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
+        buildPhotoRealisticBuilding300(this, group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+    }
+
+    _buildPhotoRealisticBuilding428(group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
+        buildPhotoRealisticBuilding428(this, group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+    }
+
+    _buildPhotoRealisticBuilding411_412(group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
+        buildPhotoRealisticBuilding411_412(this, group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+    }
+
+    _buildPhotoRealisticBuilding350(group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
+        buildPhotoRealisticBuilding350(this, group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+    }
+
+    _buildPhotoRealisticWestWing(group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
+        buildPhotoRealisticWestWing(this, group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
+    }
+
+    _buildPhotoRealisticBuilding401(group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
+        buildPhotoRealisticBuilding401(this, group, building, shape, wallMat, trimMat, terrainY, getTerrainHeightFn);
     }
 }

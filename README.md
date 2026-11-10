@@ -15,6 +15,7 @@ Interactive 3D space of the **Chelan County Government Campus** in downtown Wena
   - **Wenatchee Public Library (NCW Libraries)** (`310 Douglas St`)
 - **3D Building Wall Foundry (`js/foundry/WallFoundry.js`)**:
   - Combines local PBR masonry maps (`assets/textures/walls/`) with procedural architectural synthesis (running-bond brick, limestone plinths/cornices, precast concrete panels, security slit windows, curtain-wall glazing, normal/bump relief, and dynamic day/night interior window illumination).
+  - Building 401's precast concrete is calibrated against the campus photo survey, with warmer concrete, finer aggregate relief, visible panel reveals, and a matte roughness map.
 - **3D Tree & Foliage Foundry (`js/foundry/TreeFoundry.js`)**:
   - Multi-species procedural trees (`Ponderosa Pine`, `Bigleaf Maple`, `Ornamental Blossom Pear`, `Manicured Campus Shrub`) with bark PBR textures (`assets/textures/trees/`), live wind canopy animation, seasonal foliage switching (`Summer`, `Wenatchee Autumn`, `Apple Blossom Spring`, `Winter`), and interactive click-to-plant mode.
 - **Full Local Three.js Bundle (`vendor/three/`)**:

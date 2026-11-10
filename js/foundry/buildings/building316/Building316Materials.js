@@ -207,20 +207,35 @@ export function createBuilding316Context(foundry, group, building, shape, terrai
         };
 
         // Helper: Sample exact terrain contour height along the Douglas St (+X) side of Building 316 relative to Building 316's Washington St base datum
+        // Uses a +-1.2m longitudinal window and cross-section sampling so the sidewalk & grass strip sit cleanly above every 4m terrain grid triangle
         const bldgCx316 = building.center[0];
         const bldgCz316 = building.center[1];
         const sinT316 = 0.59621006;
         const cosT316 = -0.80282848;
-        const getDouglasLocalGroundY = (lx, lz) => {
-            if (typeof getTerrainHeightFn !== 'function' || lz >= 25.40) return 0;
-            const blend = THREE.MathUtils.smoothstep(25.40 - lz, 0.0, 4.0);
+        const sampleDouglasRawGroundY = (lx, lz) => {
+            if (typeof getTerrainHeightFn !== 'function' || lz >= 27.50) return 0;
             const wx = bldgCx316 + lx * cosT316 + lz * sinT316;
             const wz = bldgCz316 - lx * sinT316 + lz * cosT316;
-            return Math.max(0, (getTerrainHeightFn(wx, wz) - terrainY) * blend);
+            return Math.max(0, getTerrainHeightFn(wx, wz) - terrainY);
+        };
+        const getDouglasLocalGroundY = (lx, lz) => {
+            if (typeof getTerrainHeightFn !== 'function' || lz >= 27.50) return 0;
+            let maxY = 0;
+            const zSamples = [lz - 1.20, lz, lz + 1.20];
+            const xSamples = [lx, 8.15, 10.25, 11.38, 12.50];
+            for (let iz = 0; iz < zSamples.length; iz++) {
+                const sz = zSamples[iz];
+                for (let ix = 0; ix < xSamples.length; ix++) {
+                    const sy = sampleDouglasRawGroundY(xSamples[ix], sz);
+                    if (sy > maxY) maxY = sy;
+                }
+            }
+            const cornerBlend = THREE.MathUtils.smoothstep(27.50 - lz, 0.0, 4.50);
+            return maxY * cornerBlend;
         };
 
         // Helper: Build a smooth 3D terrain-contoured slab/strip along the Douglas St (+X) side of Building 316
-        const addContouredDouglasStrip = (xMin, xMax, zMin, zMax, topOffset, minBotY, mat, zSteps = 48, sampleX = 11.375, targetGroup = groundArch) => {
+        const addContouredDouglasStrip = (xMin, xMax, zMin, zMax, topOffset, minBotY, mat, zSteps = 64, sampleX = 11.375, targetGroup = groundArch) => {
             const positions = [];
             const pushQuad = (ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) => {
                 positions.push(ax, ay, az, bx, by, bz, cx, cy, cz);
@@ -229,20 +244,12 @@ export function createBuilding316Context(foundry, group, building, shape, terrai
             for (let i = 0; i < zSteps; i++) {
                 const z0 = zMin + (i / zSteps) * (zMax - zMin);
                 const z1 = zMin + ((i + 1) / zSteps) * (zMax - zMin);
-                const g0 = Math.max(
-                    getDouglasLocalGroundY(xMin, z0),
-                    getDouglasLocalGroundY(xMax, z0),
-                    getDouglasLocalGroundY(sampleX, z0)
-                );
-                const g1 = Math.max(
-                    getDouglasLocalGroundY(xMin, z1),
-                    getDouglasLocalGroundY(xMax, z1),
-                    getDouglasLocalGroundY(sampleX, z1)
-                );
+                const g0 = getDouglasLocalGroundY(sampleX, z0);
+                const g1 = getDouglasLocalGroundY(sampleX, z1);
                 const yTop0 = g0 + topOffset;
                 const yTop1 = g1 + topOffset;
-                const yBot0 = Math.min(minBotY, yTop0 - 0.34);
-                const yBot1 = Math.min(minBotY, yTop1 - 0.34);
+                const yBot0 = Math.min(minBotY, yTop0 - 0.48);
+                const yBot1 = Math.min(minBotY, yTop1 - 0.48);
 
                 // Top contoured surface (+Y)
                 pushQuad(xMin, yTop0, z0, xMin, yTop1, z1, xMax, yTop1, z1, xMax, yTop0, z0);
@@ -327,7 +334,7 @@ export function createBuilding316Context(foundry, group, building, shape, terrai
         return {
             foundry, group, building, shape, terrainY, getTerrainHeightFn,
             storyH, bldgLift316, arch, groundArch, addBox,
-            bldgCx316, bldgCz316, sinT316, cosT316, getDouglasLocalGroundY, addContouredDouglasStrip, addRibbonWindow,
+            bldgCx316, bldgCz316, sinT316, cosT316, sampleDouglasRawGroundY, getDouglasLocalGroundY, addContouredDouglasStrip, addRibbonWindow,
             frontZ, douglasX, courtX, rearZ,
             tanPrecastMat, darkSpandrelMat, basementConcreteMat, whiteTrimMat, grayCoreStuccoMat,
             roofMembraneMat, penthouseWallMat, copperLouverMat, copperFrameMat, silverLouverMat,

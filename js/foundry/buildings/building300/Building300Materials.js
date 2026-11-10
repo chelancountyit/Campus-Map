@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import { createLumaGrassMaterial } from '../../materials/GrassMaterial.js';
 
-export function createBuilding300Context(foundry, group, building, shape) {
+export function createBuilding300Context(foundry, group, building, shape, terrainY = 0, getTerrainHeightFn = null) {
         // 1. Procedural Variegated Buff/Gold/Brown/Charcoal Running-Bond Brick Texture (Orondo St Detention Wings & Rec Yards)
         const brickCanvas = document.createElement('canvas');
         brickCanvas.width = 512;
@@ -135,7 +136,14 @@ export function createBuilding300Context(foundry, group, building, shape) {
             roughness: 0.50,
             metalness: 0.18
         });
-        const plazaConcreteMat = new THREE.MeshStandardMaterial({ color: '#d8d4cb', roughness: 0.85, metalness: 0.03 });
+        const plazaConcreteMat = new THREE.MeshStandardMaterial({
+            color: '#e2dcd0',
+            roughness: 0.86,
+            metalness: 0.03,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2
+        });
         const plazaJointMat = new THREE.MeshStandardMaterial({
             color: '#8c867a',
             roughness: 0.92,
@@ -147,10 +155,7 @@ export function createBuilding300Context(foundry, group, building, shape) {
         const pipeRailMat = new THREE.MeshStandardMaterial({ color: '#565b60', roughness: 0.42, metalness: 0.68 });
         const hedgeGreenMat = new THREE.MeshStandardMaterial({ color: '#3b6228', roughness: 0.90, metalness: 0.02 });
         const hedgeRedMat = new THREE.MeshStandardMaterial({ color: '#6e352c', roughness: 0.90, metalness: 0.02 });
-        const turfLawnMat = new THREE.MeshStandardMaterial({
-            color: '#4e7932',
-            roughness: 0.92,
-            metalness: 0.02,
+        const turfLawnMat = createLumaGrassMaterial({
             polygonOffset: true,
             polygonOffsetFactor: -1,
             polygonOffsetUnits: -1
@@ -177,12 +182,42 @@ export function createBuilding300Context(foundry, group, building, shape) {
             return c * c * c * (c * (c * 6 - 15) + 10);
         };
 
+        const bldgCx300 = building.center[0];
+        const bldgCz300 = building.center[1];
+        const sinT300 = 0.59621006;
+        const cosT300 = -0.80282848;
+
+        const sampleOrondoTerrainLocalY = (lx, lz) => {
+            if (typeof getTerrainHeightFn !== 'function') return 0;
+            const wx = bldgCx300 + lx * cosT300 + lz * sinT300;
+            const wz = bldgCz300 - lx * sinT300 + lz * cosT300;
+            return getTerrainHeightFn(wx, wz) - terrainY;
+        };
+
+        // Prioritized, terrain-contoured top elevation of the Orondo Avenue concrete sidewalk (lx = -30.50m .. -28.20m)
+        // Samples the terrain across the full sidewalk width and a +-1.2m longitudinal window so the sidewalk sits cleanly above every 4m terrain grid triangle
+        const getOrondoSidewalkTopY = (lz) => {
+            if (typeof getTerrainHeightFn !== 'function') return 0.34;
+            let maxTerrY = -Infinity;
+            const zSamples = [lz - 1.20, lz, lz + 1.20];
+            const xSamples = [-30.55, -29.35, -28.15];
+            for (let iz = 0; iz < zSamples.length; iz++) {
+                const sz = zSamples[iz];
+                for (let ix = 0; ix < xSamples.length; ix++) {
+                    const sy = sampleOrondoTerrainLocalY(xSamples[ix], sz);
+                    if (sy > maxTerrY) maxTerrY = sy;
+                }
+            }
+            if (!Number.isFinite(maxTerrY)) maxTerrY = 0;
+            const contourY = Math.max(0.34, maxTerrY + 0.16);
+            const cornerBlend = smooth01((35.50 - lz) / 6.50);
+            return THREE.MathUtils.lerp(0.34, contourY, cornerBlend);
+        };
+
         // Continuous, C2-smooth 3D grading function for Building 300's landscaped lawn & berms
-        // Matched directly to Washington St & Orondo Ave street-level photos (3474ae91.jpg, 9bf67bc6.jpg, 3e0daacd.jpg, e5a79256.jpg):
+        // Matched directly to Washington St & Orondo Ave street-level photos (3474ae91.jpg, 9bf67bc6.jpg, 3e0daacd.jpg, e5a79256.jpg, 20f3a1d2.jpg, 8ebc6149.jpg):
         //   - Foreground lawn (lz >= 29.89m to Washington St sidewalk at lz = 37.12m): level at y = 0.30m (exposing the full 0.30m..0.72m beige plinth on the front brick pavilion & pier)
-        //   - In the rear pocket between the brown brick return wall (lx = -2.89m) and the tan precast left wall (lx = 2.71m), the grass terrace sits at y = 0.72m (flush with the top of the plinth)
-        //   - From the crest line zCrest(lx) (lz = 25.40m along the tan precast wall lx = 2.71m, curving smoothly to lz = 22.28m along the North brick wall) forward to lz = 29.89m (the front brick pier line),
-        //     the embankment slopes smoothly DOWNWARD in +Z to y = 0.30m with zero vertical steps, zero box edges, and C2-smooth continuity!
+        //   - Along the Orondo Ave sidewalk edge (lx = -28.20m) and across the SW lawn up to the unnamed service road (lz = -37.80m), smoothly follows the uphill Orondo Ave sidewalk & terrain contour!
         const getLawnGradeY = (lx, lz) => {
             const baseY = 0.30;
 
@@ -218,22 +253,16 @@ export function createBuilding300Context(foundry, group, building, shape) {
                 hNorthBerm = (0.18 + rightBoost) * wDist * westFade * southFade;
             }
 
-            // 2. Subtle Orondo Ave (-X) & South Rec Yard Plinth Grade (lz <= 16.50m, lx <= -2.89m)
-            let hOrondo = 0.0;
-            if (lz < 16.50 && lx < -2.89) {
-                const northBlend = 1.0 - smooth01((lz - 13.00) / (16.50 - 13.00));
-                const dWest = Math.max(0, -24.28 - lx);
-                const dSouth = Math.max(0, -25.60 - lz);
-                const dOrondo = Math.hypot(dWest, dSouth);
-                const wOrondo = 1.0 - smooth01(dOrondo / 3.40);
-                hOrondo = 0.10 * wOrondo * northBlend;
-            }
-
-            return baseY + hNorthBerm + hOrondo;
+            // 2. Orondo Ave (-X) & SW Lawn Uphill Terrain Contour (locks flush to the Orondo Ave sidewalk at lx = -28.20m and contours above the terrain across the SW lawn to lz = -37.80m)
+            const swEdgeY = getOrondoSidewalkTopY(lz) - 0.025;
+            const localTerrY = Math.max(baseY + hNorthBerm, sampleOrondoTerrainLocalY(lx, lz) + 0.12);
+            const wSwEdge = (1.0 - smooth01((lx - (-28.20)) / 4.20)) * smooth01((36.50 - lz) / 6.00);
+            return THREE.MathUtils.lerp(localTerrY, swEdgeY, wSwEdge);
         };
 
         return {
-            foundry, group, building, shape, arch, addBox, smooth01, getLawnGradeY,
+            foundry, group, building, shape, terrainY, getTerrainHeightFn, arch, addBox, smooth01,
+            sampleOrondoTerrainLocalY, getOrondoSidewalkTopY, getLawnGradeY,
             varBrickMat, tanPrecastMat, plinthBeigeMat, recCreamMat, silverFlashingMat,
             darkFasciaMat, roofMembraneMat, gymRoofMat, securityMeshMat, slotGlassMat,
             whiteDoorMat, blackIronMat, bollardYellowMat, plazaConcreteMat, plazaJointMat,

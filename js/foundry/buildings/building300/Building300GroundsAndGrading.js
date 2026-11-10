@@ -2,39 +2,62 @@ import * as THREE from 'three';
 
 export function buildBuilding300GroundsAndGrading(ctx) {
     const {
-        foundry, arch, addBox, getLawnGradeY,
+        foundry, building, terrainY, getTerrainHeightFn, arch, addBox, smooth01,
+        sampleOrondoTerrainLocalY, getOrondoSidewalkTopY, getLawnGradeY,
         varBrickMat, plinthBeigeMat, silverFlashingMat, whiteDoorMat, blackIronMat,
-        plazaConcreteMat, plazaJointMat, pipeRailMat, hedgeGreenMat, hedgeRedMat, turfLawnMat
+        bollardYellowMat, plazaConcreteMat, plazaJointMat, pipeRailMat, hedgeGreenMat, hedgeRedMat, turfLawnMat
     } = ctx;
 
-        // Tall Lush Ornamental Corner Bush at the front-left brick pier (lx = -0.35m, lz = 34.35m, 1b3e695e.jpg & b9f0c60c.jpg!)
-        [
-            [1.65, 33.25, 2.45, 2.15, hedgeGreenMat],
-            [2.85, 34.15, 1.95, 1.75, hedgeGreenMat],
-            [0.85, 32.45, 1.45, 0.85, hedgeRedMat]
-        ].forEach(([bx, bz, bw, bh, bMat]) => {
-            const bush = new THREE.Mesh(new THREE.SphereGeometry(bw * 0.55, 12, 10), bMat);
-            bush.scale.set(1.15, bh / (bw * 1.1), 1.05);
-            bush.position.set(bx, getLawnGradeY(bx, bz) + bh * 0.40, bz);
-            bush.castShadow = true;
-            bush.receiveShadow = true;
-            arch.add(bush);
-        });
+        // Exact curved inner (lawn-side) & outer (curb-side) Z profiles for the Washington St Sidewalk,
+        // Orondo Ave & Washington St 90° Rounded Corner Apron (1a7cd213.jpg), & Recessed Disabled Parking Bay:
+        const getWashSidewalkBackZ = (lx) => {
+            if (lx <= -28.20) return 34.92;
+            if (lx < -26.00) {
+                const dx = -26.00 - lx; // 0 .. 2.20
+                return 34.92 + Math.sqrt(Math.max(0, 2.20 * 2.20 - dx * dx));
+            }
+            if (lx <= -21.80) return 37.12;
+            if (lx < -18.20) return 37.12 - 1.97 * smooth01((lx - (-21.80)) / 3.60);
+            if (lx <= -4.60) return 35.15;
+            if (lx < -0.80) return 35.15 + 1.97 * smooth01((lx - (-4.60)) / 3.80);
+            return 37.12;
+        };
+        const getWashSidewalkCurbZ = (lx) => {
+            if (lx < -26.00) {
+                const dx = Math.min(4.50, -26.00 - lx); // 0 .. 4.50
+                return 34.92 + Math.sqrt(Math.max(0, 4.50 * 4.50 - dx * dx));
+            }
+            if (lx <= -21.80) return 39.42;
+            if (lx < -18.20) return 39.42 - 2.07 * smooth01((lx - (-21.80)) / 3.60);
+            if (lx <= -7.20) return 37.35;
+            if (lx < -2.20) return 37.35 + 2.07 * smooth01((lx - (-7.20)) / 5.00);
+            return 39.42;
+        };
+        // Smooth terrain-following top elevation for the Washington St sidewalk, 90° rounded corner, and Orondo Ave sidewalk
+        const getWalkTerrainTopY = (lx, lz) => {
+            const ty = sampleOrondoTerrainLocalY(lx, lz);
+            if (ty >= 0) return Math.max(0.34, ty + 0.16);
+            return 0.34 + ty * 0.88;
+        };
 
-        // Tall dark bronze street/parking light pole + concrete footing + "ONE WAY / NO PARKING" signpost on the left grass strip along Washington St (lx = -3.85m, lz = 35.60m, 5e51fcab.jpg & 3474ae91.jpg!)
-        const eastPoleGradeY = getLawnGradeY(-3.85, 35.60);
-        addBox(0.42, 0.16, 0.42, plazaConcreteMat, -3.85, eastPoleGradeY + 0.03, 35.60);
+        // Corner planter bed left open for user-planted bushes via TreePlanterFoundry
+
+        // Tall dark bronze street/parking light pole + concrete footing sitting on the grass strip just behind the curved sidewalk (lx = -4.25m, lz = 34.62m, eeb5c507.jpg & 3474ae91.jpg!)
+        const eastPoleGradeY = getLawnGradeY(-4.25, 34.62);
+        addBox(0.42, 0.16, 0.42, plazaConcreteMat, -4.25, eastPoleGradeY + 0.03, 34.62);
         const eastPole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 8.20, 12), blackIronMat);
-        eastPole.position.set(-3.85, eastPoleGradeY + 4.10, 35.60);
+        eastPole.position.set(-4.25, eastPoleGradeY + 4.10, 34.62);
         eastPole.castShadow = true;
         arch.add(eastPole);
-        // Cobra-head luminaire arm at top of pole + lower floodlight (5e51fcab.jpg left)
-        addBox(1.15, 0.08, 0.12, blackIronMat, -3.35, eastPoleGradeY + 8.15, 35.60);
-        addBox(0.38, 0.12, 0.22, blackIronMat, -3.55, eastPoleGradeY + 5.85, 35.60);
-        // Street signpost next to light pole ("ONE WAY" + "NO PARKING", 5e51fcab.jpg & 3474ae91.jpg)
-        addBox(0.05, 2.55, 0.05, silverFlashingMat, -4.65, 1.55, 36.65);
-        addBox(0.42, 0.48, 0.03, blackIronMat, -4.65, 2.45, 36.65);
-        addBox(0.36, 0.42, 0.03, whiteDoorMat, -4.65, 1.92, 36.65);
+        // Cobra-head luminaire arm at top of pole + lower floodlight
+        addBox(1.15, 0.08, 0.12, blackIronMat, -3.75, eastPoleGradeY + 8.15, 34.62);
+        addBox(0.38, 0.12, 0.22, blackIronMat, -3.95, eastPoleGradeY + 5.85, 34.62);
+
+        // Street signpost near the curb on the flared sidewalk apron ("ONE WAY" + "NO PARKING / 2 HR PARKING", eeb5c507.jpg!)
+        addBox(0.045, 2.55, 0.045, silverFlashingMat, -1.25, 1.55, 38.85);
+        addBox(0.44, 0.46, 0.03, blackIronMat, -1.25, 2.48, 38.85); // Upper "ONE WAY" sign
+        addBox(0.24, 0.42, 0.03, whiteDoorMat, -1.39, 1.92, 38.85); // Left "NO PARKING" plate
+        addBox(0.24, 0.42, 0.03, whiteDoorMat, -1.11, 1.92, 38.85); // Right "2 HR PARKING" plate
 
 
         // 8. THE CIRCULAR COURTYARD LANDING PLAZA & WIDE ENTRANCE STAIRS (lx = 22.14m..30.67m, lz = 29.89m..38.05m, ac6172be.jpg, c0dec448.jpg, 9ced0856.jpg, 3f8236bb.jpg!)
@@ -105,18 +128,18 @@ export function buildBuilding300GroundsAndGrading(ctx) {
         poleMesh.castShadow = true;
         arch.add(poleMesh);
 
-        // Wide 7-Step Concrete Entrance Stairway descending from the Upper Courtyard Landing (lz = 34.85m, y = 0.62m) down to the Washington St Sidewalk (lz = 36.85m, y = 0.20m)
+        // Wide 7-Step Concrete Entrance Stairway descending from the Upper Courtyard Landing (lz = 34.85m, y = 0.62m) seamlessly into the Washington St Sidewalk (lz = 37.12m, y = 0.34m)
         // Located between lx = 24.45m (East Brick Cheek Wall) and lx = 28.35m (West Brick Cheek Wall), width = 3.90m (ac6172be.jpg & 9ced0856.jpg!)
         const stairX = 26.40;
         const stairW = 3.85;
         const numSteps = 7;
-        const stepDepth = 2.04 / numSteps;
-        const stepRise = (landingY - 0.20) / numSteps;
+        const stepDepth = (37.12 - 34.85) / numSteps;
+        const stepRise = (landingY - 0.34) / numSteps;
         for (let st = 0; st < numSteps; st++) {
-            const stH = landingY - (st + 0.5) * stepRise;
+            const stH = landingY - (st + 1) * stepRise;
             const stZ = 34.85 + (st + 0.5) * stepDepth;
-            addBox(stairW, stH, stepDepth + 0.02, plazaConcreteMat, stairX, stH * 0.5, stZ, false);
-            addBox(stairW, 0.02, 0.025, plazaJointMat, stairX, stH + 0.005, stZ + stepDepth * 0.5, false);
+            addBox(stairW, stH, stepDepth + 0.03, plazaConcreteMat, stairX, stH * 0.5, stZ, false);
+            addBox(stairW, 0.015, 0.025, plazaJointMat, stairX, stH + 0.005, stZ + stepDepth * 0.5, false);
         }
 
         // Angled / Flared Tan-Brick Cheek Walls with Precast Concrete Coping Caps flanking Both Sides of the Entrance Stairs (ac6172be.jpg, 9ced0856.jpg, 3f8236bb.jpg!)
@@ -174,7 +197,7 @@ export function buildBuilding300GroundsAndGrading(ctx) {
                 [4.25, 24.18, 40]
             ];
             const zRows = [
-                [-29.20, -25.60, 10],
+                [-37.80, -25.60, 28],
                 [-25.60, 18.75, 76],
                 [18.75, 22.28, 14],
                 [22.28, 29.89, 32],
@@ -230,31 +253,39 @@ export function buildBuilding300GroundsAndGrading(ctx) {
                         const xa = x0 + (ix / nxSteps) * (x1 - x0);
                         const xb = x0 + ((ix + 1) / nxSteps) * (x1 - x0);
                         const xm = (xa + xb) * 0.5;
+                        const zMaxA = r === 5 ? getWashSidewalkBackZ(xa) + (xa < -25.50 ? 0.28 : 0.0) : z1;
+                        const zMaxB = r === 5 ? getWashSidewalkBackZ(xb) + (xb < -25.50 ? 0.28 : 0.0) : z1;
                         for (let iz = 0; iz < nzSteps; iz++) {
-                            const za = z0 + (iz / nzSteps) * (z1 - z0);
-                            const zb = z0 + ((iz + 1) / nzSteps) * (z1 - z0);
-                            const zm = (za + zb) * 0.5;
+                            const t0 = iz / nzSteps;
+                            const t1 = (iz + 1) / nzSteps;
+                            const za0 = z0 + t0 * (zMaxA - z0);
+                            const za1 = z0 + t1 * (zMaxA - z0);
+                            const zb0 = z0 + t0 * (zMaxB - z0);
+                            const zb1 = z0 + t1 * (zMaxB - z0);
+                            const zm = (za0 + za1 + zb0 + zb1) * 0.25;
                             // Skip interior triangles deep inside the solid Orondo Detention Wing mass
                             if (c === 0 && xm > -20.20 && zm > -24.80 && zm < 21.60) continue;
 
-                            // Winding: (xa, za) -> (xa, zb) -> (xb, zb) and (xa, za) -> (xb, zb) -> (xb, za) gives +Y upward normal
-                            pushSmoothTri(xa, za, xa, zb, xb, zb);
-                            pushSmoothTri(xa, za, xb, zb, xb, za);
+                            // Winding: (xa, za0) -> (xa, za1) -> (xb, zb1) and (xa, za0) -> (xb, zb1) -> (xb, zb0) gives +Y upward normal
+                            pushSmoothTri(xa, za0, xa, za1, xb, zb1);
+                            pushSmoothTri(xa, za0, xb, zb1, xb, zb0);
                         }
                     }
 
                     // Emit perimeter vertical skirts along exterior boundaries of active cells
                     if (!isCellActive(c - 1, r)) {
+                        const zMax0 = r === 5 ? getWashSidewalkBackZ(x0) : z1;
                         for (let iz = 0; iz < nzSteps; iz++) {
-                            const za = z0 + (iz / nzSteps) * (z1 - z0);
-                            const zb = z0 + ((iz + 1) / nzSteps) * (z1 - z0);
+                            const za = z0 + (iz / nzSteps) * (zMax0 - z0);
+                            const zb = z0 + ((iz + 1) / nzSteps) * (zMax0 - z0);
                             pushSkirtSegment(x0, zb, x0, za, -1, 0);
                         }
                     }
                     if (!isCellActive(c + 1, r)) {
+                        const zMax1 = r === 5 ? getWashSidewalkBackZ(x1) : z1;
                         for (let iz = 0; iz < nzSteps; iz++) {
-                            const za = z0 + (iz / nzSteps) * (z1 - z0);
-                            const zb = z0 + ((iz + 1) / nzSteps) * (z1 - z0);
+                            const za = z0 + (iz / nzSteps) * (zMax1 - z0);
+                            const zb = z0 + ((iz + 1) / nzSteps) * (zMax1 - z0);
                             pushSkirtSegment(x1, za, x1, zb, 1, 0);
                         }
                     }
@@ -269,7 +300,9 @@ export function buildBuilding300GroundsAndGrading(ctx) {
                         for (let ix = 0; ix < nxSteps; ix++) {
                             const xa = x0 + (ix / nxSteps) * (x1 - x0);
                             const xb = x0 + ((ix + 1) / nxSteps) * (x1 - x0);
-                            pushSkirtSegment(xb, z1, xa, z1, 0, 1);
+                            const za = r === 5 ? getWashSidewalkBackZ(xa) : z1;
+                            const zb = r === 5 ? getWashSidewalkBackZ(xb) : z1;
+                            pushSkirtSegment(xb, zb, xa, za, 0, 1);
                         }
                     }
                 }
@@ -285,59 +318,516 @@ export function buildBuilding300GroundsAndGrading(ctx) {
             arch.add(gradedLawnMesh);
         }
 
-        // Lush foundation shrub & ornamental bush row along the base of the front brick pavilion & bay window (lx = 2.40m..23.80m, lz = 34.55m..35.85m)
-        const bushCoords = [
-            [3.2, 34.8, 1.35, 1.25, hedgeGreenMat],
-            [4.8, 35.0, 1.45, 1.35, hedgeGreenMat],
-            [6.4, 35.1, 1.15, 0.95, hedgeRedMat],
-            [8.0, 35.5, 1.10, 0.82, hedgeGreenMat],
-            [9.8, 35.6, 1.15, 0.78, hedgeRedMat],
-            [11.6, 35.6, 1.20, 0.80, hedgeGreenMat],
-            [13.4, 35.6, 1.15, 0.78, hedgeGreenMat],
-            [15.2, 35.5, 1.20, 0.85, hedgeRedMat],
-            [16.8, 35.1, 1.35, 1.05, hedgeRedMat],
-            [18.6, 35.0, 1.45, 1.25, hedgeGreenMat],
-            [20.4, 35.0, 1.50, 1.32, hedgeGreenMat],
-            [22.0, 35.1, 1.35, 1.18, hedgeGreenMat]
-        ];
-        bushCoords.forEach(([bx, bz, bw, bh, bMat]) => {
-            const bush = new THREE.Mesh(new THREE.SphereGeometry(bw * 0.55, 10, 8), bMat);
-            bush.scale.set(1.15, bh / (bw * 1.1), 0.95);
-            bush.position.set(bx, getLawnGradeY(bx, bz) + bh * 0.40, bz);
-            bush.castShadow = true;
-            bush.receiveShadow = true;
-            arch.add(bush);
+        // Foundation planter strip along the base of the front brick pavilion & bay window left open for user-planted bushes via TreePlanterFoundry
+
+        // 10. Continuous Washington St Public Concrete Sidewalk + Recessed Parallel Disabled Parking Turnout Bay
+        // Uses Building 400's exact sidewalk pattern (#e2dcd0 concrete, #f2eee6 raised curb, #9c9588 transverse expansion score joints every 1.75m, no center line)
+        // and connects seamlessly with Building 316's Washington St sidewalk at lx = 28.355m and the Orondo Ave sidewalk at lx = -30.50m!
+        const whiteCurbMat = new THREE.MeshStandardMaterial({
+            color: '#f2eee6',
+            roughness: 0.75,
+            metalness: 0.04,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2
         });
+        const swScoreMat = new THREE.MeshBasicMaterial({
+            color: '#9c9588',
+            polygonOffset: true,
+            polygonOffsetFactor: -3,
+            polygonOffsetUnits: -3
+        });
+        {
+            const swTopY = 0.34;
+            const swBotY = -0.45;
+            const swPos = [];
+            const pushQuad = (ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) => {
+                swPos.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+                swPos.push(ax, ay, az, cx, cy, cz, dx, dy, dz);
+            };
 
-        // Continuous Washington St Public Concrete Sidewalk in front of Building 300 Perfectly Collinear with Building 316's Sidewalk (lx = -28.20m..28.35m, lz = 37.12m..39.42m = lz316 29.55m..31.85m!)
-        const sw300W = 56.55;
-        const sw300D = 2.30;
-        const sw300Cx = 0.075;
-        const sw300Cz = 38.27;
-        addBox(sw300W, 0.26, sw300D, plazaConcreteMat, sw300Cx, 0.21, sw300Cz, false);
-        // Longitudinal center score joint & transverse control joints every 1.75m (strictly collinear with Building 316's center score joint at lz316 = 30.70m -> lz300 = 38.27m!)
-        addBox(sw300W, 0.275, 0.03, plazaJointMat, sw300Cx, 0.215, sw300Cz, false);
-        for (let sx = -27.65; sx <= 28.30; sx += 1.75) {
-            addBox(0.03, 0.278, sw300D + 0.02, plazaJointMat, sx, 0.218, sw300Cz, false);
+            // (A) 90° Polar-Meshed Rounded Corner Apron at Orondo Ave & Washington St (cx = -26.00m, cz = 34.92m, rInner = 2.20m, rOuter = 4.50m)
+            //     Follows the exact terrain contour (`getWalkTerrainTopY`) and welds 1:1 with the Orondo Ave sidewalk at ang = 0 (z = 34.92m)
+            //     and the Washington St sidewalk at ang = PI/2 (x = -26.00m) with zero chord cuts!
+            const cornerCx = -26.00;
+            const cornerCz = 34.92;
+            const cornerRIn = 2.20;
+            const cornerROut = 4.50;
+            const cornerArcSteps = 32;
+            const cornerRadialSteps = 6;
+            for (let ia = 0; ia < cornerArcSteps; ia++) {
+                const a0 = (ia / cornerArcSteps) * Math.PI * 0.5;
+                const a1 = ((ia + 1) / cornerArcSteps) * Math.PI * 0.5;
+                const cos0 = Math.cos(a0), sin0 = Math.sin(a0);
+                const cos1 = Math.cos(a1), sin1 = Math.sin(a1);
+
+                for (let ir = 0; ir < cornerRadialSteps; ir++) {
+                    const r0 = cornerRIn + (ir / cornerRadialSteps) * (cornerROut - cornerRIn);
+                    const r1 = cornerRIn + ((ir + 1) / cornerRadialSteps) * (cornerROut - cornerRIn);
+
+                    const x00 = cornerCx - cos0 * r0, z00 = cornerCz + sin0 * r0;
+                    const x01 = cornerCx - cos0 * r1, z01 = cornerCz + sin0 * r1;
+                    const x11 = cornerCx - cos1 * r1, z11 = cornerCz + sin1 * r1;
+                    const x10 = cornerCx - cos1 * r0, z10 = cornerCz + sin1 * r0;
+
+                    const y00 = getWalkTerrainTopY(x00, z00);
+                    const y01 = getWalkTerrainTopY(x01, z01);
+                    const y11 = getWalkTerrainTopY(x11, z11);
+                    const y10 = getWalkTerrainTopY(x10, z10);
+
+                    pushQuad(x00, y00, z00, x01, y01, z01, x11, y11, z11, x10, y10, z10);
+
+                    if (ir === cornerRadialSteps - 1) {
+                        pushQuad(x01, y01, z01, x01, swBotY, z01, x11, swBotY, z11, x11, y11, z11);
+                    }
+                    if (ir === 0) {
+                        pushQuad(x10, y10, z10, x10, swBotY, z10, x00, swBotY, z00, x00, y00, z00);
+                    }
+                }
+            }
+
+            // (B) Straight & Indented Washington St Sidewalk from lx = -26.00m to +28.36m
+            const xMinSw = -26.00;
+            const xMaxSw = 28.36;
+            const xStepsSw = 108;
+            for (let i = 0; i < xStepsSw; i++) {
+                const x0 = xMinSw + (i / xStepsSw) * (xMaxSw - xMinSw);
+                const x1 = xMinSw + ((i + 1) / xStepsSw) * (xMaxSw - xMinSw);
+                const zb0 = getWashSidewalkBackZ(x0);
+                const zb1 = getWashSidewalkBackZ(x1);
+                const zf0 = getWashSidewalkCurbZ(x0);
+                const zf1 = getWashSidewalkCurbZ(x1);
+
+                const yb0 = getWalkTerrainTopY(x0, zb0);
+                const yb1 = getWalkTerrainTopY(x1, zb1);
+                const yf0 = getWalkTerrainTopY(x0, zf0);
+                const yf1 = getWalkTerrainTopY(x1, zf1);
+
+                // Top sidewalk surface (+Y)
+                pushQuad(x0, yb0, zb0, x0, yf0, zf0, x1, yf1, zf1, x1, yb1, zb1);
+                // Outer street/curb face (+Z)
+                pushQuad(x0, yf0, zf0, x0, swBotY, zf0, x1, swBotY, zf1, x1, yf1, zf1);
+                // Inner lawn face (-Z)
+                pushQuad(x1, yb1, zb1, x1, swBotY, zb1, x0, swBotY, zb0, x0, yb0, zb0);
+            }
+
+            const swGeo = new THREE.BufferGeometry();
+            swGeo.setAttribute('position', new THREE.Float32BufferAttribute(swPos, 3));
+            swGeo.computeVertexNormals();
+            const swMesh = new THREE.Mesh(swGeo, plazaConcreteMat);
+            swMesh.receiveShadow = true;
+            arch.add(swMesh);
+
+            // Transverse expansion score joints every 1.75m matching Building 400's pattern (plus radial joints on the rounded Orondo/Washington corner)
+            for (let sx = -25.90; sx <= 28.15; sx += 1.75) {
+                const zb = getWashSidewalkBackZ(sx);
+                const zf = getWashSidewalkCurbZ(sx);
+                const d = zf - zb;
+                const zm = (zb + zf) * 0.5 - 0.06;
+                const ym = getWalkTerrainTopY(sx, zm);
+                addBox(0.025, 0.012, Math.max(0.5, d - 0.22), swScoreMat, sx, ym + 0.006, zm, false);
+            }
+            // Radial fan score joints across the rounded Orondo Ave & Washington St corner apron (contoured to the terrain slope!)
+            [0.22, 0.48, 0.74].forEach((tAng) => {
+                const ang = tAng * Math.PI * 0.5;
+                const rInner = 2.25;
+                const rOuter = 4.35;
+                const rMid = (rInner + rOuter) * 0.5;
+                const jLen = rOuter - rInner;
+                const jx = -26.00 - Math.cos(ang) * rMid;
+                const jz = 34.92 + Math.sin(ang) * rMid;
+                const xIn = -26.00 - Math.cos(ang) * rInner;
+                const zIn = 34.92 + Math.sin(ang) * rInner;
+                const xOut = -26.00 - Math.cos(ang) * rOuter;
+                const zOut = 34.92 + Math.sin(ang) * rOuter;
+                const yIn = getWalkTerrainTopY(xIn, zIn);
+                const yOut = getWalkTerrainTopY(xOut, zOut);
+                const rJoint = addBox(jLen, 0.012, 0.025, swScoreMat, jx, (yIn + yOut) * 0.5 + 0.006, jz, false);
+                rJoint.rotation.order = 'YXZ';
+                rJoint.rotation.y = ang;
+                rJoint.rotation.z = Math.atan2(yIn - yOut, jLen);
+            });
+
+            // Terrain-Contoured Dark Road Asphalt for the Recessed Parallel Disabled Parking Bay & Rounded Corner Spandrel
+            // Uses the exact procedural asphalt grain texture & #282c34 color multiplier as WashingtonStreetCorridor.js
+            // and samples `sampleOrondoTerrainLocalY(x, z) + 0.0165` on a 2D grid so it follows the terrain slope 100%!
+            const bayAsphaltCan = document.createElement('canvas');
+            bayAsphaltCan.width = 256;
+            bayAsphaltCan.height = 256;
+            const baCtx = bayAsphaltCan.getContext('2d');
+            baCtx.fillStyle = '#252930';
+            baCtx.fillRect(0, 0, 256, 256);
+            for (let i = 0; i < 6000; i++) {
+                const px = (i * 73) % 256;
+                const py = (i * 137) % 256;
+                const v = 30 + ((i * 29) % 24);
+                baCtx.fillStyle = `rgb(${v},${v + 2},${v + 5})`;
+                baCtx.fillRect(px, py, 2, 2);
+            }
+            const bayAsphaltTex = new THREE.CanvasTexture(bayAsphaltCan);
+            bayAsphaltTex.wrapS = THREE.RepeatWrapping;
+            bayAsphaltTex.wrapT = THREE.RepeatWrapping;
+            bayAsphaltTex.repeat.set(8, 8);
+            bayAsphaltTex.colorSpace = THREE.SRGBColorSpace;
+            const bayAsphaltMat = new THREE.MeshStandardMaterial({
+                color: '#282c34',
+                map: bayAsphaltTex,
+                roughness: 0.86,
+                metalness: 0.04,
+                polygonOffset: true,
+                polygonOffsetFactor: -1,
+                polygonOffsetUnits: -1
+            });
+
+            const bayPos = [];
+            const bayUv = [];
+            const pushBayQuad = (ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) => {
+                bayPos.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+                bayPos.push(ax, ay, az, cx, cy, cz, dx, dy, dz);
+                bayUv.push(ax * 0.25, az * 0.25, bx * 0.25, bz * 0.25, cx * 0.25, cz * 0.25);
+                bayUv.push(ax * 0.25, az * 0.25, cx * 0.25, cz * 0.25, dx * 0.25, dz * 0.25);
+            };
+            const bayStepsX = 64;
+            const bayStepsZ = 10;
+            const bayX0 = -30.52;
+            const bayX1 = -2.00;
+            const zsMax = 39.48;
+            for (let ix = 0; ix < bayStepsX; ix++) {
+                const x0 = bayX0 + (ix / bayStepsX) * (bayX1 - bayX0);
+                const x1 = bayX0 + ((ix + 1) / bayStepsX) * (bayX1 - bayX0);
+                const zc0 = getWashSidewalkCurbZ(x0) - 0.10;
+                const zc1 = getWashSidewalkCurbZ(x1) - 0.10;
+                for (let iz = 0; iz < bayStepsZ; iz++) {
+                    const tz0 = iz / bayStepsZ;
+                    const tz1 = (iz + 1) / bayStepsZ;
+                    const z00 = zc0 + tz0 * (zsMax - zc0);
+                    const z01 = zc0 + tz1 * (zsMax - zc0);
+                    const z11 = zc1 + tz1 * (zsMax - zc1);
+                    const z10 = zc1 + tz0 * (zsMax - zc1);
+
+                    const y00 = sampleOrondoTerrainLocalY(x0, z00) + 0.0165;
+                    const y01 = sampleOrondoTerrainLocalY(x0, z01) + 0.0165;
+                    const y11 = sampleOrondoTerrainLocalY(x1, z11) + 0.0165;
+                    const y10 = sampleOrondoTerrainLocalY(x1, z10) + 0.0165;
+
+                    pushBayQuad(x0, y00, z00, x0, y01, z01, x1, y11, z11, x1, y10, z10);
+                }
+            }
+            const bayGeo = new THREE.BufferGeometry();
+            bayGeo.setAttribute('position', new THREE.Float32BufferAttribute(bayPos, 3));
+            bayGeo.setAttribute('uv', new THREE.Float32BufferAttribute(bayUv, 2));
+            bayGeo.computeVertexNormals();
+            const bayMesh = new THREE.Mesh(bayGeo, bayAsphaltMat);
+            bayMesh.receiveShadow = true;
+            arch.add(bayMesh);
+
+            // Raised Concrete Curb following getWashSidewalkCurbZ(lx) around the Recessed Disabled Parking Bay (lx = -21.80m .. -2.20m)
+            const curbBayX0 = -21.80;
+            const curbBayX1 = -2.20;
+            for (let i = 0; i < 36; i++) {
+                const xa = curbBayX0 + (i / 36) * (curbBayX1 - curbBayX0);
+                const xb = curbBayX0 + ((i + 1) / 36) * (curbBayX1 - curbBayX0);
+                const za = getWashSidewalkCurbZ(xa) - 0.07;
+                const zb = getWashSidewalkCurbZ(xb) - 0.07;
+                const xm = (xa + xb) * 0.5;
+                const zm = (za + zb) * 0.5;
+                const topY = getWalkTerrainTopY(xm, zm) + 0.03;
+                const botY = sampleOrondoTerrainLocalY(xm, zm) - 0.06;
+                const curbH = Math.max(0.20, topY - botY);
+                const segLen = Math.hypot(xb - xa, zb - za) + 0.02;
+                const curbSeg = addBox(segLen, curbH, 0.15, whiteCurbMat, xm, botY + curbH * 0.5, zm, false);
+                curbSeg.rotation.y = -Math.atan2(zb - za, xb - xa);
+            }
+
+            // Polar & Terrain-Contoured Traffic-Yellow & Fire-Lane-Red Painted Rounded Corner Curb at Orondo Ave & Washington St (1a7cd213.jpg, 73722af4.jpg, eeb5c507.jpg!)
+            const cornerRedCurbMat = new THREE.MeshStandardMaterial({ color: '#c8322b', roughness: 0.72, metalness: 0.05 });
+            const curbRadius = cornerROut - 0.07;
+            for (let ia = 0; ia < cornerArcSteps; ia++) {
+                const a0 = (ia / cornerArcSteps) * Math.PI * 0.5;
+                const a1 = ((ia + 1) / cornerArcSteps) * Math.PI * 0.5;
+                const xa = cornerCx - Math.cos(a0) * curbRadius;
+                const za = cornerCz + Math.sin(a0) * curbRadius;
+                const xb = cornerCx - Math.cos(a1) * curbRadius;
+                const zb = cornerCz + Math.sin(a1) * curbRadius;
+                const xm = (xa + xb) * 0.5;
+                const zm = (za + zb) * 0.5;
+                const yaTop = getWalkTerrainTopY(xa, za) + 0.03;
+                const ybTop = getWalkTerrainTopY(xb, zb) + 0.03;
+                const ymTop = (yaTop + ybTop) * 0.5;
+                const ymBot = sampleOrondoTerrainLocalY(xm, zm) - 0.14;
+                const curbH = Math.max(0.28, ymTop - ymBot);
+                const segLen = Math.hypot(xb - xa, zb - za) + 0.025;
+                const cMat = xm < -27.10 ? cornerRedCurbMat : bollardYellowMat;
+                const cSeg = addBox(segLen, curbH, 0.16, cMat, xm, ymBot + curbH * 0.5, zm, false);
+                cSeg.rotation.order = 'YXZ';
+                cSeg.rotation.y = -Math.atan2(zb - za, xb - xa);
+                cSeg.rotation.z = Math.atan2(ybTop - yaTop, segLen);
+            }
+            // Straight yellow curb continuation from lx = -26.00m to -21.65m
+            addBox(4.35, 0.38, 0.16, bollardYellowMat, -23.825, 0.18, 39.35, false);
+            //   - Right End Yellow Curb (in front of the "ONE WAY / NO PARKING" signpost: lx = -2.20m .. +2.80m)
+            addBox(5.00, 0.31, 0.16, bollardYellowMat, 0.30, 0.215, 39.34, false);
+            //   - Standard Concrete Curb along the rest of Building 300 (lx = +2.80m .. +28.36m, strictly collinear & flush with Building 316!)
+            addBox(25.56, 0.31, 0.16, whiteCurbMat, 15.58, 0.215, 39.34, false);
+
+            // Narrow Concrete Footpath connecting the indented sidewalk (lz = 35.15m) back to the corner monument sign / fence at lx = -15.10m (02151d17.jpg & 73722af4.jpg!)
+            const pathFoot = addBox(0.82, 0.08, 4.20, plazaConcreteMat, -15.10, 0.305, 33.20, false);
+            pathFoot.rotation.y = -0.14;
+
+            // Procedural ADA Accessible Parking Sign Texture (White Sign with Green/Blue Border & Blue International Wheelchair Symbol ♿)
+            const adaSignCan = document.createElement('canvas');
+            adaSignCan.width = 128;
+            adaSignCan.height = 192;
+            const aCtx = adaSignCan.getContext('2d');
+            aCtx.fillStyle = '#f8fafc';
+            aCtx.fillRect(0, 0, 128, 192);
+            aCtx.strokeStyle = '#15803d';
+            aCtx.lineWidth = 6;
+            aCtx.strokeRect(5, 5, 118, 182);
+            aCtx.fillStyle = '#15803d';
+            aCtx.font = 'bold 18px Arial, sans-serif';
+            aCtx.textAlign = 'center';
+            aCtx.fillText('RESERVED', 64, 30);
+            aCtx.fillText('PARKING', 64, 50);
+            // Blue ADA wheelchair icon box in center
+            aCtx.fillStyle = '#1d4ed8';
+            aCtx.fillRect(28, 62, 72, 72);
+            aCtx.fillStyle = '#ffffff';
+            aCtx.font = 'bold 52px Arial, sans-serif';
+            aCtx.fillText('♿', 64, 116);
+            aCtx.fillStyle = '#15803d';
+            aCtx.font = 'bold 15px Arial, sans-serif';
+            aCtx.fillText('DISABLED', 64, 156);
+            aCtx.fillText('PERMIT ONLY', 64, 174);
+
+            const adaSignTex = new THREE.CanvasTexture(adaSignCan);
+            adaSignTex.colorSpace = THREE.SRGBColorSpace;
+            const adaSignMat = new THREE.MeshStandardMaterial({
+                map: adaSignTex,
+                roughness: 0.42,
+                metalness: 0.15
+            });
+
+            // 3 Vertical Disabled Parking Signposts along the recessed curb edge (lx = -17.60m, -13.10m, -8.60m, lz = 37.12m — 73722af4.jpg & 02151d17.jpg!)
+            [-17.60, -13.10, -8.60].forEach((sx) => {
+                const post = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.022, 0.022, 1.08, 8),
+                    silverFlashingMat
+                );
+                post.position.set(sx, 0.34 + 0.54, 37.12);
+                post.castShadow = true;
+                arch.add(post);
+
+                const plate = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.30, 0.44, 0.025),
+                    [whiteDoorMat, whiteDoorMat, whiteDoorMat, whiteDoorMat, adaSignMat, whiteDoorMat]
+                );
+                plate.position.set(sx, 0.34 + 0.98, 37.12);
+                plate.castShadow = true;
+                arch.add(plate);
+            });
+
+            // Orondo Ave & Washington St Corner Red Octagonal STOP Sign & Green Street-Name Blades (lx = -24.60m, lz = 38.80m — 73722af4.jpg & b326f8cd.jpg!)
+            {
+                const stopX = -24.60;
+                const stopZ = 38.80;
+                const stopPost = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.028, 0.028, 2.75, 10),
+                    silverFlashingMat
+                );
+                stopPost.position.set(stopX, 0.34 + 1.375, stopZ);
+                stopPost.castShadow = true;
+                arch.add(stopPost);
+
+                // Red Octagonal STOP Sign facing Orondo Ave / Washington St
+                const stopMat = new THREE.MeshStandardMaterial({ color: '#b91c1c', roughness: 0.45, metalness: 0.15 });
+                const stopOct = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.025, 8), stopMat);
+                stopOct.rotation.x = Math.PI * 0.5;
+                stopOct.rotation.z = Math.PI / 8;
+                stopOct.position.set(stopX, 0.34 + 2.08, stopZ);
+                stopOct.castShadow = true;
+                arch.add(stopOct);
+
+                // Green Street-Name Blades ("Washington St" / "Orondo Ave") at top of post
+                const streetBladeMat = new THREE.MeshStandardMaterial({ color: '#15803d', roughness: 0.45, metalness: 0.18 });
+                addBox(0.76, 0.16, 0.025, streetBladeMat, stopX, 0.34 + 2.62, stopZ);
+                addBox(0.025, 0.16, 0.72, streetBladeMat, stopX, 0.34 + 2.78, stopZ);
+            }
+
+            // Tall Silver Curved-Arm Streetlight Pole at the Orondo Ave & Washington St Corner (lx = -27.40m, lz = 38.25m — 5d82a32a.jpg!)
+            {
+                const slX = -27.40;
+                const slZ = 38.25;
+                const slBase = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.22, 0.32, 8), silverFlashingMat);
+                slBase.position.set(slX, 0.34 + 0.16, slZ);
+                arch.add(slBase);
+                const slPole = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.13, 8.20, 12), silverFlashingMat);
+                slPole.position.set(slX, 0.34 + 4.10, slZ);
+                slPole.castShadow = true;
+                arch.add(slPole);
+                // "SPEED LIMIT 30" + "NO TURN ON RED" signs mounted on the corner streetlight pole
+                addBox(0.42, 0.54, 0.03, whiteDoorMat, slX - 0.11, 2.45, slZ);
+                addBox(0.40, 0.48, 0.03, whiteDoorMat, slX - 0.11, 3.85, slZ);
+            }
         }
-        // Raised Concrete Street Curb along the outer Washington St edge of the sidewalk (lz = 39.34m = lz316 31.77m — zero step!)
-        addBox(sw300W, 0.29, 0.16, whiteDoorMat, sw300Cx, 0.225, 39.34, false);
 
+        // 11. Continuous Terrain-Contoured Orondo Avenue Sidewalk from Washington St Corner (lz = +37.16m)
+        //     all the way across 428 Orondo Avenue (lz = -89.80m), including a seamless concrete driveway apron across the Unnamed Road (lz = -37.80m .. -44.90m)
+        //     Uses Building 400's exact sidewalk pattern (#e2dcd0 concrete, #f2eee6 raised curb, #9c9588 transverse expansion score joints every 1.75m, no center line):
+        {
+            const orondoSwMat = plazaConcreteMat;
 
-        // Gravel-lined drainage swale along the South Rec Yard and South Detention Wall (28619543.jpg, c5e2718f.jpg & b5ec68b4.jpg)
-        const swaleMat = new THREE.MeshStandardMaterial({ color: '#6e655c', roughness: 0.95, metalness: 0.02 });
-        [
-            [-26.20, -21.80, 1.15, 5.20, -0.35],
-            [-24.40, -25.80, 1.15, 5.40, -0.85],
-            [-20.20, -27.60, 1.15, 5.60, -1.35],
-            [-10.50, -27.80, 3.40, 11.50, -1.57]
-        ].forEach(([sx, sz, sw, sd, sRot]) => {
-            const swaleSeg = new THREE.Mesh(new THREE.BoxGeometry(sw, 0.06, sd), swaleMat);
-            swaleSeg.position.set(sx, getLawnGradeY(sx, sz) - 0.01, sz);
-            swaleSeg.rotation.y = sRot;
+            const buildOrondoContouredStrip = (xMin, xMax, zMin, zMax, zSteps, topDelta, mat, useLocalTerrain = false) => {
+                const pos = [];
+                const pushQ = (ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz) => {
+                    pos.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+                    pos.push(ax, ay, az, cx, cy, cz, dx, dy, dz);
+                };
+                const evalY = (x, z) => {
+                    const swY = getOrondoSidewalkTopY(z) + topDelta;
+                    const cornerBlend = smooth01((z - 22.0) / (34.92 - 22.0));
+                    const walkY = getWalkTerrainTopY(x, z) + topDelta;
+                    const baseSwY = THREE.MathUtils.lerp(swY, walkY, cornerBlend);
+                    if (!useLocalTerrain) return baseSwY;
+                    const terrY = sampleOrondoTerrainLocalY(x, z) + 0.13 + topDelta;
+                    return Math.max(baseSwY, terrY);
+                };
+                for (let i = 0; i < zSteps; i++) {
+                    const z0 = zMin + (i / zSteps) * (zMax - zMin);
+                    const z1 = zMin + ((i + 1) / zSteps) * (zMax - zMin);
+                    const yTop00 = evalY(xMin, z0);
+                    const yTop01 = evalY(xMin, z1);
+                    const yTop11 = evalY(xMax, z1);
+                    const yTop10 = evalY(xMax, z0);
+                    const yBot00 = yTop00 - 0.45;
+                    const yBot01 = yTop01 - 0.45;
+                    const yBot11 = yTop11 - 0.45;
+                    const yBot10 = yTop10 - 0.45;
+
+                    // Top (+Y)
+                    pushQ(xMin, yTop00, z0, xMin, yTop01, z1, xMax, yTop11, z1, xMax, yTop10, z0);
+                    // Outer Orondo Ave face (-X)
+                    pushQ(xMin, yTop01, z1, xMin, yTop00, z0, xMin, yBot00, z0, xMin, yBot01, z1);
+                    // Inner property face (+X)
+                    pushQ(xMax, yTop10, z0, xMax, yTop11, z1, xMax, yBot11, z1, xMax, yBot10, z0);
+                    if (i === 0) {
+                        pushQ(xMax, yTop10, z0, xMin, yTop00, z0, xMin, yBot00, z0, xMax, yBot10, z0);
+                    }
+                    if (i === zSteps - 1) {
+                        pushQ(xMin, yTop01, z1, xMax, yTop11, z1, xMax, yBot11, z1, xMin, yBot01, z1);
+                    }
+                }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                geo.computeVertexNormals();
+                const m = new THREE.Mesh(geo, mat);
+                m.receiveShadow = true;
+                m.userData = { isSelectableBuilding: true, building };
+                arch.add(m);
+                return m;
+            };
+
+            const orondoSwXMin = -30.50;
+            const orondoSwXMax = -28.20;
+            const orondoSwMidX = (orondoSwXMin + orondoSwXMax) * 0.5; // -29.35m
+            const orondoSwW = orondoSwXMax - orondoSwXMin;            // 2.30m
+            const redCurbMat = new THREE.MeshStandardMaterial({ color: '#c8322b', roughness: 0.72, metalness: 0.05 });
+
+            // Two Main Sidewalk Segments + Seamless Driveway Apron Bridge across the Unnamed Service Road (lz = -44.90m .. -37.80m):
+            //   - Segment A: lz = -37.80m .. +34.92m (meets the 90° rounded corner apron at lz = 34.92m!)
+            //   - Segment B: lz = -89.80m .. -44.90m (from Unnamed Road past the County parking lot and across the entire front of 428 Orondo Ave!)
+            const orondoSegments = [
+                { zMin: -37.80, zMax: 34.92, steps: 120 },
+                { zMin: -89.80, zMax: -44.90, steps: 72 }
+            ];
+
+            orondoSegments.forEach(({ zMin, zMax, steps }) => {
+                // Main concrete sidewalk slab (prioritized over terrain)
+                buildOrondoContouredStrip(orondoSwXMin, orondoSwXMax, zMin, zMax, steps, 0.0, orondoSwMat, false);
+                // Raised outer concrete street curb along Orondo Ave (lx = -30.50m .. -30.34m)
+                buildOrondoContouredStrip(orondoSwXMin, orondoSwXMin + 0.16, zMin, zMax, steps, 0.030, whiteCurbMat, false);
+
+                // Transverse expansion score joints every 1.75m matching Building 400's pattern (no longitudinal center line, inset from outer curb)
+                for (let sz = zMin + 1.50; sz <= zMax - 0.50; sz += 1.75) {
+                    const cBlend = smooth01((sz - 22.0) / (34.92 - 22.0));
+                    const yOut = THREE.MathUtils.lerp(getOrondoSidewalkTopY(sz), getWalkTerrainTopY(orondoSwXMin, sz), cBlend);
+                    const yIn = THREE.MathUtils.lerp(getOrondoSidewalkTopY(sz), getWalkTerrainTopY(orondoSwXMax, sz), cBlend);
+                    const yHere = (yOut + yIn) * 0.5;
+                    const yPrev = THREE.MathUtils.lerp(getOrondoSidewalkTopY(sz - 0.35), getWalkTerrainTopY(orondoSwMidX, sz - 0.35), cBlend);
+                    const yNext = THREE.MathUtils.lerp(getOrondoSidewalkTopY(sz + 0.35), getWalkTerrainTopY(orondoSwMidX, sz + 0.35), cBlend);
+                    const jMesh = addBox(orondoSwW - 0.22, 0.012, 0.025, swScoreMat, orondoSwMidX + 0.06, yHere + 0.006, sz, false);
+                    jMesh.rotation.order = 'YXZ';
+                    jMesh.rotation.x = Math.atan2(yPrev - yNext, 0.70);
+                    jMesh.rotation.z = Math.atan2(yIn - yOut, orondoSwW);
+                }
+            });
+
+            // Seamless Concrete Driveway Apron & Pedestrian Crosswalk across the Unnamed Service Road Entrance (lz = -44.95m .. -37.75m)
+            // Keeps the Orondo Ave sidewalk route 100% continuous between Segment A and Segment B while flaring inward to the service road!
+            buildOrondoContouredStrip(orondoSwXMin, -25.40, -44.95, -37.75, 16, -0.004, orondoSwMat, true);
+            for (let sz = -44.90; sz <= -37.80; sz += 1.775) {
+                const yHere = getOrondoSidewalkTopY(sz);
+                const yPrev = getOrondoSidewalkTopY(sz - 0.35);
+                const yNext = getOrondoSidewalkTopY(sz + 0.35);
+                const jMesh = addBox(orondoSwW - 0.18, 0.012, 0.025, swScoreMat, orondoSwMidX + 0.04, yHere + 0.004, sz, false);
+                jMesh.rotation.x = Math.atan2(yPrev - yNext, 0.70);
+            }
+
+            // Red-painted Fire Lane Curb along the corner fire hydrant zone on Orondo Ave (lz = 18.00m .. 34.92m — 1a7cd213.jpg & 5d82a32a.jpg!)
+            buildOrondoContouredStrip(orondoSwXMin - 0.01, orondoSwXMin + 0.17, 18.00, 34.92, 24, 0.038, redCurbMat, false);
+
+            // Flared Concrete Driveway Curb Returns on Both Sides of the Unnamed Road Entrance (lz = -37.80m and lz = -44.90m — 8ebc6149.jpg!)
+            [-37.80, -44.90].forEach((gapZ) => {
+                const gy = getOrondoSidewalkTopY(gapZ);
+                addBox(2.80, 0.16, 0.18, whiteCurbMat, -26.80, gy + 0.02, gapZ, false);
+            });
+
+            // Landscaped Green Grass Tree Strip + Inner Parking Lot Concrete Curb between the Unnamed Road (lz = -44.90m) and 428 Orondo Ave (lz = -73.08m)
+            // Seen in 8ebc6149.jpg, e522048d.jpg, and 8c976c55.jpg!
+            buildOrondoContouredStrip(-28.20, -25.40, -73.08, -44.90, 48, -0.025, turfLawnMat, true);
+            buildOrondoContouredStrip(-25.56, -25.38, -73.08, -44.90, 48, 0.04, whiteCurbMat, true);
+
+            // Two Yellow Municipal Fire Hydrants along Orondo Avenue (at lz = 28.80m near the corner in 5d82a32a.jpg, and at lz = -34.20m near the unnamed road in 8ebc6149.jpg!)
+            const hydYellowMat = new THREE.MeshStandardMaterial({ color: '#d89b18', roughness: 0.45, metalness: 0.25 });
+            [28.80, -34.20].forEach((hz) => {
+                const hy = getLawnGradeY(-27.25, hz);
+                const hGrp = new THREE.Group();
+                hGrp.position.set(-27.25, hy, hz);
+                const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.56, 12), hydYellowMat);
+                barrel.position.y = 0.28;
+                barrel.castShadow = true;
+                hGrp.add(barrel);
+                const bonnet = new THREE.Mesh(new THREE.SphereGeometry(0.115, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hydYellowMat);
+                bonnet.position.y = 0.56;
+                hGrp.add(bonnet);
+                const noz = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.28, 10), hydYellowMat);
+                noz.rotation.z = Math.PI * 0.5;
+                noz.position.y = 0.36;
+                hGrp.add(noz);
+                arch.add(hGrp);
+            });
+
+            // Blue USPS Collection Box on the Orondo Ave sidewalk edge near the corner monument sign (lx = -27.75m, lz = 25.40m — 5d82a32a.jpg!)
+            {
+                const uspsMat = new THREE.MeshStandardMaterial({ color: '#1d4ed8', roughness: 0.45, metalness: 0.30 });
+                const by = getOrondoSidewalkTopY(25.40);
+                addBox(0.52, 0.82, 0.52, uspsMat, -27.75, by + 0.41, 25.40);
+                const topRoll = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.52, 12, 1, false, 0, Math.PI), uspsMat);
+                topRoll.rotation.x = Math.PI * 0.5;
+                topRoll.position.set(-27.75, by + 0.82, 25.40);
+                arch.add(topRoll);
+            }
+        }
+
+        // Gravel-lined drainage swale along the South Detention Wall (b5ec68b4.jpg)
+        {
+            const swaleMat = new THREE.MeshStandardMaterial({ color: '#6e655c', roughness: 0.95, metalness: 0.02 });
+            const swaleSeg = new THREE.Mesh(new THREE.BoxGeometry(3.40, 0.06, 11.50), swaleMat);
+            swaleSeg.position.set(-10.50, getLawnGradeY(-10.50, -27.80) - 0.01, -27.80);
+            swaleSeg.rotation.y = -1.57;
             swaleSeg.receiveShadow = true;
             arch.add(swaleSeg);
-        });
+        }
 
         // Freestanding Variegated-Brick Corner Monument Sign ("CHELAN COUNTY / JUVENILE / JUSTICE CENTER") at the Orondo Ave & Washington St Corner (e5a79256.jpg!)
         const monSignGrp = new THREE.Group();

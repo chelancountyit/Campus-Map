@@ -72,16 +72,16 @@ export function buildCampusFoundationPads(groundFoundry, parent) {
             polygonOffsetUnits: -2
         });
 
-        // 1. Broad Poured Concrete Sub-Base Apron across the 400 lot (trimmed on +Z to lz = 21.65m so no slab protrudes past the front lawns,
-        //    and set at y = -0.10m so the Building 400 forecourt and Washington St sidewalk slabs sit cleanly on top)
-        const apronW = 24.4;
-        const apronD = 41.85; // lz: -20.20m .. +21.65m (flush with wallZ + 7.05m = 21.67m)
+        // 1. Broad Poured Concrete Sub-Base Apron across the 400 lot (trimmed on +Z to lz = 21.65m, on -Z to lz = -16.64m,
+        //    and on -X to lx = -3.24m so no flat slab protrudes into the sloped 411 alley or SW concrete drive)
+        const apronW = 20.64; // lx: -3.24m .. +17.40m
+        const apronD = 38.29; // lz: -16.64m .. +21.65m
         const apronH = 0.28;
         const apronMesh = new THREE.Mesh(
             new THREE.BoxGeometry(apronW, apronH, apronD),
             subMatSlabMat
         );
-        apronMesh.position.set(5.2, -0.14, 0.725);
+        apronMesh.position.set(7.08, -0.14, 2.505);
         apronMesh.receiveShadow = true;
         apronMesh.castShadow = true;
         fndGroup.add(apronMesh);
@@ -282,4 +282,131 @@ export function buildCampusFoundationPads(groundFoundry, parent) {
             connectedApronPts,
             groundFoundry.getBuildingRoadHeight('building-316')
         );
+
+        // 6. Terrain-Graded Poured Concrete Foundation Sub-Base & Stepped Structural Footing
+        //    for Building 401 (regional-jail-east) & the West Wing (regional-jail-west / CCRJ-W)
+        {
+            const fnd401Group = new THREE.Group();
+            fnd401Group.name = 'Building401AndWestWingConcreteFoundation';
+            const cx401 = -4.22, cz401 = -38.74;
+            const cosT = 0.80425, sinT = -0.59429;
+            fnd401Group.position.set(cx401, 0, cz401);
+            fnd401Group.rotation.y = Math.atan2(sinT, cosT);
+
+            const yTerrain401 = (lx, lz) => {
+                const wx = cx401 + lx * cosT + lz * sinT;
+                const wz = cz401 - lx * sinT + lz * cosT;
+                return groundFoundry.getTerrainHeight(wx, wz);
+            };
+
+            const addGradedFoundationStrip = (xMin, xMax, getZMin, getZMax, segsX, segsZ, yTopOff, dropDepth, mat) => {
+                const positions = [];
+                const uvs = [];
+                for (let ix = 0; ix < segsX; ix++) {
+                    const u0 = ix / segsX;
+                    const u1 = (ix + 1) / segsX;
+                    const x0 = xMin + u0 * (xMax - xMin);
+                    const x1 = xMin + u1 * (xMax - xMin);
+                    const zMin0 = getZMin(x0), zMax0 = getZMax(x0);
+                    const zMin1 = getZMin(x1), zMax1 = getZMax(x1);
+
+                    for (let iz = 0; iz < segsZ; iz++) {
+                        const v0 = iz / segsZ;
+                        const v1 = (iz + 1) / segsZ;
+                        const z00 = zMin0 + v0 * (zMax0 - zMin0);
+                        const z01 = zMin0 + v1 * (zMax0 - zMin0);
+                        const z10 = zMin1 + v0 * (zMax1 - zMin1);
+                        const z11 = zMin1 + v1 * (zMax1 - zMin1);
+
+                        const y00 = yTerrain401(x0, z00) + yTopOff;
+                        const y01 = yTerrain401(x0, z01) + yTopOff;
+                        const y10 = yTerrain401(x1, z10) + yTopOff;
+                        const y11 = yTerrain401(x1, z11) + yTopOff;
+
+                        // Top surface triangles (+Y normal)
+                        positions.push(
+                            x0, y00, z00,  x0, y01, z01,  x1, y11, z11,
+                            x0, y00, z00,  x1, y11, z11,  x1, y10, z10
+                        );
+                        uvs.push(
+                            x0 * 0.12, z00 * 0.12,  x0 * 0.12, z01 * 0.12,  x1 * 0.12, z11 * 0.12,
+                            x0 * 0.12, z00 * 0.12,  x1 * 0.12, z11 * 0.12,  x1 * 0.12, z10 * 0.12
+                        );
+
+                        // South (-Z) foundation skirt wall
+                        if (iz === 0) {
+                            positions.push(
+                                x0, y00, z00,  x1, y10, z10,  x1, y10 - dropDepth, z10,
+                                x0, y00, z00,  x1, y10 - dropDepth, z10,  x0, y00 - dropDepth, z00
+                            );
+                            uvs.push(0, 1,  1, 1,  1, 0,   0, 1,  1, 0,  0, 0);
+                        }
+                        // North (+Z) foundation skirt wall
+                        if (iz === segsZ - 1) {
+                            positions.push(
+                                x1, y11, z11,  x0, y01, z01,  x0, y01 - dropDepth, z01,
+                                x1, y11, z11,  x0, y01 - dropDepth, z01,  x1, y11 - dropDepth, z11
+                            );
+                            uvs.push(0, 1,  1, 1,  1, 0,   0, 1,  1, 0,  0, 0);
+                        }
+                        // West (-X) foundation skirt wall
+                        if (ix === 0) {
+                            positions.push(
+                                x0, y01, z01,  x0, y00, z00,  x0, y00 - dropDepth, z00,
+                                x0, y01, z01,  x0, y00 - dropDepth, z00,  x0, y01 - dropDepth, z01
+                            );
+                            uvs.push(0, 1,  1, 1,  1, 0,   0, 1,  1, 0,  0, 0);
+                        }
+                        // East (+X) foundation skirt wall
+                        if (ix === segsX - 1) {
+                            positions.push(
+                                x1, y10, z10,  x1, y11, z11,  x1, y11 - dropDepth, z11,
+                                x1, y10, z10,  x1, y11 - dropDepth, z11,  x1, y10 - dropDepth, z10
+                            );
+                            uvs.push(0, 1,  1, 1,  1, 0,   0, 1,  1, 0,  0, 0);
+                        }
+                    }
+                }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+                geo.computeVertexNormals();
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.receiveShadow = true;
+                mesh.castShadow = true;
+                fnd401Group.add(mesh);
+            };
+
+            // A. Outer Poured Concrete Foundation Sub-Base Apron across West Wing + NE Courtyard + Building 401
+            const getOuterZMin = (lx) => {
+                if (lx < -28.00) return -19.55; // West Wing South Corrugated Wing & ADA ramp apron
+                if (lx < -4.05) return -18.35;  // SE Connector Wing, Evidence Room & Law Enforcement Entry walk apron
+                return -9.10;                   // Tuck inside South Wall (-9.20m) so South Lawn/Lava-Rock, Landing, Ramp & 1st-Floor Courtyard stay 100% clean!
+            };
+            const getOuterZMax = (lx) => {
+                if (lx < -13.85) return 21.85;  // West Wing & Sallyport Washington St foundation apron
+                if (lx >= 13.30 && lx <= 20.70) return 20.55; // Building 401 1-story Utility Bay North apron
+                return 18.05;                   // Building 401 North foundation apron
+            };
+
+            addGradedFoundationStrip(-59.65, 51.90, getOuterZMin, getOuterZMax, 42, 10, 0.03, 1.65, subMatSlabMat);
+
+            // B. Inner Stepped Structural Foundation Footing Pad matching the Building 401 + West Wing + Service Courtyard footprint
+            const getFootZMin = (lx) => {
+                if (lx < -28.04) return -18.08; // West Wing South Corrugated Wing footing
+                if (lx < -7.40) return -18.22;  // SE Connector Wing & Evidence Room footing
+                if (lx >= -4.05) return -9.10;  // Keep clear of sub-sill Lava-Rock/Lawn, Ramp & -1.5ft 1st-Floor Courtyard
+                return -9.52;                   // Law Enforcement Entry alcove South structural footing
+            };
+            const getFootZMax = (lx) => {
+                if (lx < -23.57) return 21.90;  // West Wing Main 2-Story Block North structural footing
+                if (lx < -13.85) return 21.30;  // West Wing Sallyport North structural footing
+                if (lx >= 13.40 && lx <= 20.60) return 20.60; // Building 401 Utility Bay structural footing
+                return 18.00;                   // Building 401 Main Block North structural footing
+            };
+
+            addGradedFoundationStrip(-59.65, 51.85, getFootZMin, getFootZMax, 42, 8, 0.06, 1.45, structuralFootingMat);
+
+            parent.add(fnd401Group);
+        }
 }

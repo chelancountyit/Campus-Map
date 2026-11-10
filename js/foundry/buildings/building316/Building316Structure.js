@@ -156,15 +156,16 @@ export function buildBuilding316Structure(ctx) {
         addRibbonWindow({ pos: courtX, nx: -1 }, 7.8, 0.98, 0.85, 1.65, 1, false);
         addRibbonWindow({ pos: courtX, nx: -1 }, 1.2, 0.78, 5.20, 2.05, 5, true);
 
-        // SW Rear Facade Level 2 Windows (lz = -6.05m & -10.29m)
-        addRibbonWindow({ pos: rearZ, nz: -1 }, -7.40, 0.78, 4.80, 2.05, 4, true);
-        addRibbonWindow({ pos: -10.29, nz: -1 }, 0.45, 0.78, 5.20, 2.05, 5, true);
+        // SW Rear Facade Level 2 Window on East Rear Wing (lz = -6.05m, f37b07a4.jpg)
+        addRibbonWindow({ pos: rearZ, nz: -1 }, -6.80, 0.78, 3.60, 2.05, 3, true);
 
-        // 5. Continuous Projecting White Overhang Canopy above Level 2 (y = 3.28m, wraps around the SE brick bay to lz = +18.0m as seen in 5e51fcab.jpg!)
+        // 5. Continuous Projecting White Overhang Canopy above Level 2 (y = 3.28m, wraps around SE brick bay & SW fire exit corner!)
         // NE Washington St Canopy (lx: -11.85m..+8.75m, projects 0.95m outward)
         addBox(20.60, 0.22, 1.05, whiteTrimMat, -1.55, 3.28, frontZ + 0.48);
-        // NW Douglas St Canopy (lz: -6.15m..+26.00m, projects 0.85m outward)
-        addBox(0.95, 0.22, 32.15, whiteTrimMat, douglasX + 0.44, 3.28, 9.92);
+        // NW Douglas St Canopy (lz: -6.55m..+26.00m, projects 0.85m outward)
+        addBox(0.95, 0.22, 32.55, whiteTrimMat, douglasX + 0.44, 3.28, 9.72);
+        // SW Fire Exit Recessed Corner Canopy Return (lx: +4.56m..+8.85m at lz = -6.05m, visible in be709037.jpg, 4aabc7f3.jpg & 3b6e29ad.jpg!)
+        addBox(4.30, 0.22, 0.92, whiteTrimMat, 6.71, 3.28, rearZ - 0.42);
         // SE Courtyard Canopy wrapping the front brick bay (lz: +17.90m..+26.00m, projects 0.75m outward over the brick wall, 5e51fcab.jpg!)
         addBox(0.85, 0.22, 8.10, whiteTrimMat, courtX - 0.38, 3.28, 21.95);
         // White-painted fascia band continuing along the SE courtyard wall behind the canopy (lz: -6.05m..+18.00m, y = 3.26m)
@@ -186,12 +187,11 @@ export function buildBuilding316Structure(ctx) {
         addRibbonWindow({ pos: douglasX, nx: 1 }, 7.2, 5.05, 5.40, 1.50, 5, false);
         addRibbonWindow({ pos: douglasX, nx: 1 }, -1.5, 5.05, 5.20, 1.50, 5, false);
 
-        // SE Courtyard & SW Rear Level 3 Windows (matched to 5e51fcab.jpg: front bay lz = 18.2m..25.4m is solid scored precast with NO window, only the triangular sconce above!)
+        // SE Courtyard & SW Rear Level 3 Windows (matched to 5e51fcab.jpg & f37b07a4.jpg)
         addRibbonWindow({ pos: courtX, nx: -1 }, 12.2, 5.05, 5.40, 1.50, 5, false);
         addRibbonWindow({ pos: courtX, nx: -1 }, 3.8, 5.05, 5.40, 1.50, 5, false);
         addRibbonWindow({ pos: courtX, nx: -1 }, -2.8, 5.05, 4.20, 1.50, 4, false);
         addRibbonWindow({ pos: rearZ, nz: -1 }, -7.40, 5.05, 4.80, 1.50, 4, false);
-        addRibbonWindow({ pos: -10.29, nz: -1 }, 0.45, 5.05, 5.20, 1.50, 5, false);
 
         // 3. Signature White 3D Triangular / Pyramid Architectural Wall Sconces above Level 3 Windows (y = 7.22m, Photos 1, 2, 4, 5 & 5e51fcab.jpg)
         const sconceMat = new THREE.MeshStandardMaterial({
@@ -260,12 +260,90 @@ export function buildBuilding316Structure(ctx) {
         // SE Courtyard Clerestory (matched to 5e51fcab.jpg: single narrow window at lz = +14.65m + 10-bay ribbon window under the 2 copper louver bays at lz = +4.40m..+13.60m!)
         addRibbonWindow({ pos: courtX, nx: -1 }, 14.65, 8.48, 1.05, 1.30, 1, true);
         addRibbonWindow({ pos: courtX, nx: -1 }, 9.00, 8.48, 9.10, 1.30, 10, true);
-        // SW Rear Clerestory Windows (lz = -6.05m and rear bay lz = -10.29m)
+        // SW Rear Clerestory Windows on main rear walls (lz = -6.05m, f37b07a4.jpg & 9ac82efd.jpg)
         addRibbonWindow({ pos: rearZ, nz: -1 }, -7.38, 8.48, 7.10, 1.30, 7, false);
         addRibbonWindow({ pos: rearZ, nz: -1 }, 6.23, 8.48, 3.10, 1.30, 3, false);
-        addRibbonWindow({ pos: -10.29, nz: -1 }, 0.45, 8.48, 7.90, 1.30, 8, false);
-        addRibbonWindow({ pos: 4.56, nx: 1 }, -8.17, 8.48, 4.00, 1.30, 4, false);
-        addRibbonWindow({ pos: -3.66, nx: -1 }, -8.17, 8.48, 4.00, 1.30, 4, false);
+
+        // 2b. SW Rear Full-Height Olive-Gray Stucco Stairwell Core Tower (lx = -3.66m..+4.56m, lz = -10.29m..-6.05m, y = -0.35m..12.68m)
+        // Matched directly to f37b07a4.jpg, be709037.jpg, 9ac82efd.jpg, 3f533fc5.jpg & 3b6e29ad.jpg:
+        // Full-height windowless olive-gray stucco core mass with crisp white vertical & horizontal grid joints,
+        // triangular pyramid sconces, rear FDC standpipe/drains, and recessed Douglas-facing Fire Exit Door + white hood canopy!
+        addBox(8.56, 13.05, 4.44, grayCoreStuccoMat, 0.45, 6.16, -8.17);
+        // White parapet coping cap atop the SW Stairwell Core Tower
+        addBox(8.70, 0.16, 4.56, whiteTrimMat, 0.45, 12.70, -8.17);
+        // Sloped gray concrete base water-table plinth along the rear (-Z) and Douglas (+X) faces of the tower (f37b07a4.jpg & be709037.jpg)
+        addBox(8.62, 0.72, 0.16, basementConcreteMat, 0.45, 0.22, -10.36);
+        addBox(0.16, 0.65, 2.55, basementConcreteMat, 4.68, 0.20, -9.12);
+
+        // Crisp white horizontal panel joint lines wrapping the SW Stairwell Core Tower (-Z, +X, -X faces) at y = 3.28m, 6.55m, 9.80m
+        [3.28, 6.55, 9.80].forEach((jy) => {
+            addBox(8.62, 0.045, 0.06, whiteTrimMat, 0.45, jy, -10.39); // -Z rear face
+            addBox(0.06, 0.045, 4.46, whiteTrimMat, 4.74, jy, -8.17);  // +X fire exit face
+            addBox(0.06, 0.045, 4.46, whiteTrimMat, -3.84, jy, -8.17); // -X courtyard-side face
+        });
+        // Crisp white vertical panel joint lines on the -Z rear face (dividing into 3 panel columns) & +X face (dividing into 2 columns)
+        [-1.02, 1.92].forEach((jx) => {
+            addBox(0.045, 12.65, 0.06, whiteTrimMat, jx, 6.35, -10.39);
+        });
+        addBox(0.06, 12.65, 0.045, whiteTrimMat, 4.74, 6.35, -8.17);
+        addBox(0.06, 12.65, 0.045, whiteTrimMat, -3.84, 6.35, -8.17);
+
+        // White 3D Triangular Pyramid Sconces on the SW Stairwell Tower & recessed fire-exit wall (f37b07a4.jpg, be709037.jpg & 31f99ba3.jpg!)
+        {
+            // Rear (-Z) stairwell tower center sconce
+            const scRear = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.56, 3), sconceMat);
+            scRear.position.set(0.45, 7.22, -10.48);
+            scRear.rotation.y = 0;
+            scRear.castShadow = true;
+            arch.add(scRear);
+
+            // Douglas (+X) stairwell tower sconce on the center vertical score line (lz = -8.17m)
+            const scTowerX = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.56, 3), sconceMat);
+            scTowerX.position.set(4.82, 7.22, -8.17);
+            scTowerX.rotation.y = -Math.PI * 0.5;
+            scTowerX.castShadow = true;
+            arch.add(scTowerX);
+
+            // Recessed SW wall (lz = -6.05m, lx = 6.23m) sconce above the fire exit stairs (f37b07a4.jpg & 31f99ba3.jpg!)
+            const scRecess = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.56, 3), sconceMat);
+            scRecess.position.set(6.23, 7.22, rearZ - 0.14);
+            scRecess.rotation.y = 0;
+            scRecess.castShadow = true;
+            arch.add(scRecess);
+        }
+
+        // Fire Exit Door, Projecting White Hood Canopy, Red Fire Alarm Strobe & Card Reader on +X Stairwell Tower Wall (lx = 4.73m, 3f533fc5.jpg & 3b6e29ad.jpg!)
+        {
+            const doorX = 4.74;
+            const doorZ = -7.12;
+            // Olive-tan painted hollow-metal door frame & recessed door leaf (w = 1.04m, h = 2.18m)
+            addBox(0.10, 2.24, 1.14, darkSpandrelMat, doorX, 0.92, doorZ);
+            addBox(0.06, 2.14, 0.98, tanPrecastMat, doorX + 0.03, 0.90, doorZ);
+            // Narrow vertical rectangular vision lite glass window in upper-left of door leaf + white/red "NO SMOKING / FIRE EXIT" signs
+            addBox(0.08, 0.68, 0.18, officeGlassMat, doorX + 0.04, 1.32, doorZ + 0.22);
+            addBox(0.08, 0.16, 0.22, whiteTrimMat, doorX + 0.045, 1.44, doorZ - 0.04, false);
+            addBox(0.08, 0.14, 0.22, whiteTrimMat, doorX + 0.045, 1.18, doorZ - 0.04, false);
+            // Silver door lever handle
+            addBox(0.10, 0.06, 0.12, galvSteelMat, doorX + 0.06, 0.88, doorZ + 0.36);
+
+            // Projecting White Rectangular Overhang Hood Canopy above the Fire Exit Door (lz = -8.08m..-6.05m, y = 2.42m, 3f533fc5.jpg & 3b6e29ad.jpg!)
+            addBox(0.46, 0.24, 2.05, whiteTrimMat, doorX + 0.22, 2.42, -7.06);
+            addBox(0.48, 0.04, 2.07, darkBronzeMat, doorX + 0.22, 2.54, -7.06);
+
+            // Red Fire Alarm Horn/Strobe Box under canopy to the left (+Z) of the door + Card Reader & Vertical Conduit (3f533fc5.jpg & 3b6e29ad.jpg!)
+            const fireRedMat = new THREE.MeshStandardMaterial({ color: '#c82828', roughness: 0.4, metalness: 0.15 });
+            addBox(0.09, 0.16, 0.14, fireRedMat, doorX + 0.05, 2.16, -6.38);
+            addBox(0.04, 0.06, 0.05, whiteTrimMat, doorX + 0.08, 2.16, -6.38, false);
+            // Card reader / pull box below the red strobe with vertical conduit
+            addBox(0.08, 0.18, 0.13, whiteTrimMat, doorX + 0.05, 1.24, -6.48);
+            addBox(0.06, 0.12, 0.08, darkBronzeMat, doorX + 0.07, 1.24, -6.48);
+            addBox(0.03, 1.15, 0.03, galvSteelMat, doorX + 0.04, 1.82, -6.48);
+        }
+
+        // Rear (-Z) Wall Fire Department Connection (FDC) Siamese Standpipe & Lower Drain Pipes (be709037.jpg & 3b6e29ad.jpg!)
+        addBox(0.18, 0.18, 0.24, darkBronzeMat, 3.15, 0.92, -10.46);
+        addBox(0.10, 0.10, 0.18, darkBronzeMat, 3.46, 0.42, -10.44);
+        addBox(0.10, 0.10, 0.18, galvSteelMat, 3.70, 0.40, -10.44);
 
         // 3. Level 4 Copper/Terracotta Horizontal Louvered Screen Wall & SE Stucco Wall Bays (y = 9.88m..12.62m)
         const neLouverH = 2.74;
@@ -311,14 +389,6 @@ export function buildBuilding316Structure(ctx) {
         addBox(3.35, neLouverH, 0.28, copperLouverMat, 6.235, neLouverY, rearZ + 0.12);
         addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, 4.56, neLouverY, rearZ + 0.10);
         addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, 7.91, neLouverY, rearZ + 0.10);
-        // SW Projecting Bay Back Wall (lx = -3.66m..+4.56m at lz = -10.29m, width = 8.22m, 3 bays)
-        addBox(8.22, neLouverH, 0.28, copperLouverMat, 0.45, neLouverY, -10.29 + 0.12);
-        for (let i = 0; i <= 3; i++) {
-            addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, -3.66 + i * (8.22 / 3), neLouverY, -10.29 + 0.10);
-        }
-        // SW Projecting Bay Side Walls (lx = -3.66m and lx = +4.56m, lz = -10.29m..-6.05m, length = 4.24m)
-        addBox(0.28, neLouverH, 4.24, copperLouverMat, -3.66 + 0.12, neLouverY, -8.17);
-        addBox(0.28, neLouverH, 4.24, copperLouverMat, 4.56 - 0.12, neLouverY, -8.17);
 
         // 4. Recessed 4th-Level Roof Court Deck & Inner Cream Parapet Backing Walls (y = 9.80m..11.20m)
         // Inner white/cream parapet wall backing the NW, SE, and SW screen walls (visible on roof court interior in Photo 3)
