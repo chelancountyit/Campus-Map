@@ -65,10 +65,18 @@ export function buildBuilding316Structure(ctx) {
         addFootprintBand(6.55, 0.12, 0.06, darkSpandrelMat);
         // Crisp white 4th-floor clerestory sill / belt cornice at y = 8.32m..8.50m around all 8 walls
         addFootprintBand(8.32, 0.18, 0.16, whiteTrimMat);
-        // Crisp white 4th-floor clerestory head / louver base cornice at y = 9.76m..9.90m around all 8 walls
-        addFootprintBand(9.76, 0.14, 0.16, whiteTrimMat);
-        // Top copper/terracotta parapet coping cap at y = 12.56m..12.68m around all 8 walls
-        addFootprintBand(12.56, 0.12, 0.14, copperFrameMat);
+        // Crisp white 4th-floor clerestory head cornice at y = 9.76m..9.87m around all 8 walls (projects outward, never covers roof deck)
+        addFootprintBand(9.76, 0.11, 0.16, whiteTrimMat);
+
+        // Exposed 4th-Level Gray EPDM Roof Court Deck (y = 9.88m..9.94m) — open sky above, enclosed by perimeter brown screen fence!
+        const roofDeckGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.06, bevelEnabled: false });
+        roofDeckGeo.rotateX(-Math.PI / 2);
+        const roofDeckMesh = new THREE.Mesh(roofDeckGeo, [roofMembraneMat, whiteTrimMat]);
+        roofDeckMesh.name = 'Layer4_OpenRoofCourtDeck';
+        roofDeckMesh.position.y = 9.88 + bldgLift316;
+        roofDeckMesh.receiveShadow = true;
+        roofDeckMesh.userData = { isSelectableBuilding: true, building, floorLayer: 4 };
+        group.add(roofDeckMesh);
 
         // =========================================================================
         // A. LEVEL 2 (WASHINGTON ST LEVEL: y = 0.0m..3.35m)
@@ -100,22 +108,23 @@ export function buildBuilding316Structure(ctx) {
         const entryW = 3.80;
         const entryH = 3.15;
         // Recessed vestibule backdrop
-        addBox(entryW, entryH, 0.35, officeGlassMat, entryCenterX, entryH * 0.5 + 0.05, frontZ - 0.12);
+        addBox(entryW, entryH, 0.35, officeGlassMat, entryCenterX, entryH * 0.5 + 0.05, frontZ - 0.12).userData.hideOnCutaway = true;
         // White storefront frame grid (sidelights + transom + center double-door frame)
-        addBox(entryW + 0.10, 0.09, 0.18, whiteTrimMat, entryCenterX, entryH + 0.04, frontZ + 0.04);
-        addBox(entryW + 0.10, 0.07, 0.18, whiteTrimMat, entryCenterX, 2.28, frontZ + 0.04); // Transom bar
-        addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX - 1.42, 0.95, frontZ + 0.04); // Left sidelight mid-rail
-        addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX + 1.42, 0.95, frontZ + 0.04); // Right sidelight mid-rail
+        addBox(entryW + 0.10, 0.09, 0.18, whiteTrimMat, entryCenterX, entryH + 0.04, frontZ + 0.04).userData.hideOnCutaway = true;
+        addBox(entryW + 0.10, 0.07, 0.18, whiteTrimMat, entryCenterX, 2.28, frontZ + 0.04).userData.hideOnCutaway = true; // Transom bar
+        addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX - 1.42, 0.95, frontZ + 0.04).userData.hideOnCutaway = true; // Left sidelight mid-rail
+        addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX + 1.42, 0.95, frontZ + 0.04).userData.hideOnCutaway = true; // Right sidelight mid-rail
         [-1.90, -0.95, 0.0, 0.95, 1.90].forEach((dx) => {
             // Skip center mullion inside door opening below transom except thin door stile
             const h = Math.abs(dx) < 0.05 ? entryH - 2.28 : entryH;
             const yPos = Math.abs(dx) < 0.05 ? 2.28 + h * 0.5 : entryH * 0.5 + 0.04;
-            addBox(0.07, h, 0.18, whiteTrimMat, entryCenterX + dx, yPos, frontZ + 0.04);
+            addBox(0.07, h, 0.18, whiteTrimMat, entryCenterX + dx, yPos, frontZ + 0.04).userData.hideOnCutaway = true;
         });
         // Closed Left Door Leaf + Open Right Glass Door Leaf (swung outward at ~55 deg as seen in Photo 1!)
-        addBox(0.90, 2.22, 0.05, whiteTrimMat, entryCenterX - 0.48, 1.15, frontZ + 0.02);
-        addBox(0.76, 2.02, 0.06, officeGlassMat, entryCenterX - 0.48, 1.15, frontZ + 0.02);
+        addBox(0.90, 2.22, 0.05, whiteTrimMat, entryCenterX - 0.48, 1.15, frontZ + 0.02).userData.hideOnCutaway = true;
+        addBox(0.76, 2.02, 0.06, officeGlassMat, entryCenterX - 0.48, 1.15, frontZ + 0.02).userData.hideOnCutaway = true;
         const openDoorGrp = new THREE.Group();
+        openDoorGrp.userData.hideOnCutaway = true;
         openDoorGrp.position.set(entryCenterX + 0.92, 1.15, frontZ + 0.05);
         openDoorGrp.rotation.y = -0.95; // Swung outward toward entry walk
         const doorFrameMesh = new THREE.Mesh(new THREE.BoxGeometry(0.92, 2.22, 0.05), whiteTrimMat);
@@ -161,13 +170,13 @@ export function buildBuilding316Structure(ctx) {
 
         // 5. Continuous Projecting White Overhang Canopy above Level 2 (y = 3.28m, wraps around SE brick bay & SW fire exit corner!)
         // NE Washington St Canopy (lx: -11.85m..+8.75m, projects 0.95m outward)
-        addBox(20.60, 0.22, 1.05, whiteTrimMat, -1.55, 3.28, frontZ + 0.48);
+        addBox(20.60, 0.22, 1.05, whiteTrimMat, -1.55, 3.28, frontZ + 0.48).userData.hideOnCutaway = true;
         // NW Douglas St Canopy (lz: -6.55m..+26.00m, projects 0.85m outward)
-        addBox(0.95, 0.22, 32.55, whiteTrimMat, douglasX + 0.44, 3.28, 9.72);
+        addBox(0.95, 0.22, 32.55, whiteTrimMat, douglasX + 0.44, 3.28, 9.72).userData.hideOnCutaway = true;
         // SW Fire Exit Recessed Corner Canopy Return (lx: +4.56m..+8.85m at lz = -6.05m, visible in be709037.jpg, 4aabc7f3.jpg & 3b6e29ad.jpg!)
-        addBox(4.30, 0.22, 0.92, whiteTrimMat, 6.71, 3.28, rearZ - 0.42);
+        addBox(4.30, 0.22, 0.92, whiteTrimMat, 6.71, 3.28, rearZ - 0.42).userData.hideOnCutaway = true;
         // SE Courtyard Canopy wrapping the front brick bay (lz: +17.90m..+26.00m, projects 0.75m outward over the brick wall, 5e51fcab.jpg!)
-        addBox(0.85, 0.22, 8.10, whiteTrimMat, courtX - 0.38, 3.28, 21.95);
+        addBox(0.85, 0.22, 8.10, whiteTrimMat, courtX - 0.38, 3.28, 21.95).userData.hideOnCutaway = true;
         // White-painted fascia band continuing along the SE courtyard wall behind the canopy (lz: -6.05m..+18.00m, y = 3.26m)
         addBox(0.18, 0.20, 24.05, whiteTrimMat, courtX - 0.06, 3.26, 5.98);
 
@@ -327,8 +336,8 @@ export function buildBuilding316Structure(ctx) {
             addBox(0.10, 0.06, 0.12, galvSteelMat, doorX + 0.06, 0.88, doorZ + 0.36);
 
             // Projecting White Rectangular Overhang Hood Canopy above the Fire Exit Door (lz = -8.08m..-6.05m, y = 2.42m, 3f533fc5.jpg & 3b6e29ad.jpg!)
-            addBox(0.46, 0.24, 2.05, whiteTrimMat, doorX + 0.22, 2.42, -7.06);
-            addBox(0.48, 0.04, 2.07, darkBronzeMat, doorX + 0.22, 2.54, -7.06);
+            addBox(0.46, 0.24, 2.05, whiteTrimMat, doorX + 0.22, 2.42, -7.06).userData.hideOnCutaway = true;
+            addBox(0.48, 0.04, 2.07, darkBronzeMat, doorX + 0.22, 2.54, -7.06).userData.hideOnCutaway = true;
 
             // Red Fire Alarm Horn/Strobe Box under canopy to the left (+Z) of the door + Card Reader & Vertical Conduit (3f533fc5.jpg & 3b6e29ad.jpg!)
             const fireRedMat = new THREE.MeshStandardMaterial({ color: '#c82828', roughness: 0.4, metalness: 0.15 });
@@ -345,68 +354,118 @@ export function buildBuilding316Structure(ctx) {
         addBox(0.10, 0.10, 0.18, darkBronzeMat, 3.46, 0.42, -10.44);
         addBox(0.10, 0.10, 0.18, galvSteelMat, 3.70, 0.40, -10.44);
 
-        // 3. Level 4 Copper/Terracotta Horizontal Louvered Screen Wall & SE Stucco Wall Bays (y = 9.88m..12.62m)
+        // 3. Level 4 Perimeter Brown/Terracotta Horizontal-Slat Rooftop Fence & SE Stucco Wall Bays (y = 9.94m..12.68m)
+        // Thin perimeter-only slatted screen fence enclosing the open 4th-level gray roof court (zero brown roof slab fill!)
         const neLouverH = 2.74;
         const neLouverY = 9.88 + neLouverH * 0.5;
 
-        // (a) NE Washington St: 5 framed copper louver bays across lx = -7.34m..+7.91m (total width = 15.25m)
-        const neLouverW = 15.25;
-        addBox(neLouverW, neLouverH, 0.28, copperLouverMat, 0.28, neLouverY, frontZ - 0.12);
-        for (let i = 0; i <= 5; i++) {
-            const px = -7.34 + i * (neLouverW / 5);
-            addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, px, neLouverY, frontZ - 0.10);
-        }
+        const addRooftopFenceRun = (axis, linePos, startCoord, endCoord, numBays, inwardSign, hasOpenCourtBack = true) => {
+            const isXRun = axis === 'x';
+            const totalLen = Math.abs(endCoord - startCoord);
+            const minCoord = Math.min(startCoord, endCoord);
+            const centerCoord = 0.5 * (startCoord + endCoord);
+            const bayLen = totalLen / numBays;
 
-        // (b) NW Douglas St: 10 framed copper louver bays along lz = -6.05m..+25.40m (total length = 31.45m)
-        const nwLouverL = 31.45;
-        addBox(0.28, neLouverH, nwLouverL, copperLouverMat, douglasX - 0.12, neLouverY, 9.68);
-        for (let i = 0; i <= 10; i++) {
-            const pz = 25.40 - i * (nwLouverL / 10);
-            addBox(0.34, neLouverH + 0.08, 0.11, copperFrameMat, douglasX - 0.10, neLouverY, pz);
-        }
+            const placeFenceBox = (lenAlong, h, thickCross, mat, alongPos, yPos, crossOffset = 0, cast = true) => {
+                if (isXRun) {
+                    return addBox(lenAlong, h, thickCross, mat, alongPos, yPos, linePos + crossOffset, cast);
+                }
+                return addBox(thickCross, h, lenAlong, mat, linePos + crossOffset, yPos, alongPos, cast);
+            };
+
+            // Low white perimeter roof curb along fence line only (y = 9.88m..10.02m)
+            placeFenceBox(totalLen + 0.14, 0.14, 0.24, whiteTrimMat, centerCoord, 9.95, 0);
+
+            // Bottom & top horizontal brown fence rails (leaving a 0.07m open air gap above the roof curb so fence posts stand on legs)
+            placeFenceBox(totalLen, 0.07, 0.12, copperFrameMat, centerCoord, 10.12, 0);
+            placeFenceBox(totalLen + 0.16, 0.08, 0.16, copperFrameMat, centerCoord, 12.60, 0);
+
+            // 4 physical 3D horizontal intermediate louver/rail ribs across both faces of the fence
+            [10.62, 11.12, 11.62, 12.12].forEach((ribY) => {
+                placeFenceBox(totalLen, 0.042, 0.11, copperFrameMat, centerCoord, ribY, 0);
+            });
+
+            // Thin recessed horizontal-slat fence bays between the vertical brown steel posts
+            for (let b = 0; b < numBays; b++) {
+                const bayCenter = minCoord + (b + 0.5) * bayLen;
+                placeFenceBox(Math.max(0.2, bayLen - 0.12), 2.41, 0.07, copperLouverMat, bayCenter, 11.355, 0);
+            }
+
+            // Inner steel structural back-rails on open roof-court runs
+            if (hasOpenCourtBack) {
+                [10.76, 11.96].forEach((girtY) => {
+                    placeFenceBox(totalLen, 0.05, 0.05, darkBronzeMat, centerCoord, girtY, inwardSign * 0.09);
+                });
+            }
+
+            // Square vertical brown steel fence posts + baseplates + interior diagonal roof-deck wind-brace struts
+            const strutDy = 1.86;
+            const strutRun = 1.00;
+            const strutLen = Math.hypot(strutDy, strutRun);
+            for (let i = 0; i <= numBays; i++) {
+                const pCoord = minCoord + i * bayLen;
+                placeFenceBox(0.20, 0.04, 0.22, darkBronzeMat, pCoord, 9.96, 0, false);
+                placeFenceBox(0.12, 2.74, 0.16, copperFrameMat, pCoord, 11.31, 0);
+
+                const shouldAddStrut = hasOpenCourtBack && (
+                    (numBays > 1 && i > 0 && i < numBays) ||
+                    (numBays === 1 && i === 1)
+                );
+                if (shouldAddStrut) {
+                    const topCross = linePos + inwardSign * 0.08;
+                    const botCross = topCross + inwardSign * strutRun;
+                    const midCross = 0.5 * (topCross + botCross);
+                    const midY = 9.96 + strutDy * 0.5;
+                    const strutMesh = new THREE.Mesh(
+                        new THREE.BoxGeometry(0.055, strutLen, 0.055),
+                        galvSteelMat
+                    );
+                    if (isXRun) {
+                        strutMesh.position.set(pCoord, midY, midCross);
+                        strutMesh.rotation.x = Math.atan2(-inwardSign * strutRun, strutDy);
+                    } else {
+                        strutMesh.position.set(midCross, midY, pCoord);
+                        strutMesh.rotation.z = Math.atan2(inwardSign * strutRun, strutDy);
+                    }
+                    strutMesh.castShadow = true;
+                    strutMesh.receiveShadow = true;
+                    strutMesh.userData = { isSelectableBuilding: true, building };
+                    arch.add(strutMesh);
+                    placeFenceBox(0.20, 0.04, 0.20, darkBronzeMat, pCoord, 9.96, (botCross - linePos), false);
+                }
+            }
+        };
+
+        // (a) NE Washington St Perimeter Fence: 5 bays across lx = -7.34m..+7.91m enclosing open front roof court
+        addRooftopFenceRun('x', frontZ - 0.10, -7.34, 7.91, 5, -1, true);
+
+        // (b) NW Douglas St Perimeter Fence: 10 bays along lz = -6.05m..+25.40m enclosing open Douglas roof court
+        addRooftopFenceRun('z', douglasX - 0.10, -6.05, 25.40, 10, -1, true);
 
         // (c) SE Courtyard Upper Wall (lx = -11.10m, matched directly to 5e51fcab.jpg!):
         //   - Bay 2 (lz = +13.60m..+18.20m): Solid gray-tan stucco upper wall panel (length = 4.60m)
         addBox(0.28, neLouverH, 4.60, grayCoreStuccoMat, courtX + 0.12, neLouverY, 15.90);
         addBox(0.36, 0.16, 4.65, whiteTrimMat, courtX + 0.10, 12.70, 15.90);
-        //   - Bays 3 & 4 (lz = +4.40m..+13.60m): 2 framed copper/terracotta horizontal louver bays above the 10-pane clerestory ribbon window (length = 9.20m, 5e51fcab.jpg!)
-        addBox(0.28, neLouverH, 9.20, copperLouverMat, courtX + 0.12, neLouverY, 9.00);
-        [13.60, 9.00, 4.40].forEach((pz) => {
-            addBox(0.34, neLouverH + 0.08, 0.11, copperFrameMat, courtX + 0.10, neLouverY, pz);
-        });
+        //   - Bays 3 & 4 (lz = +4.40m..+13.60m): 2 framed brown horizontal-slat fence bays above the 10-pane clerestory window
+        addRooftopFenceRun('z', courtX + 0.10, 4.40, 13.60, 2, 1, false);
         //   - Bay 5 (lz = -6.05m..+4.40m): Solid gray-tan stucco rear upper wall (y = 8.40m..12.68m, length = 10.45m) + dark square exhaust louver at upper rear corner (lz = -4.2m, 5e51fcab.jpg!)
         addBox(0.28, 4.28, 10.45, grayCoreStuccoMat, courtX + 0.12, 10.54, -0.825);
         addBox(0.36, 0.16, 10.50, whiteTrimMat, courtX + 0.10, 12.70, -0.825);
-        addBox(0.32, 1.35, 1.65, darkBronzeMat, courtX + 0.08, 11.15, -4.15); // Dark square louver at upper left of 316 in 5e51fcab.jpg!
+        addBox(0.32, 1.35, 1.65, darkBronzeMat, courtX + 0.08, 11.15, -4.15);
 
-        // (d) SW Rear Walls & Rear Projecting Bay (lz = -6.05m and lx = -3.66m..+4.56m, lz = -10.29m..-6.05m)
-        // SW East segment (lx = -11.10m..-3.66m at lz = -6.05m, width = 7.44m)
-        addBox(7.44, neLouverH, 0.28, copperLouverMat, -7.38, neLouverY, rearZ + 0.12);
-        for (let i = 0; i <= 3; i++) {
-            addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, -11.10 + i * (7.44 / 3), neLouverY, rearZ + 0.10);
-        }
-        // SW West segment (lx = +4.56m..+7.91m at lz = -6.05m, width = 3.35m)
-        addBox(3.35, neLouverH, 0.28, copperLouverMat, 6.235, neLouverY, rearZ + 0.12);
-        addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, 4.56, neLouverY, rearZ + 0.10);
-        addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, 7.91, neLouverY, rearZ + 0.10);
-
-        // 4. Recessed 4th-Level Roof Court Deck & Inner Cream Parapet Backing Walls (y = 9.80m..11.20m)
-        // Inner white/cream parapet wall backing the NW, SE, and SW screen walls (visible on roof court interior in Photo 3)
-        addBox(0.24, 1.40, 31.2, whiteTrimMat, douglasX - 0.36, 10.50, 9.72);
-        addBox(0.24, 1.40, 24.0, whiteTrimMat, courtX + 0.36, 10.50, 6.10);
-        addBox(7.20, 1.40, 0.24, whiteTrimMat, -7.38, 10.50, rearZ + 0.36);
-        addBox(3.15, 1.40, 0.24, whiteTrimMat, 6.23, 10.50, rearZ + 0.36);
-        addBox(8.00, 1.40, 0.24, whiteTrimMat, 0.45, 10.50, -10.29 + 0.36);
-        addBox(0.24, 1.40, 4.10, whiteTrimMat, -3.66 + 0.36, 10.50, -8.17);
-        addBox(0.24, 1.40, 4.10, whiteTrimMat, 4.56 - 0.36, 10.50, -8.17);
+        // (d) SW Rear Perimeter Fence Segments (lz = -6.05m on east & west sides of the SW Stairwell Core Tower, matched to f138a868.jpg & 5a70c90e.jpg!)
+        // SW East segment: 2 framed brown fence bays across lx = -11.10m..-3.66m in front of Rear Wing Penthouse
+        addRooftopFenceRun('x', rearZ + 0.10, -11.10, -3.66, 2, 1, false);
+        // SW West segment: open rooftop perimeter fence bay across lx = +4.56m..+7.91m
+        addRooftopFenceRun('x', rearZ + 0.10, 4.56, 7.91, 1, 1, true);
 
         // =========================================================================
         // D. TALL ROOFTOP MECHANICAL & ELEVATOR PENTHOUSE + CHILLER & PIPING (Photos 2, 3, 4, 5)
         // =========================================================================
-        // L-shaped Penthouse mass on SE/SW portion of the 4th-level roof court (y = 9.80m..15.25m):
-        //   East Wing (front-left in Photos 2–4): lx = -10.8m..-3.2m, lz = +6.0m..+18.4m
+        // L-shaped Penthouse mass on SE/SW portion of the 4th-level roof court (y = 9.84m..15.25m):
+        //   East Wing (front-left in Photos 2–4): lx = -10.8m..-3.2m, lz = +10.5m..+18.4m
         //   Rear Wing (back-right in Photos 2–4): lx = -10.8m..+2.8m, lz = -5.6m..+10.5m
-        const pentBaseY = 9.80;
+        const pentBaseY = 9.84;
         const pentWallH = 3.65; // y = 9.80m..13.45m smooth beige/gray penthouse wall
         const pentCrownH = 1.75; // y = 13.45m..15.20m silver horizontal louvered crown
 

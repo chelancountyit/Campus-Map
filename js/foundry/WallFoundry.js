@@ -553,12 +553,154 @@ export class WallFoundry {
         return group;
     }
 
+    _getContextScaleModelMaterial(kind = 'residential', baseHex = '#d5d0c7', accentHex = '#e6e1d7') {
+        const key = `ctx_arch_${kind}_${baseHex}`;
+        if (this.materialCache.has(key)) {
+            return this.materialCache.get(key);
+        }
+
+        const size = 256;
+        const diffCanvas = document.createElement('canvas');
+        const bumpCanvas = document.createElement('canvas');
+        diffCanvas.width = bumpCanvas.width = size;
+        diffCanvas.height = bumpCanvas.height = size;
+
+        const dCtx = diffCanvas.getContext('2d');
+        const bCtx = bumpCanvas.getContext('2d');
+
+        dCtx.fillStyle = baseHex;
+        dCtx.fillRect(0, 0, size, size);
+        bCtx.fillStyle = '#888888';
+        bCtx.fillRect(0, 0, size, size);
+
+        const baseCol = new THREE.Color(baseHex);
+        const isCivic = kind === 'civic';
+        const isCommercial = kind === 'commercial';
+
+        // Subtle running-bond / architectural panel relief
+        const rows = isCivic ? 24 : (isCommercial ? 18 : 28);
+        const rowH = size / rows;
+        for (let r = 0; r < rows; r++) {
+            const y = r * rowH;
+            const shade = ((r % 3) - 1) * 0.015;
+            const rc = baseCol.clone().offsetHSL(0, 0, shade);
+            dCtx.fillStyle = `#${rc.getHexString()}`;
+            dCtx.fillRect(0, y, size, rowH - 1);
+
+            bCtx.fillStyle = '#929292';
+            bCtx.fillRect(0, y + 1, size, Math.max(1, rowH - 2));
+            bCtx.fillStyle = '#5c5c5c';
+            bCtx.fillRect(0, y, size, 1);
+        }
+
+        // Clean architectural story spandrel band at bottom/top of each story tile
+        const spandrelH = isCivic ? 26 : 18;
+        dCtx.fillStyle = accentHex;
+        dCtx.fillRect(0, 0, size, spandrelH);
+        dCtx.fillRect(0, size - 10, size, 10);
+        bCtx.fillStyle = '#c8c8c8';
+        dCtx.strokeStyle = 'rgba(60, 56, 50, 0.22)';
+        dCtx.lineWidth = 2;
+        dCtx.strokeRect(0, 0, size, spandrelH);
+        bCtx.fillRect(0, 0, size, spandrelH);
+
+        // Subtle architectural fenestration bays (clean muted slate-glass recesses)
+        const bays = isCivic ? 5 : (isCommercial ? 4 : 3);
+        const bayW = size / bays;
+        for (let i = 0; i < bays; i++) {
+            const cx = (i + 0.5) * bayW;
+            const wW = bayW * (isCivic ? 0.56 : (isCommercial ? 0.58 : 0.40));
+            const wH = size * (isCivic ? 0.52 : (isCommercial ? 0.48 : 0.38));
+            const wx = cx - wW * 0.5;
+            const wy = spandrelH + (size - spandrelH - 12 - wH) * 0.5;
+
+            // Sill & lintel trim
+            dCtx.fillStyle = accentHex;
+            dCtx.fillRect(wx - 3, wy - 5, wW + 6, 5);
+            dCtx.fillRect(wx - 4, wy + wH, wW + 8, 6);
+            bCtx.fillStyle = '#dcdcdc';
+            bCtx.fillRect(wx - 4, wy + wH, wW + 8, 6);
+
+            // Muted architectural window recess
+            dCtx.fillStyle = isCivic ? '#35495e' : (isCommercial ? '#3d4f60' : '#4f5d6b');
+            dCtx.fillRect(wx, wy, wW, wH);
+            bCtx.fillStyle = '#303030';
+            bCtx.fillRect(wx, wy, wW, wH);
+
+            // Clean mullion frame
+            dCtx.strokeStyle = accentHex;
+            dCtx.lineWidth = 3;
+            dCtx.strokeRect(wx + 1, wy + 1, wW - 2, wH - 2);
+            dCtx.beginPath();
+            dCtx.moveTo(wx + wW * 0.5, wy);
+            dCtx.lineTo(wx + wW * 0.5, wy + wH);
+            dCtx.stroke();
+        }
+
+        const makeTex = (c, srgb) => {
+            const t = new THREE.CanvasTexture(c);
+            t.wrapS = THREE.RepeatWrapping;
+            t.wrapT = THREE.RepeatWrapping;
+            t.anisotropy = 8;
+            if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+            return t;
+        };
+
+        const mat = new THREE.MeshStandardMaterial({
+            name: `ContextArch_${kind}`,
+            map: makeTex(diffCanvas, true),
+            bumpMap: makeTex(bumpCanvas, false),
+            bumpScale: 0.08,
+            roughness: 0.84,
+            metalness: 0.06
+        });
+        this.materialCache.set(key, mat);
+        return mat;
+    }
+
     buildContextBuildingsBatch(contextBuildings, getTerrainHeightFn = () => 0) {
         const group = new THREE.Group();
         group.name = 'ContextBuildingsGroup';
 
+        const civicGeos = [];
         const commGeos = [];
         const resGeos = [];
+        const roofGeos = [];
+        const trimGeos = [];
+        const plinthGeos = [];
+
+        const stripNonPositionNormalUv = (geo) => {
+            let g = geo.index ? geo.toNonIndexed() : geo;
+            if (!g.attributes.normal) g.computeVertexNormals();
+            if (!g.attributes.uv) {
+                const count = g.attributes.position.count;
+                g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(count * 2), 2));
+            }
+            for (const attrName of Object.keys(g.attributes)) {
+                if (attrName !== 'position' && attrName !== 'normal' && attrName !== 'uv') {
+                    g.deleteAttribute(attrName);
+                }
+            }
+            g.clearGroups();
+            return g;
+        };
+
+        const addPerimeterParapetRing = (pts, worldBaseY, parapetH = 0.38, parapetW = 0.34) => {
+            for (let i = 0; i < pts.length; i++) {
+                const [x0, z0] = pts[i];
+                const [x1, z1] = pts[(i + 1) % pts.length];
+                const segLen = Math.hypot(x1 - x0, z1 - z0);
+                if (segLen < 0.25) continue;
+                const mx = (x0 + x1) * 0.5;
+                const mz = (z0 + z1) * 0.5;
+                const ang = Math.atan2(x1 - x0, z1 - z0);
+
+                const beam = new THREE.BoxGeometry(parapetW, parapetH, segLen + parapetW * 0.85);
+                beam.rotateY(ang);
+                beam.translate(mx, worldBaseY + parapetH * 0.5, mz);
+                trimGeos.push(stripNonPositionNormalUv(beam));
+            }
+        };
 
         contextBuildings.forEach((building) => {
             const pts = building.footprint;
@@ -567,7 +709,19 @@ export class WallFoundry {
             const cx = building.center[0];
             const cz = building.center[1];
             const height = building.height || 6.5;
-            const ty = getTerrainHeightFn(cx, cz);
+            const floors = building.floors || Math.max(1, Math.round(height / 3.8));
+
+            // Sample minimum & center terrain height so hillside foundations never float
+            let minCornerY = getTerrainHeightFn(cx, cz);
+            let maxCornerY = minCornerY;
+            for (const [px, pz] of pts) {
+                const py = getTerrainHeightFn(px, pz);
+                if (py < minCornerY) minCornerY = py;
+                if (py > maxCornerY) maxCornerY = py;
+            }
+            const ty = (minCornerY + maxCornerY) * 0.5;
+            const plinthTop = 0.38;
+            const plinthDepthBelow = Math.max(3.6, (ty - minCornerY) + 1.8);
 
             const shape = new THREE.Shape();
             pts.forEach((pt, idx) => {
@@ -578,35 +732,128 @@ export class WallFoundry {
             });
             shape.closePath();
 
-            const geo = new THREE.ExtrudeGeometry(shape, {
-                depth: height + 3.0,
+            // 1. Stepped Concrete Foundation Water-Table Plinth (extends below hillside grade)
+            const plinthGeo = new THREE.ExtrudeGeometry(shape, {
+                depth: plinthDepthBelow + plinthTop,
+                bevelEnabled: true,
+                bevelThickness: 0.06,
+                bevelSize: 0.12,
+                bevelSegments: 1
+            });
+            plinthGeo.rotateX(-Math.PI / 2);
+            plinthGeo.translate(cx, ty - plinthDepthBelow, cz);
+            plinthGeos.push(stripNonPositionNormalUv(plinthGeo));
+
+            // 2. Main Architectural Wall Extrusion with Story-Aligned Facade UVs
+            const wallH = Math.max(2.2, height - plinthTop - 0.30);
+            const bodyGeo = new THREE.ExtrudeGeometry(shape, {
+                depth: wallH,
                 bevelEnabled: false
             });
-            geo.rotateX(-Math.PI / 2);
-            geo.translate(cx, ty - 3.0, cz);
+            bodyGeo.rotateX(-Math.PI / 2);
+            this._applyArchitecturalUVs(bodyGeo, wallH, floors);
+            bodyGeo.translate(cx, ty + plinthTop, cz);
 
+            const isCivic =
+                building.type === 'civic' ||
+                building.id === 'wenatchee-library' ||
+                building.id === 'wsu-extension-north';
             const isCommercial = building.type === 'commercial' || building.type === 'retail';
-            if (isCommercial) commGeos.push(geo);
-            else resGeos.push(geo);
+
+            const cleanBody = stripNonPositionNormalUv(bodyGeo);
+            if (isCivic) civicGeos.push(cleanBody);
+            else if (isCommercial) commGeos.push(cleanBody);
+            else resGeos.push(cleanBody);
+
+            // 3. Recessed Dark EPDM Membrane Roof Cap (sits 0.34m below top of perimeter parapet)
+            const roofDeckY = ty + plinthTop + wallH + 0.02;
+            const roofCapGeo = new THREE.ShapeGeometry(shape);
+            roofCapGeo.rotateX(-Math.PI / 2);
+            roofCapGeo.translate(cx, roofDeckY, cz);
+            roofGeos.push(stripNonPositionNormalUv(roofCapGeo));
+
+            // 4. Hollow Perimeter Parapet Coping Wall + Overhanging Cornice Rim
+            addPerimeterParapetRing(pts, roofDeckY - 0.04, isCivic ? 0.52 : 0.38, isCivic ? 0.42 : 0.32);
+
+            // 5. Mid-Story Belt Course & Civic Architectural Penthouse Massing
+            if (floors >= 2 && (isCivic || isCommercial)) {
+                const beltY = ty + plinthTop + (wallH / floors);
+                addPerimeterParapetRing(pts, beltY - 0.10, 0.20, 0.24);
+            }
+
+            if (isCivic) {
+                // Clean architectural mechanical screen enclosure on Wenatchee Public Library & WSU Extension
+                const isLibrary = building.id === 'wenatchee-library';
+                const pentW = isLibrary ? 8.6 : 5.8;
+                const pentD = isLibrary ? 6.2 : 4.4;
+                const pentH = isLibrary ? 2.1 : 1.6;
+                const pentGeo = new THREE.BoxGeometry(pentW, pentH, pentD);
+                pentGeo.translate(cx, roofDeckY + pentH * 0.5, cz);
+                trimGeos.push(stripNonPositionNormalUv(pentGeo));
+
+                const pentCapGeo = new THREE.BoxGeometry(pentW + 0.36, 0.18, pentD + 0.36);
+                pentCapGeo.translate(cx, roofDeckY + pentH + 0.08, cz);
+                plinthGeos.push(stripNonPositionNormalUv(pentCapGeo));
+            }
         });
 
-        if (commGeos.length > 0) {
-            const commMesh = new THREE.Mesh(
-                mergeGeometries(commGeos, false),
-                new THREE.MeshLambertMaterial({ color: '#c8beb2' })
-            );
-            commMesh.receiveShadow = true;
-            group.add(commMesh);
-        }
+        const addBatchMesh = (geos, mat, name, castShadow = true) => {
+            if (geos.length === 0) return;
+            const merged = mergeGeometries(geos, false);
+            if (!merged) return;
+            const mesh = new THREE.Mesh(merged, mat);
+            mesh.name = name;
+            mesh.castShadow = castShadow;
+            mesh.receiveShadow = true;
+            group.add(mesh);
+        };
 
-        if (resGeos.length > 0) {
-            const resMesh = new THREE.Mesh(
-                mergeGeometries(resGeos, false),
-                new THREE.MeshLambertMaterial({ color: '#d6d1c9' })
-            );
-            resMesh.receiveShadow = true;
-            group.add(resMesh);
-        }
+        addBatchMesh(
+            civicGeos,
+            this._getContextScaleModelMaterial('civic', '#b56c52', '#e4dccf'),
+            'ContextCivicBuildings'
+        );
+        addBatchMesh(
+            commGeos,
+            this._getContextScaleModelMaterial('commercial', '#c6baa9', '#e3ddd2'),
+            'ContextCommercialBuildings'
+        );
+        addBatchMesh(
+            resGeos,
+            this._getContextScaleModelMaterial('residential', '#d6d1c8', '#eae6de'),
+            'ContextResidentialBuildings'
+        );
+        addBatchMesh(
+            roofGeos,
+            new THREE.MeshStandardMaterial({
+                name: 'ContextMembraneRoof',
+                color: '#39404a',
+                roughness: 0.90,
+                metalness: 0.08
+            }),
+            'ContextRecessedRoofs',
+            false
+        );
+        addBatchMesh(
+            trimGeos,
+            new THREE.MeshStandardMaterial({
+                name: 'ContextParapetCoping',
+                color: '#e5e0d6',
+                roughness: 0.76,
+                metalness: 0.05
+            }),
+            'ContextParapetCopings'
+        );
+        addBatchMesh(
+            plinthGeos,
+            new THREE.MeshStandardMaterial({
+                name: 'ContextFoundationPlinth',
+                color: '#bcb6ac',
+                roughness: 0.86,
+                metalness: 0.04
+            }),
+            'ContextFoundationPlinths'
+        );
 
         return group;
     }

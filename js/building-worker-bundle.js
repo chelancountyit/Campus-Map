@@ -15503,6 +15503,114 @@
       return new _PlaneGeometry(data.width, data.height, data.widthSegments, data.heightSegments);
     }
   };
+  var ShapeGeometry = class _ShapeGeometry extends BufferGeometry {
+    /**
+     * Constructs a new shape geometry.
+     *
+     * @param {Shape|Array<Shape>} [shapes] - A shape or an array of shapes.
+     * @param {number} [curveSegments=12] - Number of segments per shape.
+     */
+    constructor(shapes = new Shape([new Vector2(0, 0.5), new Vector2(-0.5, -0.5), new Vector2(0.5, -0.5)]), curveSegments = 12) {
+      super();
+      this.type = "ShapeGeometry";
+      this.parameters = {
+        shapes,
+        curveSegments
+      };
+      const indices = [];
+      const vertices = [];
+      const normals = [];
+      const uvs = [];
+      let groupStart = 0;
+      let groupCount = 0;
+      if (Array.isArray(shapes) === false) {
+        addShape(shapes);
+      } else {
+        for (let i = 0; i < shapes.length; i++) {
+          addShape(shapes[i]);
+          this.addGroup(groupStart, groupCount, i);
+          groupStart += groupCount;
+          groupCount = 0;
+        }
+      }
+      this.setIndex(indices);
+      this.setAttribute("position", new Float32BufferAttribute(vertices, 3));
+      this.setAttribute("normal", new Float32BufferAttribute(normals, 3));
+      this.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
+      function addShape(shape) {
+        const indexOffset = vertices.length / 3;
+        const points = shape.extractPoints(curveSegments);
+        let shapeVertices = points.shape;
+        const shapeHoles = points.holes;
+        if (ShapeUtils.isClockWise(shapeVertices) === false) {
+          shapeVertices = shapeVertices.reverse();
+        }
+        for (let i = 0, l = shapeHoles.length; i < l; i++) {
+          const shapeHole = shapeHoles[i];
+          if (ShapeUtils.isClockWise(shapeHole) === true) {
+            shapeHoles[i] = shapeHole.reverse();
+          }
+        }
+        const faces = ShapeUtils.triangulateShape(shapeVertices, shapeHoles);
+        for (let i = 0, l = shapeHoles.length; i < l; i++) {
+          const shapeHole = shapeHoles[i];
+          shapeVertices = shapeVertices.concat(shapeHole);
+        }
+        for (let i = 0, l = shapeVertices.length; i < l; i++) {
+          const vertex = shapeVertices[i];
+          vertices.push(vertex.x, vertex.y, 0);
+          normals.push(0, 0, 1);
+          uvs.push(vertex.x, vertex.y);
+        }
+        for (let i = 0, l = faces.length; i < l; i++) {
+          const face = faces[i];
+          const a = face[0] + indexOffset;
+          const b = face[1] + indexOffset;
+          const c = face[2] + indexOffset;
+          indices.push(a, b, c);
+          groupCount += 3;
+        }
+      }
+    }
+    copy(source) {
+      super.copy(source);
+      this.parameters = Object.assign({}, source.parameters);
+      return this;
+    }
+    toJSON() {
+      const data = super.toJSON();
+      const shapes = this.parameters.shapes;
+      return toJSON(shapes, data);
+    }
+    /**
+     * Factory method for creating an instance of this class from the given
+     * JSON object.
+     *
+     * @param {Object} data - A JSON object representing the serialized geometry.
+     * @param {Array<Shape>} shapes - An array of shapes.
+     * @return {ShapeGeometry} A new instance.
+     */
+    static fromJSON(data, shapes) {
+      const geometryShapes = [];
+      for (let j = 0, jl = data.shapes.length; j < jl; j++) {
+        const shape = shapes[data.shapes[j]];
+        geometryShapes.push(shape);
+      }
+      return new _ShapeGeometry(geometryShapes, data.curveSegments);
+    }
+  };
+  function toJSON(shapes, data) {
+    data.shapes = [];
+    if (Array.isArray(shapes)) {
+      for (let i = 0, l = shapes.length; i < l; i++) {
+        const shape = shapes[i];
+        data.shapes.push(shape.uuid);
+      }
+    } else {
+      data.shapes.push(shapes.uuid);
+    }
+    return data;
+  }
   var SphereGeometry = class _SphereGeometry extends BufferGeometry {
     /**
      * Constructs a new sphere geometry.
@@ -19078,11 +19186,21 @@
     let rawMeshCount = 0;
     bldgGroup.traverse((obj) => {
       if (obj === bldgGroup || !obj.visible) return;
+      let hideOnCutaway = false;
+      let ancestor = obj;
+      while (ancestor && ancestor !== bldgGroup) {
+        if (ancestor.userData?.hideOnCutaway) {
+          hideOnCutaway = true;
+          break;
+        }
+        ancestor = ancestor.parent;
+      }
       if (obj.isLight) {
         const worldPos = new Vector3().setFromMatrixPosition(obj.matrixWorld);
         const clonedLight = obj.clone();
         clonedLight.position.copy(worldPos);
         clonedLight.userData = { ...obj.userData || {} };
+        if (hideOnCutaway) clonedLight.userData.hideOnCutaway = true;
         standaloneNodes.push(clonedLight);
         return;
       }
@@ -19093,12 +19211,13 @@
         if (!posAttr2 || posAttr2.count === 0) return;
         const attrKey2 = Object.keys(geo2.attributes).sort().join(",");
         const isIndexed2 = Boolean(geo2.index);
-        const bucketKey2 = `${obj.material.uuid}|${obj.renderOrder || 0}|${isIndexed2 ? 1 : 0}|${attrKey2}`;
+        const bucketKey2 = `${obj.material.uuid}|${obj.renderOrder || 0}|${isIndexed2 ? 1 : 0}|${hideOnCutaway ? 1 : 0}|${attrKey2}`;
         let bucket2 = lineBuckets.get(bucketKey2);
         if (!bucket2) {
           bucket2 = {
             material: obj.material,
             renderOrder: obj.renderOrder || 0,
+            hideOnCutaway,
             geos: []
           };
           lineBuckets.set(bucketKey2, bucket2);
@@ -19128,6 +19247,7 @@
         clonedMesh.matrix.copy(obj.matrixWorld);
         clonedMesh.matrix.decompose(clonedMesh.position, clonedMesh.quaternion, clonedMesh.scale);
         clonedMesh.userData = { ...obj.userData || {} };
+        if (hideOnCutaway) clonedMesh.userData.hideOnCutaway = true;
         if (clonedMesh.userData.isSelectableBuilding && building) {
           clonedMesh.userData.building = building;
         }
@@ -19145,6 +19265,7 @@
         obj.renderOrder || 0,
         isSelectable ? 1 : 0,
         floorLayer,
+        hideOnCutaway ? 1 : 0,
         isIndexed ? 1 : 0,
         attrKey
       ].join("|");
@@ -19157,6 +19278,7 @@
           renderOrder: obj.renderOrder || 0,
           isSelectable,
           floorLayer,
+          hideOnCutaway,
           geos: [],
           sourceRefs: []
         };
@@ -19190,11 +19312,14 @@
         batchedMesh.castShadow = bucket.castShadow;
         batchedMesh.receiveShadow = bucket.receiveShadow;
         batchedMesh.renderOrder = bucket.renderOrder;
-        if (bucket.isSelectable) {
+        if (bucket.isSelectable || bucket.hideOnCutaway) {
           batchedMesh.userData = {
-            isSelectableBuilding: true,
-            building: building || bldgGroup.userData?.building,
-            ...bucket.floorLayer ? { floorLayer: bucket.floorLayer } : {}
+            ...bucket.isSelectable ? {
+              isSelectableBuilding: true,
+              building: building || bldgGroup.userData?.building,
+              ...bucket.floorLayer ? { floorLayer: bucket.floorLayer } : {}
+            } : {},
+            ...bucket.hideOnCutaway ? { hideOnCutaway: true } : {}
           };
         }
         bldgGroup.add(batchedMesh);
@@ -19205,10 +19330,13 @@
           m.castShadow = bucket.castShadow;
           m.receiveShadow = bucket.receiveShadow;
           m.renderOrder = bucket.renderOrder;
-          if (bucket.isSelectable) {
+          if (bucket.isSelectable || bucket.hideOnCutaway) {
             m.userData = {
-              isSelectableBuilding: true,
-              building: building || bldgGroup.userData?.building
+              ...bucket.isSelectable ? {
+                isSelectableBuilding: true,
+                building: building || bldgGroup.userData?.building
+              } : {},
+              ...bucket.hideOnCutaway ? { hideOnCutaway: true } : {}
             };
           }
           bldgGroup.add(m);
@@ -19232,6 +19360,9 @@
       if (mergedLineGeo) {
         const segs = new LineSegments(mergedLineGeo, lBucket.material);
         segs.renderOrder = lBucket.renderOrder;
+        if (lBucket.hideOnCutaway) {
+          segs.userData = { hideOnCutaway: true };
+        }
         bldgGroup.add(segs);
         optimizedMeshCount++;
       }
@@ -19388,6 +19519,7 @@
           userData: {
             isSelectableBuilding: Boolean(child.userData?.isSelectableBuilding),
             ...child.userData?.floorLayer !== void 0 ? { floorLayer: child.userData.floorLayer } : {},
+            ...child.userData?.hideOnCutaway ? { hideOnCutaway: true } : {},
             ...child.userData?.isAnimatedFlag ? {
               isAnimatedFlag: true,
               flagWidth: child.userData.flagWidth,
@@ -20170,17 +20302,20 @@
       addBox(0.05, 0.88, 0.05, darkMetalMat, cxPos, deckY + 0.44, colZ - 0.58);
       addSaggingChain(cxPos, wallZ + 0.35, cxPos, colZ - 0.58, deckY + 0.82, 0.12);
     });
+    const porticoCoverGrp = new Group();
+    porticoCoverGrp.userData.hideOnCutaway = true;
+    arch.add(porticoCoverGrp);
     const entabW = portW + 0.36;
     const entabH = 1.12;
     const entabD = portDepth + 0.26;
     const entabY = 8.08;
-    addBox(portW, 0.08, portDepth, trimMat, portX, entabY - entabH * 0.5 + 0.02, wallZ + portDepth * 0.5);
-    addBox(portW - 1.55, 0.06, portDepth - 1.35, plinthConcreteMat, portX, entabY - entabH * 0.5 + 0.07, wallZ + portDepth * 0.5);
+    addBox(portW, 0.08, portDepth, trimMat, portX, entabY - entabH * 0.5 + 0.02, wallZ + portDepth * 0.5, porticoCoverGrp);
+    addBox(portW - 1.55, 0.06, portDepth - 1.35, plinthConcreteMat, portX, entabY - entabH * 0.5 + 0.07, wallZ + portDepth * 0.5, porticoCoverGrp);
     const archBaseY = entabY - entabH * 0.5;
-    addBox(entabW + 0.16, 0.11, entabD + 0.16, trimMat, portX, archBaseY + 0.055, wallZ + entabD * 0.5);
-    addBox(entabW + 0.24, 0.11, entabD + 0.24, trimMat, portX, archBaseY + 0.165, wallZ + entabD * 0.5);
-    addBox(entabW + 0.34, 0.09, entabD + 0.32, trimMat, portX, archBaseY + 0.265, wallZ + entabD * 0.5);
-    addBox(entabW, 0.62, entabD, creamBrickSolidMat, portX, entabY + 0.02, wallZ + entabD * 0.5);
+    addBox(entabW + 0.16, 0.11, entabD + 0.16, trimMat, portX, archBaseY + 0.055, wallZ + entabD * 0.5, porticoCoverGrp);
+    addBox(entabW + 0.24, 0.11, entabD + 0.24, trimMat, portX, archBaseY + 0.165, wallZ + entabD * 0.5, porticoCoverGrp);
+    addBox(entabW + 0.34, 0.09, entabD + 0.32, trimMat, portX, archBaseY + 0.265, wallZ + entabD * 0.5, porticoCoverGrp);
+    addBox(entabW, 0.62, entabD, creamBrickSolidMat, portX, entabY + 0.02, wallZ + entabD * 0.5, porticoCoverGrp);
     const friezeCanvas = document.createElement("canvas");
     friezeCanvas.width = 1024;
     friezeCanvas.height = 160;
@@ -20211,20 +20346,20 @@
       bumpScale: -0.05,
       roughness: 0.84
     });
-    addBox(7.82, 0.56, 0.05, trimMat, portX, entabY + 0.02, wallZ + entabD + 0.02);
+    addBox(7.82, 0.56, 0.05, trimMat, portX, entabY + 0.02, wallZ + entabD + 0.02, porticoCoverGrp);
     const friezePlaque = new Mesh(new BoxGeometry(7.68, 0.5, 0.06), friezeMat);
     friezePlaque.position.set(portX, entabY + 0.02, wallZ + entabD + 0.035);
-    arch.add(friezePlaque);
+    porticoCoverGrp.add(friezePlaque);
     const dentilY = entabY + 0.38;
     const numFrontDentils = 46;
     const dentilSpanX = entabW + 0.24;
     for (let d = 0; d < numFrontDentils; d++) {
       const dx = portX - dentilSpanX * 0.5 + (d + 0.5) * (dentilSpanX / numFrontDentils);
-      addBox(0.11, 0.13, 0.14, trimMat, dx, dentilY, wallZ + entabD + 0.1);
+      addBox(0.11, 0.13, 0.14, trimMat, dx, dentilY, wallZ + entabD + 0.1, porticoCoverGrp);
     }
     for (let dz = wallZ + 0.2; dz < wallZ + entabD; dz += 0.22) {
-      addBox(0.14, 0.13, 0.11, trimMat, portX - entabW * 0.5 - 0.1, dentilY, dz);
-      addBox(0.14, 0.13, 0.11, trimMat, portX + entabW * 0.5 + 0.1, dentilY, dz);
+      addBox(0.14, 0.13, 0.11, trimMat, portX - entabW * 0.5 - 0.1, dentilY, dz, porticoCoverGrp);
+      addBox(0.14, 0.13, 0.11, trimMat, portX + entabW * 0.5 + 0.1, dentilY, dz, porticoCoverGrp);
     }
     for (let wx = -3.15; wx <= 12.5; wx += 0.22) {
       if (wx < -0.42 || wx > 9.42) {
@@ -20235,7 +20370,7 @@
       addBox(0.14, 0.13, 0.11, trimMat, -0.42, 8.15, rz);
       addBox(0.14, 0.13, 0.11, trimMat, 9.42, 8.15, rz);
     }
-    addBox(entabW + 0.56, 0.2, entabD + 0.44, trimMat, portX, entabY + entabH * 0.5 - 0.04, wallZ + entabD * 0.5);
+    addBox(entabW + 0.56, 0.2, entabD + 0.44, trimMat, portX, entabY + entabH * 0.5 - 0.04, wallZ + entabD * 0.5, porticoCoverGrp);
     const pedBaseY = entabY + entabH * 0.5 + 0.04;
     const pedW = entabW + 0.44;
     const pedH = 2.05;
@@ -20252,7 +20387,7 @@
     pedMesh.position.set(portX, pedBaseY, wallZ - 0.05);
     pedMesh.castShadow = true;
     pedMesh.receiveShadow = true;
-    arch.add(pedMesh);
+    porticoCoverGrp.add(pedMesh);
     addBox(9.7, 1.55, 1.18, creamBrickSolidMat, portX, pedBaseY + 0.72, wallZ - 0.58);
     addBox(9.92, 0.18, 1.32, whiteCurbMat, portX, pedBaseY + 1.55, wallZ - 0.58);
     const slopeLen = Math.hypot(pedW * 0.5 + 0.28, pedH) + 0.18;
@@ -20274,37 +20409,37 @@
         addBox(0.1, 0.12, 0.16, trimMat, rdx, -0.06, entabD * 0.5 + 0.12, rakingGroup);
       }
       addBox(slopeLen + 0.12, 0.15, entabD + 0.5, slateGableMat, 0, 0.21, 0.04, rakingGroup);
-      arch.add(rakingGroup);
+      porticoCoverGrp.add(rakingGroup);
     });
-    addBox(0.32, 0.14, entabD + 0.52, trimMat, portX, pedBaseY + pedH + 0.22, wallZ + entabD * 0.5 + 0.04);
+    addBox(0.32, 0.14, entabD + 0.52, trimMat, portX, pedBaseY + pedH + 0.22, wallZ + entabD * 0.5 + 0.04, porticoCoverGrp);
     const doorBaseY = deckY;
-    addBox(2.68, 4.75, 0.2, trimMat, portX, doorBaseY + 2.38, wallZ + 0.05);
-    addBox(2.34, 4.52, 0.16, whiteCurbMat, portX, doorBaseY + 2.26, wallZ + 0.07);
+    addBox(2.68, 4.75, 0.2, trimMat, portX, doorBaseY + 2.38, wallZ + 0.05, porticoCoverGrp);
+    addBox(2.34, 4.52, 0.16, whiteCurbMat, portX, doorBaseY + 2.26, wallZ + 0.07, porticoCoverGrp);
     [-0.54, 0.54].forEach((dx) => {
-      addBox(0.98, 2.38, 0.14, whiteCurbMat, portX + dx, doorBaseY + 1.19, wallZ + 0.1);
-      addBox(0.74, 1.24, 0.18, glassMat, portX + dx, doorBaseY + 1.62, wallZ + 0.14);
-      addBox(0.74, 0.58, 0.16, plinthConcreteMat, portX + dx, doorBaseY + 0.48, wallZ + 0.13);
-      addBox(0.035, 0.34, 0.06, darkMetalMat, portX + dx * 0.22, doorBaseY + 1.05, wallZ + 0.2);
+      addBox(0.98, 2.38, 0.14, whiteCurbMat, portX + dx, doorBaseY + 1.19, wallZ + 0.1, porticoCoverGrp);
+      addBox(0.74, 1.24, 0.18, glassMat, portX + dx, doorBaseY + 1.62, wallZ + 0.14, porticoCoverGrp);
+      addBox(0.74, 0.58, 0.16, plinthConcreteMat, portX + dx, doorBaseY + 0.48, wallZ + 0.13, porticoCoverGrp);
+      addBox(0.035, 0.34, 0.06, darkMetalMat, portX + dx * 0.22, doorBaseY + 1.05, wallZ + 0.2, porticoCoverGrp);
     });
-    addBox(0.1, 2.42, 0.22, whiteCurbMat, portX, doorBaseY + 1.21, wallZ + 0.14);
-    addBox(2.28, 0.16, 0.24, whiteCurbMat, portX, doorBaseY + 2.46, wallZ + 0.15);
-    addBox(2.08, 1.38, 0.18, glassMat, portX, doorBaseY + 3.28, wallZ + 0.13);
-    addBox(2.1, 0.055, 0.22, whiteCurbMat, portX, doorBaseY + 3.28, wallZ + 0.15);
+    addBox(0.1, 2.42, 0.22, whiteCurbMat, portX, doorBaseY + 1.21, wallZ + 0.14, porticoCoverGrp);
+    addBox(2.28, 0.16, 0.24, whiteCurbMat, portX, doorBaseY + 2.46, wallZ + 0.15, porticoCoverGrp);
+    addBox(2.08, 1.38, 0.18, glassMat, portX, doorBaseY + 3.28, wallZ + 0.13, porticoCoverGrp);
+    addBox(2.1, 0.055, 0.22, whiteCurbMat, portX, doorBaseY + 3.28, wallZ + 0.15, porticoCoverGrp);
     for (let m = -2; m <= 2; m++) {
-      addBox(0.048, 1.38, 0.22, whiteCurbMat, portX + m * 0.345, doorBaseY + 3.28, wallZ + 0.15);
+      addBox(0.048, 1.38, 0.22, whiteCurbMat, portX + m * 0.345, doorBaseY + 3.28, wallZ + 0.15, porticoCoverGrp);
     }
-    addBox(2.82, 0.18, 0.42, trimMat, portX, doorBaseY + 4.58, wallZ + 0.21);
-    addBox(3.02, 0.22, 0.54, trimMat, portX, doorBaseY + 4.76, wallZ + 0.27);
+    addBox(2.82, 0.18, 0.42, trimMat, portX, doorBaseY + 4.58, wallZ + 0.21, porticoCoverGrp);
+    addBox(3.02, 0.22, 0.54, trimMat, portX, doorBaseY + 4.76, wallZ + 0.27, porticoCoverGrp);
     [-1.24, 1.24].forEach((bx) => {
-      addBox(0.24, 0.68, 0.36, trimMat, portX + bx, doorBaseY + 4.18, wallZ + 0.18);
+      addBox(0.24, 0.68, 0.36, trimMat, portX + bx, doorBaseY + 4.18, wallZ + 0.18, porticoCoverGrp);
       const topRoll = new Mesh(new CylinderGeometry(0.14, 0.14, 0.26, 14), trimMat);
       topRoll.rotation.z = Math.PI * 0.5;
       topRoll.position.set(portX + bx, doorBaseY + 4.38, wallZ + 0.32);
-      arch.add(topRoll);
+      porticoCoverGrp.add(topRoll);
       const botRoll = new Mesh(new CylinderGeometry(0.1, 0.1, 0.26, 14), trimMat);
       botRoll.rotation.z = Math.PI * 0.5;
       botRoll.position.set(portX + bx, doorBaseY + 3.92, wallZ + 0.24);
-      arch.add(botRoll);
+      porticoCoverGrp.add(botRoll);
     });
     [2.98, 6.02].forEach((sx) => {
       addBox(0.14, 0.34, 0.06, darkMetalMat, sx, doorBaseY + 2.38, wallZ + 0.05);
@@ -20329,11 +20464,11 @@
     alarmBell.position.set(2.58, doorBaseY + 4.55, wallZ + 0.07);
     arch.add(alarmBell);
     [1.65, 7.35].forEach((sx) => {
-      addBox(1.52, 3.35, 0.16, trimMat, sx, doorBaseY + 1.67, wallZ + 0.05);
-      addBox(1.28, 3.18, 0.16, whiteCurbMat, sx, doorBaseY + 1.59, wallZ + 0.08);
-      addBox(0.88, 1.32, 0.18, glassMat, sx, doorBaseY + 2.18, wallZ + 0.12);
-      addBox(0.88, 0.82, 0.18, glassMat, sx, doorBaseY + 0.78, wallZ + 0.12);
-      addBox(1.66, 0.26, 0.28, trimMat, sx, doorBaseY + 3.42, wallZ + 0.12);
+      addBox(1.52, 3.35, 0.16, trimMat, sx, doorBaseY + 1.67, wallZ + 0.05, porticoCoverGrp);
+      addBox(1.28, 3.18, 0.16, whiteCurbMat, sx, doorBaseY + 1.59, wallZ + 0.08, porticoCoverGrp);
+      addBox(0.88, 1.32, 0.18, glassMat, sx, doorBaseY + 2.18, wallZ + 0.12, porticoCoverGrp);
+      addBox(0.88, 0.82, 0.18, glassMat, sx, doorBaseY + 0.78, wallZ + 0.12, porticoCoverGrp);
+      addBox(1.66, 0.26, 0.28, trimMat, sx, doorBaseY + 3.42, wallZ + 0.12, porticoCoverGrp);
     });
     addBox(1.48, 0.11, 0.52, trimMat, -2.28, 0.48, frontWingZ + 0.48);
     addBox(1.42, 0.05, 0.46, plinthConcreteMat, -2.28, 0.41, frontWingZ + 0.48);
@@ -20362,6 +20497,7 @@
     }
     const addMonumentalArchedWindow = (wx, wy, wz, sideDir = 1, hasBalcony = false, showBrickSpandrel = true) => {
       const wGroup = new Group();
+      wGroup.userData.hideOnCutaway = true;
       wGroup.position.set(wx, wy, wz);
       wGroup.rotation.y = sideDir > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
       const winW = 1.68;
@@ -20451,9 +20587,9 @@
     addMonumentalArchedWindow(-3.24, 2.55, 10.72, -1, true, false);
     [4.8, 1.2, -2.4, -6, -9.6].forEach((wz) => {
       addMonumentalArchedWindow(-2.91, 2.55, wz, -1, false, false);
-      addBox(0.16, 1.05, 1.22, whiteCurbMat, -2.93, -0.52, wz);
-      addBox(0.2, 0.88, 1.04, glassMat, -2.96, -0.52, wz);
-      addBox(0.24, 0.1, 1.32, trimMat, -2.97, -1.08, wz);
+      addBox(0.16, 1.05, 1.22, whiteCurbMat, -2.93, -0.52, wz, porticoCoverGrp);
+      addBox(0.2, 0.88, 1.04, glassMat, -2.96, -0.52, wz, porticoCoverGrp);
+      addBox(0.24, 0.1, 1.32, trimMat, -2.97, -1.08, wz, porticoCoverGrp);
     });
     const rearRoofTopY = 8.42 + 1.76;
     const rearBoxW = 5;
@@ -20490,9 +20626,9 @@
     boulderMesh.castShadow = true;
     arch.add(boulderMesh);
     [-15.65, -14.35].forEach((wz) => {
-      addBox(0.12, 1.42, 0.96, whiteCurbMat, -5.38, 7.3, wz);
-      addBox(0.16, 1.26, 0.82, glassMat, -5.42, 7.3, wz);
-      addBox(0.2, 0.08, 1.04, trimMat, -5.43, 6.56, wz);
+      addBox(0.12, 1.42, 0.96, whiteCurbMat, -5.38, 7.3, wz, porticoCoverGrp);
+      addBox(0.16, 1.26, 0.82, glassMat, -5.42, 7.3, wz, porticoCoverGrp);
+      addBox(0.2, 0.08, 1.04, trimMat, -5.43, 6.56, wz, porticoCoverGrp);
     });
     const utilPadY = getConcreteTopY(-6.6, -12.6);
     addBox(2.45, 0.24, 4.1, plinthConcreteMat, -6.58, utilPadY + 0.12, -12.65);
@@ -20537,9 +20673,9 @@
       polygonOffsetUnits: -1
     });
     [-4.45, -2.55].forEach((wx) => {
-      addBox(1.36, 1.58, 0.12, whiteCurbMat, wx, 7.35, -16.69);
-      addBox(1.24, 1.44, 0.16, blueReflGlassMat, wx, 7.35, -16.73);
-      addBox(1.42, 0.1, 0.22, trimMat, wx, 6.54, -16.75);
+      addBox(1.36, 1.58, 0.12, whiteCurbMat, wx, 7.35, -16.69, porticoCoverGrp);
+      addBox(1.24, 1.44, 0.16, blueReflGlassMat, wx, 7.35, -16.73, porticoCoverGrp);
+      addBox(1.42, 0.1, 0.22, trimMat, wx, 6.54, -16.75, porticoCoverGrp);
     });
     const fanDrum = new Mesh(new CylinderGeometry(0.5, 0.5, 0.58, 24), galvSteelMat);
     fanDrum.rotation.x = Math.PI * 0.5;
@@ -21476,15 +21612,15 @@
     copperCanvas.width = 256;
     copperCanvas.height = 256;
     const cCtx = copperCanvas.getContext("2d");
-    cCtx.fillStyle = "#733d20";
+    cCtx.fillStyle = "#381c0e";
     cCtx.fillRect(0, 0, 256, 256);
     for (let y = 0; y < 256; y += 8) {
-      cCtx.fillStyle = "#c4794e";
-      cCtx.fillRect(0, y, 256, 4);
-      cCtx.fillStyle = "#a45d36";
-      cCtx.fillRect(0, y + 4, 256, 2);
-      cCtx.fillStyle = "#582c15";
-      cCtx.fillRect(0, y + 6, 256, 2);
+      cCtx.fillStyle = "#c97d50";
+      cCtx.fillRect(0, y, 256, 3);
+      cCtx.fillStyle = "#a65e36";
+      cCtx.fillRect(0, y + 3, 256, 2);
+      cCtx.fillStyle = "#34190c";
+      cCtx.fillRect(0, y + 5, 256, 3);
     }
     const copperLouverTex = new CanvasTexture(copperCanvas);
     copperLouverTex.wrapS = RepeatWrapping;
@@ -21655,6 +21791,7 @@
     };
     const addRibbonWindow = (wallAxis, centerCoord, yBot, totalW, totalH, numBays, hasLowerHopper = true) => {
       const winGrp = new Group();
+      winGrp.userData.hideOnCutaway = true;
       const isZWall = Math.abs(wallAxis.nz) > 0.5;
       if (isZWall) {
         winGrp.position.set(centerCoord, yBot + totalH * 0.5, wallAxis.pos + wallAxis.nz * 0.05);
@@ -21820,8 +21957,15 @@
     addFootprintBand(4.92, 0.12, 0.06, darkSpandrelMat);
     addFootprintBand(6.55, 0.12, 0.06, darkSpandrelMat);
     addFootprintBand(8.32, 0.18, 0.16, whiteTrimMat);
-    addFootprintBand(9.76, 0.14, 0.16, whiteTrimMat);
-    addFootprintBand(12.56, 0.12, 0.14, copperFrameMat);
+    addFootprintBand(9.76, 0.11, 0.16, whiteTrimMat);
+    const roofDeckGeo = new ExtrudeGeometry(shape, { depth: 0.06, bevelEnabled: false });
+    roofDeckGeo.rotateX(-Math.PI / 2);
+    const roofDeckMesh = new Mesh(roofDeckGeo, [roofMembraneMat, whiteTrimMat]);
+    roofDeckMesh.name = "Layer4_OpenRoofCourtDeck";
+    roofDeckMesh.position.y = 9.88 + bldgLift316;
+    roofDeckMesh.receiveShadow = true;
+    roofDeckMesh.userData = { isSelectableBuilding: true, building, floorLayer: 4 };
+    group.add(roofDeckMesh);
     addBox(3.68, 3.32, 0.24, entryBrickMat, -9.28, 1.66, frontZ + 0.04);
     addBox(0.24, 3.32, 7.26, entryBrickMat, courtX - 0.04, 1.66, 21.81);
     addBox(0.14, 0.16, 0.24, copperFrameMat, courtX - 0.16, 3.02, 23.8);
@@ -21839,19 +21983,20 @@
     const entryCenterX = -5.55;
     const entryW = 3.8;
     const entryH = 3.15;
-    addBox(entryW, entryH, 0.35, officeGlassMat, entryCenterX, entryH * 0.5 + 0.05, frontZ - 0.12);
-    addBox(entryW + 0.1, 0.09, 0.18, whiteTrimMat, entryCenterX, entryH + 0.04, frontZ + 0.04);
-    addBox(entryW + 0.1, 0.07, 0.18, whiteTrimMat, entryCenterX, 2.28, frontZ + 0.04);
-    addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX - 1.42, 0.95, frontZ + 0.04);
-    addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX + 1.42, 0.95, frontZ + 0.04);
+    addBox(entryW, entryH, 0.35, officeGlassMat, entryCenterX, entryH * 0.5 + 0.05, frontZ - 0.12).userData.hideOnCutaway = true;
+    addBox(entryW + 0.1, 0.09, 0.18, whiteTrimMat, entryCenterX, entryH + 0.04, frontZ + 0.04).userData.hideOnCutaway = true;
+    addBox(entryW + 0.1, 0.07, 0.18, whiteTrimMat, entryCenterX, 2.28, frontZ + 0.04).userData.hideOnCutaway = true;
+    addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX - 1.42, 0.95, frontZ + 0.04).userData.hideOnCutaway = true;
+    addBox(0.95, 0.06, 0.16, whiteTrimMat, entryCenterX + 1.42, 0.95, frontZ + 0.04).userData.hideOnCutaway = true;
     [-1.9, -0.95, 0, 0.95, 1.9].forEach((dx) => {
       const h = Math.abs(dx) < 0.05 ? entryH - 2.28 : entryH;
       const yPos = Math.abs(dx) < 0.05 ? 2.28 + h * 0.5 : entryH * 0.5 + 0.04;
-      addBox(0.07, h, 0.18, whiteTrimMat, entryCenterX + dx, yPos, frontZ + 0.04);
+      addBox(0.07, h, 0.18, whiteTrimMat, entryCenterX + dx, yPos, frontZ + 0.04).userData.hideOnCutaway = true;
     });
-    addBox(0.9, 2.22, 0.05, whiteTrimMat, entryCenterX - 0.48, 1.15, frontZ + 0.02);
-    addBox(0.76, 2.02, 0.06, officeGlassMat, entryCenterX - 0.48, 1.15, frontZ + 0.02);
+    addBox(0.9, 2.22, 0.05, whiteTrimMat, entryCenterX - 0.48, 1.15, frontZ + 0.02).userData.hideOnCutaway = true;
+    addBox(0.76, 2.02, 0.06, officeGlassMat, entryCenterX - 0.48, 1.15, frontZ + 0.02).userData.hideOnCutaway = true;
     const openDoorGrp = new Group();
+    openDoorGrp.userData.hideOnCutaway = true;
     openDoorGrp.position.set(entryCenterX + 0.92, 1.15, frontZ + 0.05);
     openDoorGrp.rotation.y = -0.95;
     const doorFrameMesh = new Mesh(new BoxGeometry(0.92, 2.22, 0.05), whiteTrimMat);
@@ -21882,10 +22027,10 @@
     addRibbonWindow({ pos: courtX, nx: -1 }, 7.8, 0.98, 0.85, 1.65, 1, false);
     addRibbonWindow({ pos: courtX, nx: -1 }, 1.2, 0.78, 5.2, 2.05, 5, true);
     addRibbonWindow({ pos: rearZ, nz: -1 }, -6.8, 0.78, 3.6, 2.05, 3, true);
-    addBox(20.6, 0.22, 1.05, whiteTrimMat, -1.55, 3.28, frontZ + 0.48);
-    addBox(0.95, 0.22, 32.55, whiteTrimMat, douglasX + 0.44, 3.28, 9.72);
-    addBox(4.3, 0.22, 0.92, whiteTrimMat, 6.71, 3.28, rearZ - 0.42);
-    addBox(0.85, 0.22, 8.1, whiteTrimMat, courtX - 0.38, 3.28, 21.95);
+    addBox(20.6, 0.22, 1.05, whiteTrimMat, -1.55, 3.28, frontZ + 0.48).userData.hideOnCutaway = true;
+    addBox(0.95, 0.22, 32.55, whiteTrimMat, douglasX + 0.44, 3.28, 9.72).userData.hideOnCutaway = true;
+    addBox(4.3, 0.22, 0.92, whiteTrimMat, 6.71, 3.28, rearZ - 0.42).userData.hideOnCutaway = true;
+    addBox(0.85, 0.22, 8.1, whiteTrimMat, courtX - 0.38, 3.28, 21.95).userData.hideOnCutaway = true;
     addBox(0.18, 0.2, 24.05, whiteTrimMat, courtX - 0.06, 3.26, 5.98);
     addRibbonWindow({ pos: frontZ, nz: 1 }, -7.25, 5.05, 4.65, 1.5, 5, false);
     addRibbonWindow({ pos: frontZ, nz: 1 }, -1.05, 5.05, 4.65, 1.5, 5, false);
@@ -21983,8 +22128,8 @@
       addBox(0.08, 0.16, 0.22, whiteTrimMat, doorX + 0.045, 1.44, doorZ - 0.04, false);
       addBox(0.08, 0.14, 0.22, whiteTrimMat, doorX + 0.045, 1.18, doorZ - 0.04, false);
       addBox(0.1, 0.06, 0.12, galvSteelMat, doorX + 0.06, 0.88, doorZ + 0.36);
-      addBox(0.46, 0.24, 2.05, whiteTrimMat, doorX + 0.22, 2.42, -7.06);
-      addBox(0.48, 0.04, 2.07, darkBronzeMat, doorX + 0.22, 2.54, -7.06);
+      addBox(0.46, 0.24, 2.05, whiteTrimMat, doorX + 0.22, 2.42, -7.06).userData.hideOnCutaway = true;
+      addBox(0.48, 0.04, 2.07, darkBronzeMat, doorX + 0.22, 2.54, -7.06).userData.hideOnCutaway = true;
       const fireRedMat = new MeshStandardMaterial({ color: "#c82828", roughness: 0.4, metalness: 0.15 });
       addBox(0.09, 0.16, 0.14, fireRedMat, doorX + 0.05, 2.16, -6.38);
       addBox(0.04, 0.06, 0.05, whiteTrimMat, doorX + 0.08, 2.16, -6.38, false);
@@ -21997,42 +22142,76 @@
     addBox(0.1, 0.1, 0.18, galvSteelMat, 3.7, 0.4, -10.44);
     const neLouverH = 2.74;
     const neLouverY = 9.88 + neLouverH * 0.5;
-    const neLouverW = 15.25;
-    addBox(neLouverW, neLouverH, 0.28, copperLouverMat, 0.28, neLouverY, frontZ - 0.12);
-    for (let i = 0; i <= 5; i++) {
-      const px2 = -7.34 + i * (neLouverW / 5);
-      addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, px2, neLouverY, frontZ - 0.1);
-    }
-    const nwLouverL = 31.45;
-    addBox(0.28, neLouverH, nwLouverL, copperLouverMat, douglasX - 0.12, neLouverY, 9.68);
-    for (let i = 0; i <= 10; i++) {
-      const pz2 = 25.4 - i * (nwLouverL / 10);
-      addBox(0.34, neLouverH + 0.08, 0.11, copperFrameMat, douglasX - 0.1, neLouverY, pz2);
-    }
+    const addRooftopFenceRun = (axis, linePos, startCoord, endCoord, numBays, inwardSign, hasOpenCourtBack = true) => {
+      const isXRun = axis === "x";
+      const totalLen = Math.abs(endCoord - startCoord);
+      const minCoord = Math.min(startCoord, endCoord);
+      const centerCoord = 0.5 * (startCoord + endCoord);
+      const bayLen = totalLen / numBays;
+      const placeFenceBox = (lenAlong, h, thickCross, mat, alongPos, yPos, crossOffset = 0, cast = true) => {
+        if (isXRun) {
+          return addBox(lenAlong, h, thickCross, mat, alongPos, yPos, linePos + crossOffset, cast);
+        }
+        return addBox(thickCross, h, lenAlong, mat, linePos + crossOffset, yPos, alongPos, cast);
+      };
+      placeFenceBox(totalLen + 0.14, 0.14, 0.24, whiteTrimMat, centerCoord, 9.95, 0);
+      placeFenceBox(totalLen, 0.07, 0.12, copperFrameMat, centerCoord, 10.12, 0);
+      placeFenceBox(totalLen + 0.16, 0.08, 0.16, copperFrameMat, centerCoord, 12.6, 0);
+      [10.62, 11.12, 11.62, 12.12].forEach((ribY) => {
+        placeFenceBox(totalLen, 0.042, 0.11, copperFrameMat, centerCoord, ribY, 0);
+      });
+      for (let b = 0; b < numBays; b++) {
+        const bayCenter = minCoord + (b + 0.5) * bayLen;
+        placeFenceBox(Math.max(0.2, bayLen - 0.12), 2.41, 0.07, copperLouverMat, bayCenter, 11.355, 0);
+      }
+      if (hasOpenCourtBack) {
+        [10.76, 11.96].forEach((girtY) => {
+          placeFenceBox(totalLen, 0.05, 0.05, darkBronzeMat, centerCoord, girtY, inwardSign * 0.09);
+        });
+      }
+      const strutDy = 1.86;
+      const strutRun = 1;
+      const strutLen = Math.hypot(strutDy, strutRun);
+      for (let i = 0; i <= numBays; i++) {
+        const pCoord = minCoord + i * bayLen;
+        placeFenceBox(0.2, 0.04, 0.22, darkBronzeMat, pCoord, 9.96, 0, false);
+        placeFenceBox(0.12, 2.74, 0.16, copperFrameMat, pCoord, 11.31, 0);
+        const shouldAddStrut = hasOpenCourtBack && (numBays > 1 && i > 0 && i < numBays || numBays === 1 && i === 1);
+        if (shouldAddStrut) {
+          const topCross = linePos + inwardSign * 0.08;
+          const botCross = topCross + inwardSign * strutRun;
+          const midCross = 0.5 * (topCross + botCross);
+          const midY = 9.96 + strutDy * 0.5;
+          const strutMesh = new Mesh(
+            new BoxGeometry(0.055, strutLen, 0.055),
+            galvSteelMat
+          );
+          if (isXRun) {
+            strutMesh.position.set(pCoord, midY, midCross);
+            strutMesh.rotation.x = Math.atan2(-inwardSign * strutRun, strutDy);
+          } else {
+            strutMesh.position.set(midCross, midY, pCoord);
+            strutMesh.rotation.z = Math.atan2(inwardSign * strutRun, strutDy);
+          }
+          strutMesh.castShadow = true;
+          strutMesh.receiveShadow = true;
+          strutMesh.userData = { isSelectableBuilding: true, building };
+          arch.add(strutMesh);
+          placeFenceBox(0.2, 0.04, 0.2, darkBronzeMat, pCoord, 9.96, botCross - linePos, false);
+        }
+      }
+    };
+    addRooftopFenceRun("x", frontZ - 0.1, -7.34, 7.91, 5, -1, true);
+    addRooftopFenceRun("z", douglasX - 0.1, -6.05, 25.4, 10, -1, true);
     addBox(0.28, neLouverH, 4.6, grayCoreStuccoMat, courtX + 0.12, neLouverY, 15.9);
     addBox(0.36, 0.16, 4.65, whiteTrimMat, courtX + 0.1, 12.7, 15.9);
-    addBox(0.28, neLouverH, 9.2, copperLouverMat, courtX + 0.12, neLouverY, 9);
-    [13.6, 9, 4.4].forEach((pz2) => {
-      addBox(0.34, neLouverH + 0.08, 0.11, copperFrameMat, courtX + 0.1, neLouverY, pz2);
-    });
+    addRooftopFenceRun("z", courtX + 0.1, 4.4, 13.6, 2, 1, false);
     addBox(0.28, 4.28, 10.45, grayCoreStuccoMat, courtX + 0.12, 10.54, -0.825);
     addBox(0.36, 0.16, 10.5, whiteTrimMat, courtX + 0.1, 12.7, -0.825);
     addBox(0.32, 1.35, 1.65, darkBronzeMat, courtX + 0.08, 11.15, -4.15);
-    addBox(7.44, neLouverH, 0.28, copperLouverMat, -7.38, neLouverY, rearZ + 0.12);
-    for (let i = 0; i <= 3; i++) {
-      addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, -11.1 + i * (7.44 / 3), neLouverY, rearZ + 0.1);
-    }
-    addBox(3.35, neLouverH, 0.28, copperLouverMat, 6.235, neLouverY, rearZ + 0.12);
-    addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, 4.56, neLouverY, rearZ + 0.1);
-    addBox(0.11, neLouverH + 0.08, 0.34, copperFrameMat, 7.91, neLouverY, rearZ + 0.1);
-    addBox(0.24, 1.4, 31.2, whiteTrimMat, douglasX - 0.36, 10.5, 9.72);
-    addBox(0.24, 1.4, 24, whiteTrimMat, courtX + 0.36, 10.5, 6.1);
-    addBox(7.2, 1.4, 0.24, whiteTrimMat, -7.38, 10.5, rearZ + 0.36);
-    addBox(3.15, 1.4, 0.24, whiteTrimMat, 6.23, 10.5, rearZ + 0.36);
-    addBox(8, 1.4, 0.24, whiteTrimMat, 0.45, 10.5, -10.29 + 0.36);
-    addBox(0.24, 1.4, 4.1, whiteTrimMat, -3.66 + 0.36, 10.5, -8.17);
-    addBox(0.24, 1.4, 4.1, whiteTrimMat, 4.56 - 0.36, 10.5, -8.17);
-    const pentBaseY = 9.8;
+    addRooftopFenceRun("x", rearZ + 0.1, -11.1, -3.66, 2, 1, false);
+    addRooftopFenceRun("x", rearZ + 0.1, 4.56, 7.91, 1, 1, true);
+    const pentBaseY = 9.84;
     const pentWallH = 3.65;
     const pentCrownH = 1.75;
     addBox(7.6, pentWallH, 7.9, penthouseWallMat, -7, pentBaseY + pentWallH * 0.5, 14.45);
@@ -22891,8 +23070,10 @@
         { xStart: -13.35, xEnd: -11.07, zStart: -10.3, zEnd: -2.12, xSteps: 2, zSteps: 6 },
         // 3. Bay directly behind Building 316 East Rear Wing (lx = -11.07m .. -3.66m, lz = -10.30m .. -6.05m)
         { xStart: -11.07, xEnd: -3.66, zStart: -10.3, zEnd: -6.05, xSteps: 6, zSteps: 4 },
-        // 4. Main Parking Lot in front of the Gym & Sallyport, behind Building 316 out to Douglas St (lx = -13.35m .. +12.50m, lz = -43.51m .. -10.30m)
-        { xStart: -13.35, xEnd: 12.5, zStart: -43.51, zEnd: -10.3, xSteps: 18, zSteps: 22 }
+        // 4A. Main Service Lot behind Building 316 out to Douglas St (lx = -13.35m .. +12.50m, lz = -35.78m .. -10.30m)
+        { xStart: -13.35, xEnd: 12.5, zStart: -35.78, zEnd: -10.3, xSteps: 18, zSteps: 18 },
+        // 4B. Lower Gym Pocket inside Red L-Shaped Retaining Wall #1 (lx = -13.35m .. -0.05m, lz = -43.51m .. -35.78m)
+        { xStart: -13.35, xEnd: -0.05, zStart: -43.51, zEnd: -35.78, xSteps: 10, zSteps: 6 }
       ];
       gymParkingSpans.forEach(({ xStart, xEnd, zStart, zEnd, xSteps, zSteps }) => {
         for (let ix = 0; ix < xSteps; ix++) {
@@ -22911,8 +23092,91 @@
           }
         }
       });
-      addGradedWallSegment(-13.35, -43.51, 12.5, -43.51, 0.18, (px2, pz2) => yGymParkingLot(px2, pz2), concreteMat);
-      addGradedWallSegment(12.5, -43.51, 12.5, -10.3, 0.18, (px2, pz2) => yGymParkingLot(px2, pz2), concreteMat);
+      addGradedWallSegment(-13.35, -43.51, -0.05, -43.51, 0.18, (px2, pz2) => yGymParkingLot(px2, pz2), concreteMat);
+      addGradedWallSegment(-0.05, -43.51, -0.05, -35.78, 0.18, (px2, pz2) => yGymParkingLot(px2, pz2), concreteMat);
+      addGradedWallSegment(-0.05, -35.78, 12.5, -35.78, 0.18, (px2, pz2) => yGymParkingLot(px2, pz2), concreteMat);
+      addGradedWallSegment(12.5, -35.78, 12.5, -10.3, 0.18, (px2, pz2) => yGymParkingLot(px2, pz2), concreteMat);
+      const lotStripeMat = new MeshStandardMaterial({
+        color: "#f1f5f9",
+        roughness: 0.72,
+        metalness: 0.02,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3
+      });
+      const wheelStopMat = new MeshStandardMaterial({ color: "#d6d2c8", roughness: 0.85, metalness: 0.03 });
+      const enclosureSlatsMat = new MeshStandardMaterial({ color: "#5c554c", roughness: 0.78, metalness: 0.15 });
+      const dumpsterBlueMat = new MeshStandardMaterial({ color: "#1e3a5f", roughness: 0.62, metalness: 0.25 });
+      const dumpsterLidMat = new MeshStandardMaterial({ color: "#1f2428", roughness: 0.75, metalness: 0.1 });
+      const safetyBollardMat = new MeshStandardMaterial({ color: "#e5b524", roughness: 0.48, metalness: 0.18 });
+      for (let s = 0; s <= 3; s++) {
+        const sz = -43.1 + s * 2.65;
+        const xA = -5.15, xB = -0.35;
+        addGradedQuad(
+          [xA, yGymParkingLot(xA, sz - 0.055), sz - 0.055],
+          [xB, yGymParkingLot(xB, sz - 0.055), sz - 0.055],
+          [xB, yGymParkingLot(xB, sz + 0.055), sz + 0.055],
+          [xA, yGymParkingLot(xA, sz + 0.055), sz + 0.055],
+          lotStripeMat,
+          0.012
+        );
+        if (s < 3) {
+          const midZ = sz + 1.325;
+          const ws = new Mesh(new BoxGeometry(0.18, 0.13, 1.82), wheelStopMat);
+          ws.position.set(-0.78, yGymParkingLot(-0.78, midZ) + 0.065, midZ);
+          ws.castShadow = true;
+          ws.receiveShadow = true;
+          arch.add(ws);
+        }
+      }
+      for (let s = 0; s <= 4; s++) {
+        const sx = -9.6 + s * 2.7;
+        const zA = -15.35, zB = -10.55;
+        addGradedQuad(
+          [sx - 0.055, yGymParkingLot(sx - 0.055, zA), zA],
+          [sx + 0.055, yGymParkingLot(sx + 0.055, zA), zA],
+          [sx + 0.055, yGymParkingLot(sx + 0.055, zB), zB],
+          [sx - 0.055, yGymParkingLot(sx - 0.055, zB), zB],
+          lotStripeMat,
+          0.012
+        );
+        if (s < 4) {
+          const midX = sx + 1.35;
+          const ws = new Mesh(new BoxGeometry(1.82, 0.13, 0.18), wheelStopMat);
+          ws.position.set(midX, yGymParkingLot(midX, -11.05) + 0.065, -11.05);
+          ws.castShadow = true;
+          ws.receiveShadow = true;
+          arch.add(ws);
+        }
+      }
+      {
+        const encCx = -8.7, encCz = -8.1;
+        const encBaseY = yGymParkingLot(encCx, encCz);
+        const wallRear = new Mesh(new BoxGeometry(3.7, 1.75, 0.1), enclosureSlatsMat);
+        wallRear.position.set(encCx, encBaseY + 0.875, -6.55);
+        wallRear.castShadow = true;
+        arch.add(wallRear);
+        [-10.5, -6.9].forEach((wx) => {
+          const sideW = new Mesh(new BoxGeometry(0.1, 1.75, 3), enclosureSlatsMat);
+          sideW.position.set(wx, encBaseY + 0.875, -8);
+          sideW.castShadow = true;
+          arch.add(sideW);
+          const bol = new Mesh(new CylinderGeometry(0.09, 0.09, 1.02, 10), safetyBollardMat);
+          bol.position.set(wx + (wx < encCx ? -0.22 : 0.22), encBaseY + 0.51, -9.55);
+          bol.castShadow = true;
+          arch.add(bol);
+        });
+        [-9.55, -7.85].forEach((dx) => {
+          const bin = new Mesh(new BoxGeometry(1.38, 1.18, 1.55), dumpsterBlueMat);
+          bin.position.set(dx, encBaseY + 0.59, -7.85);
+          bin.castShadow = true;
+          arch.add(bin);
+          const lid = new Mesh(new BoxGeometry(1.44, 0.1, 1.6), dumpsterLidMat);
+          lid.position.set(dx, encBaseY + 1.22, -7.85);
+          lid.rotation.x = 0.08;
+          arch.add(lid);
+        });
+      }
     }
   }
 
@@ -23444,32 +23708,33 @@
     const bayCenterX = 12;
     const bayFrontZ = 35.22;
     addBox(bayW + 0.16, 0.38, 1.26, plinthBeigeMat, bayCenterX, 0.19, 34.62);
-    addBox(bayW, 2.76, 1.18, slotGlassMat, bayCenterX, 1.72, 34.62);
-    addBox(bayW + 0.14, 0.1, 1.24, whiteDoorMat, bayCenterX, 3.04, 34.62);
-    addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.86, 34.62);
-    addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.38, 34.62);
+    addBox(bayW, 2.76, 1.18, slotGlassMat, bayCenterX, 1.72, 34.62).userData.hideOnCutaway = true;
+    addBox(bayW + 0.14, 0.1, 1.24, whiteDoorMat, bayCenterX, 3.04, 34.62).userData.hideOnCutaway = true;
+    addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.86, 34.62).userData.hideOnCutaway = true;
+    addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.38, 34.62).userData.hideOnCutaway = true;
     [-3.9, 3.9].forEach((sx) => {
-      addBox(0.12, 2.76, 1.24, whiteDoorMat, bayCenterX + sx, 1.72, 34.62);
-      addBox(0.14, 0.08, 1.24, whiteDoorMat, bayCenterX + sx, 2.38, 34.62);
+      addBox(0.12, 2.76, 1.24, whiteDoorMat, bayCenterX + sx, 1.72, 34.62).userData.hideOnCutaway = true;
+      addBox(0.14, 0.08, 1.24, whiteDoorMat, bayCenterX + sx, 2.38, 34.62).userData.hideOnCutaway = true;
     });
     [-2.15, 2.15].forEach((dx) => {
-      addBox(0.09, 2.76, 0.16, whiteDoorMat, bayCenterX + dx, 1.72, bayFrontZ);
+      addBox(0.09, 2.76, 0.16, whiteDoorMat, bayCenterX + dx, 1.72, bayFrontZ).userData.hideOnCutaway = true;
     });
     [-0.36, 0.36].forEach((cxOff) => {
-      addBox(0.16, 2.86, 0.26, whiteDoorMat, bayCenterX + cxOff, 1.76, bayFrontZ + 0.04);
+      addBox(0.16, 2.86, 0.26, whiteDoorMat, bayCenterX + cxOff, 1.76, bayFrontZ + 0.04).userData.hideOnCutaway = true;
     });
     [1.18, 1.48].forEach((hy) => {
-      addBox(0.72, 0.07, 0.22, whiteDoorMat, bayCenterX, hy, bayFrontZ + 0.03);
+      addBox(0.72, 0.07, 0.22, whiteDoorMat, bayCenterX, hy, bayFrontZ + 0.03).userData.hideOnCutaway = true;
     });
-    addBox(3.8, 0.22, 1.44, whiteDoorMat, 9.65, 3.2, 34.76);
-    addBox(3.88, 0.07, 1.5, silverFlashingMat, 9.65, 3.34, 34.76);
-    addBox(3.8, 0.22, 1.44, whiteDoorMat, 14.35, 3.2, 34.76);
-    addBox(3.88, 0.07, 1.5, silverFlashingMat, 14.35, 3.34, 34.76);
-    addBox(1.02, 0.24, 1.32, whiteDoorMat, bayCenterX, 3.24, 34.68);
-    addBox(1.08, 0.07, 1.38, silverFlashingMat, bayCenterX, 3.38, 34.68);
-    addBox(0.12, 0.14, 0.06, hedgeRedMat, bayCenterX, 3.24, 35.35);
+    addBox(3.8, 0.22, 1.44, whiteDoorMat, 9.65, 3.2, 34.76).userData.hideOnCutaway = true;
+    addBox(3.88, 0.07, 1.5, silverFlashingMat, 9.65, 3.34, 34.76).userData.hideOnCutaway = true;
+    addBox(3.8, 0.22, 1.44, whiteDoorMat, 14.35, 3.2, 34.76).userData.hideOnCutaway = true;
+    addBox(3.88, 0.07, 1.5, silverFlashingMat, 14.35, 3.34, 34.76).userData.hideOnCutaway = true;
+    addBox(1.02, 0.24, 1.32, whiteDoorMat, bayCenterX, 3.24, 34.68).userData.hideOnCutaway = true;
+    addBox(1.08, 0.07, 1.38, silverFlashingMat, bayCenterX, 3.38, 34.68).userData.hideOnCutaway = true;
+    addBox(0.12, 0.14, 0.06, hedgeRedMat, bayCenterX, 3.24, 35.35).userData.hideOnCutaway = true;
     [6.05, 18.25].forEach((cxPos) => {
       const portGrp = new Group();
+      portGrp.userData.hideOnCutaway = true;
       portGrp.position.set(cxPos, 1.68, 34.12);
       const numVois = 16;
       for (let v = 0; v < numVois; v++) {
@@ -23508,14 +23773,14 @@
     );
     const addr300Mat = new MeshStandardMaterial({ map: addr300Tex, roughness: 0.45, metalness: 0.32 });
     addBox(2.45, 0.56, 0.05, addr300Mat, 20.15, 2.02, 34.18, false);
-    addBox(0.28, 3.1, 3.55, slotGlassMat, 22.08, 1.62, 31.8);
-    addBox(0.32, 0.09, 3.65, whiteDoorMat, 22.14, 3.12, 31.8);
-    addBox(0.32, 0.08, 3.65, whiteDoorMat, 22.14, 2.25, 31.8);
+    addBox(0.28, 3.1, 3.55, slotGlassMat, 22.08, 1.62, 31.8).userData.hideOnCutaway = true;
+    addBox(0.32, 0.09, 3.65, whiteDoorMat, 22.14, 3.12, 31.8).userData.hideOnCutaway = true;
+    addBox(0.32, 0.08, 3.65, whiteDoorMat, 22.14, 2.25, 31.8).userData.hideOnCutaway = true;
     [-1.75, -0.88, 0, 0.88, 1.75].forEach((dz) => {
-      addBox(0.32, 3.1, 0.07, whiteDoorMat, 22.14, 1.62, 31.8 + dz);
+      addBox(0.32, 3.1, 0.07, whiteDoorMat, 22.14, 1.62, 31.8 + dz).userData.hideOnCutaway = true;
     });
-    addBox(1.85, 0.24, 4.18, whiteDoorMat, 23, 3.38, 31.97);
-    addBox(1.92, 0.08, 4.24, silverFlashingMat, 23, 3.52, 31.97);
+    addBox(1.85, 0.24, 4.18, whiteDoorMat, 23, 3.38, 31.97).userData.hideOnCutaway = true;
+    addBox(1.92, 0.08, 4.24, silverFlashingMat, 23, 3.52, 31.97).userData.hideOnCutaway = true;
     addBox(1.94, 3.68, 0.24, varBrickMat, 23.11, 1.84, 29.89);
     const jjcWallTex = foundry._createTextPlaqueTexture(
       ["CHELAN COUNTY", "JUVENILE JUSTICE CENTER"],
@@ -24566,6 +24831,7 @@
           doorLeaf.position.set(0, 1.26, outZ * 0.02);
           bayGrp.add(doorLeaf);
           const doorHood = new Mesh(new BoxGeometry(1.08, 0.1, 0.44), recCreamMat);
+          doorHood.userData.hideOnCutaway = true;
           doorHood.position.set(0, 2.58, outZ * 0.04);
           bayGrp.add(doorHood);
         } else {
@@ -24785,6 +25051,57 @@
       }
     });
     addBox(2.45, 1.25, 0.18, silverFlashingMat, 25.9, 2.65, gymZMin - 0.05);
+    [5.2, 9.85, 14.52, 19.18, 23.85].forEach((jx) => {
+      addBox(0.045, 8.2, 0.06, plazaJointMat, jx, 4.25, gymZMin - 0.02, false);
+    });
+    [-19.2, -23.4, -27.6, -31.8].forEach((jz) => {
+      addBox(0.06, 8.2, 0.045, plazaJointMat, gymXMax + 0.02, 4.25, jz, false);
+    });
+    addBox(gymW + 0.06, 0.12, 0.08, plinthBeigeMat, gymCenterX, 4.55, gymZMin - 0.03, false);
+    addBox(gymW + 0.2, 0.16, 0.16, darkFasciaMat, gymCenterX, gymEaveY - 0.06, gymZMin - 0.1, false);
+    [1.15, 14.52, 27.85].forEach((dxPos) => {
+      const dsPipe = new Mesh(new CylinderGeometry(0.055, 0.055, 7.55, 10), silverFlashingMat);
+      dsPipe.position.set(dxPos, 4.52, gymZMin - 0.11);
+      dsPipe.castShadow = true;
+      arch.add(dsPipe);
+      addBox(0.14, 0.72, 0.14, blackIronMat, dxPos, 0.54, gymZMin - 0.11, false);
+    });
+    const ledLensMat = new MeshStandardMaterial({
+      color: "#fef3c7",
+      emissive: "#fde68a",
+      emissiveIntensity: 0.35,
+      roughness: 0.3
+    });
+    [6.5, 14.52, 21.2].forEach((wxPos) => {
+      addBox(0.36, 0.2, 0.22, blackIronMat, wxPos, 4.32, gymZMin - 0.1);
+      addBox(0.3, 0.04, 0.16, ledLensMat, wxPos, 4.21, gymZMin - 0.11, false);
+    });
+    [-21.6, -29.6].forEach((wzPos) => {
+      addBox(0.22, 0.2, 0.36, blackIronMat, gymXMax + 0.1, 4.32, wzPos);
+      addBox(0.16, 0.04, 0.3, ledLensMat, gymXMax + 0.11, 4.21, wzPos, false);
+    });
+    const swaleGravelMat = new MeshStandardMaterial({ color: "#6e685f", roughness: 0.95, metalness: 0.02 });
+    addBox(gymW + 1.45, 0.18, 0.88, plazaConcreteMat, gymCenterX + 0.7, 0.09, gymZMin - 0.44, false);
+    addBox(gymW + 1.45, 0.15, 0.68, swaleGravelMat, gymCenterX + 0.7, 0.075, gymZMin - 1.2, false);
+    for (let sx = 1.5; sx <= 28.5; sx += 2) {
+      addBox(0.025, 0.012, 0.8, plazaJointMat, sx, 0.185, gymZMin - 0.44, false);
+    }
+    addBox(0.18, 1.35, 0.92, silverFlashingMat, gymXMax + 0.08, 1.55, -31.1);
+    addBox(0.06, 2.65, 0.06, silverFlashingMat, gymXMax + 0.07, 3.55, -30.85, false);
+    addBox(0.06, 2.65, 0.06, silverFlashingMat, gymXMax + 0.07, 3.55, -31.35, false);
+    addBox(1.35, 0.22, 2.15, plazaConcreteMat, gymXMax + 0.82, 0.11, -34.6, false);
+    addBox(0.96, 1.18, 1.72, darkFasciaMat, gymXMax + 0.78, 0.81, -34.6);
+    [-35.02, -34.18].forEach((fz) => {
+      const fanGrille = new Mesh(new CylinderGeometry(0.34, 0.34, 0.06, 14), blackIronMat);
+      fanGrille.position.set(gymXMax + 0.78, 1.41, fz);
+      arch.add(fanGrille);
+    });
+    [-35.65, -33.55].forEach((bz) => {
+      const bol = new Mesh(new CylinderGeometry(0.09, 0.09, 1.02, 10), bollardYellowMat);
+      bol.position.set(gymXMax + 1.52, 0.51, bz);
+      bol.castShadow = true;
+      arch.add(bol);
+    });
   }
 
   // js/foundry/buildings/building300/buildBuilding300.js
@@ -25016,8 +25333,19 @@
       buildGableWallMin = true,
       buildGableWallMax = true,
       gableVentMax = false,
-      gableVentMin = false
+      gableVentMin = false,
+      hideOnCutaway = false
     }) => {
+      const targetGrp = hideOnCutaway ? new Group() : arch;
+      if (hideOnCutaway) {
+        targetGrp.userData.hideOnCutaway = true;
+        arch.add(targetGrp);
+      }
+      const addRoofBox = (w, h, d, mat, lx, y, lz, cast = true) => {
+        const m = addBox(w, h, d, mat, lx, y, lz, cast);
+        if (hideOnCutaway) targetGrp.add(m);
+        return m;
+      };
       const spanCenter = (spanMin + spanMax) * 0.5;
       const halfWallSpan = (spanMax - spanMin) * 0.5;
       const halfEaveSpan = halfWallSpan + eaveOverhang;
@@ -25050,7 +25378,7 @@
         triMesh.castShadow = true;
         triMesh.receiveShadow = true;
         triMesh.userData = { isSelectableBuilding: true, building };
-        arch.add(triMesh);
+        targetGrp.add(triMesh);
       };
       if (buildGableWallMin) buildTriangularWall(lenMin, false);
       if (buildGableWallMax) buildTriangularWall(lenMax, true);
@@ -25067,8 +25395,8 @@
           slopeMesh.castShadow = true;
           slopeMesh.receiveShadow = true;
           slopeMesh.userData = { isSelectableBuilding: true, building };
-          arch.add(slopeMesh);
-          addBox(0.08, 0.18, roofLength, whiteTrimMat, spanCenter + side * halfEaveSpan, eaveDropY + 0.04, lenCenter);
+          targetGrp.add(slopeMesh);
+          addRoofBox(0.08, 0.18, roofLength, whiteTrimMat, spanCenter + side * halfEaveSpan, eaveDropY + 0.04, lenCenter);
         } else {
           const slopeMesh = new Mesh(
             new BoxGeometry(roofLength, deckThick, slopeLen),
@@ -25079,8 +25407,8 @@
           slopeMesh.castShadow = true;
           slopeMesh.receiveShadow = true;
           slopeMesh.userData = { isSelectableBuilding: true, building };
-          arch.add(slopeMesh);
-          addBox(roofLength, 0.18, 0.08, whiteTrimMat, lenCenter, eaveDropY + 0.04, spanCenter + side * halfEaveSpan);
+          targetGrp.add(slopeMesh);
+          addRoofBox(roofLength, 0.18, 0.08, whiteTrimMat, lenCenter, eaveDropY + 0.04, spanCenter + side * halfEaveSpan);
         }
         for (const endZ of [lenMin - rakeOverhang + 0.06, lenMax + rakeOverhang - 0.06]) {
           if (axis === "Z") {
@@ -25091,7 +25419,7 @@
             rake.position.set(spanCenter + midOffset, midY + 0.01, endZ);
             rake.rotation.z = -side * slopeAngle;
             rake.castShadow = true;
-            arch.add(rake);
+            targetGrp.add(rake);
           } else {
             const rake = new Mesh(
               new BoxGeometry(0.12, 0.18, slopeLen + 0.06),
@@ -25100,23 +25428,23 @@
             rake.position.set(endZ, midY + 0.01, spanCenter + midOffset);
             rake.rotation.x = side * slopeAngle;
             rake.castShadow = true;
-            arch.add(rake);
+            targetGrp.add(rake);
           }
         }
       }
       if (axis === "Z") {
-        addBox(0.28, 0.1, roofLength, shingleRoofMat, spanCenter, peakY + 0.1, lenCenter);
+        addRoofBox(0.28, 0.1, roofLength, shingleRoofMat, spanCenter, peakY + 0.1, lenCenter);
       } else {
-        addBox(roofLength, 0.1, 0.28, shingleRoofMat, lenCenter, peakY + 0.1, spanCenter);
+        addRoofBox(roofLength, 0.1, 0.28, shingleRoofMat, lenCenter, peakY + 0.1, spanCenter);
       }
       const addGableVent = (posAlongRidge, normalSign) => {
         const ventY = baseY + ridgeRise * 0.62;
         if (axis === "Z") {
-          addBox(0.38, 0.52, 0.06, whiteTrimMat, spanCenter, ventY, posAlongRidge + normalSign * 0.03);
-          addBox(0.28, 0.42, 0.07, darkMetalMat, spanCenter, ventY, posAlongRidge + normalSign * 0.04);
+          addRoofBox(0.38, 0.52, 0.06, whiteTrimMat, spanCenter, ventY, posAlongRidge + normalSign * 0.03);
+          addRoofBox(0.28, 0.42, 0.07, darkMetalMat, spanCenter, ventY, posAlongRidge + normalSign * 0.04);
         } else {
-          addBox(0.06, 0.52, 0.38, whiteTrimMat, posAlongRidge + normalSign * 0.03, ventY, spanCenter);
-          addBox(0.07, 0.42, 0.28, darkMetalMat, posAlongRidge + normalSign * 0.04, ventY, spanCenter);
+          addRoofBox(0.06, 0.52, 0.38, whiteTrimMat, posAlongRidge + normalSign * 0.03, ventY, spanCenter);
+          addRoofBox(0.07, 0.42, 0.28, darkMetalMat, posAlongRidge + normalSign * 0.04, ventY, spanCenter);
         }
       };
       if (gableVentMax) addGableVent(lenMax, 1);
@@ -25165,9 +25493,11 @@
       buildGableWallMin: false,
       buildGableWallMax: true,
       gableVentMax: false,
-      gableVentMin: false
+      gableVentMin: false,
+      hideOnCutaway: true
     });
-    addBox(0.14, eaveY - 0.42, 0.14, whiteTrimMat, 2.38, 0.42 + (eaveY - 0.42) * 0.5, 4.65);
+    const porchPost428 = addBox(0.14, eaveY - 0.42, 0.14, whiteTrimMat, 2.38, 0.42 + (eaveY - 0.42) * 0.5, 4.65);
+    porchPost428.userData.hideOnCutaway = true;
     const addFramedWindow = ({
       wallNormal,
       // 'Z+', 'Z-', 'X+', 'X-'
@@ -25180,6 +25510,7 @@
       glassMat = darkWindowGlassMat
     }) => {
       const grp = new Group();
+      grp.userData.hideOnCutaway = true;
       grp.position.set(x, y, z);
       if (wallNormal === "Z-") grp.rotation.y = Math.PI;
       else if (wallNormal === "X+") grp.rotation.y = Math.PI * 0.5;
@@ -25231,7 +25562,7 @@
         for (let col = 0; col < 2; col++) {
           const gx = doorX + (col === 0 ? -0.18 : 0.18);
           const gy = doorY + 0.22 + row * 0.25;
-          addBox(0.24, 0.19, 0.03, darkWindowGlassMat, gx, gy, doorZ + 0.075, false);
+          addBox(0.24, 0.19, 0.03, darkWindowGlassMat, gx, gy, doorZ + 0.075, false).userData.hideOnCutaway = true;
         }
       }
       addBox(0.04, 0.14, 0.05, darkMetalMat, doorX - 0.38, doorY - 0.08, doorZ + 0.09, false);
@@ -25524,6 +25855,2409 @@
     }
   }
 
+  // js/foundry/buildings/building401/WashingtonStreetCorridor.js
+  var _cachedAsphaltTex = null;
+  var _cachedConcreteTableTex = null;
+  var _cachedBrushedParkingConcreteTex = null;
+  var _cachedAdaAsphaltStencilTex = null;
+  var _cachedTurnArrowLeftTex = null;
+  var _cachedTurnArrowRightTex = null;
+  var _cachedBikeLaneStencilTex = null;
+  var _cachedHazardBarricadeTex = null;
+  var _cachedStencilTextures = /* @__PURE__ */ new Map();
+  function getBrushedParkingConcreteTexture() {
+    if (_cachedBrushedParkingConcreteTex) return _cachedBrushedParkingConcreteTex;
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ccc7bd";
+    ctx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 4200; i++) {
+      const x = i * 79 % 512;
+      const y = i * 149 % 512;
+      ctx.fillStyle = i % 2 === 0 ? "rgba(255,255,255,0.06)" : "rgba(72,68,62,0.065)";
+      ctx.fillRect(x, y, 6, 2);
+    }
+    ctx.strokeStyle = "rgba(82, 78, 70, 0.36)";
+    ctx.lineWidth = 2;
+    for (let g = 128; g < 512; g += 128) {
+      ctx.beginPath();
+      ctx.moveTo(g, 0);
+      ctx.lineTo(g, 512);
+      ctx.moveTo(0, g);
+      ctx.lineTo(512, g);
+      ctx.stroke();
+    }
+    const tex = new CanvasTexture(canvas);
+    tex.wrapS = RepeatWrapping;
+    tex.wrapT = RepeatWrapping;
+    tex.colorSpace = SRGBColorSpace;
+    _cachedBrushedParkingConcreteTex = tex;
+    return tex;
+  }
+  function getRoadStencilTextTexture(label, color = "#f8fafc") {
+    const key = `st_${label}_${color}`;
+    if (_cachedStencilTextures.has(key)) return _cachedStencilTextures.get(key);
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, 512, 128);
+    ctx.font = '800 62px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.strokeStyle = "rgba(20, 24, 31, 0.65)";
+    ctx.lineWidth = 6;
+    ctx.strokeText(label, 256, 66);
+    ctx.fillStyle = color;
+    ctx.fillText(label, 256, 66);
+    const tex = new CanvasTexture(canvas);
+    tex.colorSpace = SRGBColorSpace;
+    _cachedStencilTextures.set(key, tex);
+    return tex;
+  }
+  function getAccessRoadSignTexture(title = "ACCESS ROAD", sub1 = "AUTHORIZED", sub2 = "VEHICLES ONLY", footer = "NO PARKING") {
+    const key = `sign_${title}_${sub1}_${sub2}_${footer}`;
+    if (_cachedStencilTextures.has(key)) return _cachedStencilTextures.get(key);
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 320;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(0, 0, 256, 320);
+    ctx.strokeStyle = "#b91c1c";
+    ctx.lineWidth = 10;
+    ctx.strokeRect(8, 8, 240, 304);
+    ctx.fillStyle = "#b91c1c";
+    ctx.fillRect(16, 16, 224, 72);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 28px Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(title, 128, 62);
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "bold 24px Arial, sans-serif";
+    ctx.fillText(sub1, 128, 138);
+    ctx.fillText(sub2, 128, 172);
+    ctx.fillStyle = "#b91c1c";
+    ctx.font = "bold 26px Arial, sans-serif";
+    ctx.fillText(footer, 128, 248);
+    ctx.font = "bold 18px Arial, sans-serif";
+    ctx.fillText("TOW-AWAY ZONE", 128, 282);
+    const tex = new CanvasTexture(canvas);
+    tex.colorSpace = SRGBColorSpace;
+    _cachedStencilTextures.set(key, tex);
+    return tex;
+  }
+  function getHazardBarricadeTexture() {
+    if (_cachedHazardBarricadeTex) return _cachedHazardBarricadeTex;
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#facc15";
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.fillStyle = "#18181b";
+    for (let x = -128; x < 640; x += 72) {
+      ctx.beginPath();
+      ctx.moveTo(x, 128);
+      ctx.lineTo(x + 36, 128);
+      ctx.lineTo(x + 100, 0);
+      ctx.lineTo(x + 64, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.strokeStyle = "#ca8a04";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, 506, 122);
+    const tex = new CanvasTexture(canvas);
+    tex.wrapS = RepeatWrapping;
+    tex.wrapT = ClampToEdgeWrapping;
+    tex.colorSpace = SRGBColorSpace;
+    _cachedHazardBarricadeTex = tex;
+    return tex;
+  }
+  function getAsphaltTexture() {
+    if (_cachedAsphaltTex) return _cachedAsphaltTex;
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#252930";
+    ctx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 4200; i++) {
+      const x = i * 73 % 256;
+      const y = i * 137 % 256;
+      const v = 30 + i * 29 % 24;
+      ctx.fillStyle = `rgb(${v},${v + 2},${v + 5})`;
+      ctx.fillRect(x, y, 2, 2);
+    }
+    const tex = new CanvasTexture(canvas);
+    tex.wrapS = RepeatWrapping;
+    tex.wrapT = RepeatWrapping;
+    tex.repeat.set(6, 28);
+    _cachedAsphaltTex = tex;
+    return tex;
+  }
+  function getConcreteTableTexture() {
+    if (_cachedConcreteTableTex) return _cachedConcreteTableTex;
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#5c626b";
+    ctx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 2800; i++) {
+      const x = i * 61 % 256;
+      const y = i * 113 % 256;
+      const v = 82 + i * 19 % 22;
+      ctx.fillStyle = `rgb(${v},${v + 2},${v + 4})`;
+      ctx.fillRect(x, y, 2, 2);
+    }
+    const tex = new CanvasTexture(canvas);
+    tex.wrapS = RepeatWrapping;
+    tex.wrapT = RepeatWrapping;
+    tex.repeat.set(4, 4);
+    _cachedConcreteTableTex = tex;
+    return tex;
+  }
+  function getAdaAsphaltStencilTexture() {
+    if (_cachedAdaAsphaltStencilTex) return _cachedAdaAsphaltStencilTex;
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, 256, 256);
+    ctx.strokeStyle = "#f8fafc";
+    ctx.fillStyle = "#f8fafc";
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 18;
+    ctx.beginPath();
+    ctx.arc(114, 154, 46, 0.22 * Math.PI, 1.42 * Math.PI, false);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(122, 62, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(122, 84);
+    ctx.lineTo(122, 136);
+    ctx.lineTo(166, 136);
+    ctx.lineTo(184, 184);
+    ctx.lineTo(202, 178);
+    ctx.stroke();
+    ctx.lineWidth = 15;
+    ctx.beginPath();
+    ctx.moveTo(122, 112);
+    ctx.lineTo(158, 112);
+    ctx.stroke();
+    const tex = new CanvasTexture(canvas);
+    tex.colorSpace = SRGBColorSpace;
+    _cachedAdaAsphaltStencilTex = tex;
+    return tex;
+  }
+  function getTurnArrowTexture(direction = "left") {
+    if (direction === "left" && _cachedTurnArrowLeftTex) return _cachedTurnArrowLeftTex;
+    if (direction === "right" && _cachedTurnArrowRightTex) return _cachedTurnArrowRightTex;
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, 256, 256);
+    ctx.save();
+    if (direction === "right") {
+      ctx.translate(256, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.strokeStyle = "#f1f5f9";
+    ctx.fillStyle = "#f1f5f9";
+    ctx.lineWidth = 26;
+    ctx.lineCap = "butt";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(156, 228);
+    ctx.lineTo(156, 132);
+    ctx.quadraticCurveTo(156, 78, 102, 78);
+    ctx.lineTo(78, 78);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(34, 78);
+    ctx.lineTo(92, 38);
+    ctx.lineTo(92, 118);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    const tex = new CanvasTexture(canvas);
+    tex.colorSpace = SRGBColorSpace;
+    if (direction === "left") _cachedTurnArrowLeftTex = tex;
+    else _cachedTurnArrowRightTex = tex;
+    return tex;
+  }
+  function getBikeLaneStencilTexture() {
+    if (_cachedBikeLaneStencilTex) return _cachedBikeLaneStencilTex;
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, 128, 256);
+    ctx.strokeStyle = "#f1f5f9";
+    ctx.fillStyle = "#f1f5f9";
+    ctx.lineWidth = 8;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(64, 76);
+    ctx.lineTo(64, 34);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(64, 16);
+    ctx.lineTo(42, 44);
+    ctx.lineTo(86, 44);
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.arc(38, 198, 20, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(90, 198, 20, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(38, 198);
+    ctx.lineTo(58, 166);
+    ctx.lineTo(84, 166);
+    ctx.lineTo(90, 198);
+    ctx.moveTo(58, 166);
+    ctx.lineTo(66, 198);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(62, 124, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 9;
+    ctx.beginPath();
+    ctx.moveTo(60, 138);
+    ctx.lineTo(56, 166);
+    ctx.lineTo(76, 152);
+    ctx.stroke();
+    const tex = new CanvasTexture(canvas);
+    tex.colorSpace = SRGBColorSpace;
+    _cachedBikeLaneStencilTex = tex;
+    return tex;
+  }
+  function buildGradedStripGeometry(lx0, lx1, lz0, lz1, segsX, segsZ, yGrade, yOffset) {
+    const geom = new BufferGeometry();
+    const positions = [];
+    const normals = [];
+    const uvs = [];
+    const indices = [];
+    for (let ix = 0; ix <= segsX; ix++) {
+      const u = ix / segsX;
+      const lx = lx0 + (lx1 - lx0) * u;
+      for (let iz = 0; iz <= segsZ; iz++) {
+        const v = iz / segsZ;
+        const lz = lz0 + (lz1 - lz0) * v;
+        const ly = yGrade(lx, lz) + yOffset;
+        positions.push(lx, ly, lz);
+        normals.push(0, 1, 0);
+        uvs.push(u, v);
+      }
+    }
+    const stride = segsZ + 1;
+    for (let ix = 0; ix < segsX; ix++) {
+      for (let iz = 0; iz < segsZ; iz++) {
+        const a = ix * stride + iz;
+        const b = (ix + 1) * stride + iz;
+        const c = (ix + 1) * stride + (iz + 1);
+        const d = ix * stride + (iz + 1);
+        indices.push(a, c, b);
+        indices.push(a, d, c);
+      }
+    }
+    geom.setAttribute("position", new Float32BufferAttribute(positions, 3));
+    geom.setAttribute("normal", new Float32BufferAttribute(normals, 3));
+    geom.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+    return geom;
+  }
+  function buildOrientedRoadRibbonGeometry(x0, z0, x1, z1, halfW0, halfW1, segsAlong, segsAcross, yGrade, yOffset) {
+    const geom = new BufferGeometry();
+    const positions = [];
+    const normals = [];
+    const uvs = [];
+    const indices = [];
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const len = Math.hypot(dx, dz) || 1;
+    const nx = -dz / len;
+    const nz = dx / len;
+    for (let i = 0; i <= segsAlong; i++) {
+      const u = i / segsAlong;
+      const cx = x0 + dx * u;
+      const cz = z0 + dz * u;
+      const hw = halfW0 + (halfW1 - halfW0) * u;
+      for (let j = 0; j <= segsAcross; j++) {
+        const v = j / segsAcross;
+        const off = (v * 2 - 1) * hw;
+        const px2 = cx + nx * off;
+        const pz2 = cz + nz * off;
+        const py2 = yGrade(px2, pz2) + yOffset;
+        positions.push(px2, py2, pz2);
+        normals.push(0, 1, 0);
+        uvs.push(u * (len / 12), v);
+      }
+    }
+    const stride = segsAcross + 1;
+    for (let i = 0; i < segsAlong; i++) {
+      for (let j = 0; j < segsAcross; j++) {
+        const a = i * stride + j;
+        const b = (i + 1) * stride + j;
+        const c = (i + 1) * stride + (j + 1);
+        const d = i * stride + (j + 1);
+        indices.push(a, b, c);
+        indices.push(a, c, d);
+      }
+    }
+    geom.setAttribute("position", new Float32BufferAttribute(positions, 3));
+    geom.setAttribute("normal", new Float32BufferAttribute(normals, 3));
+    geom.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+    return geom;
+  }
+  function buildWashingtonStreetCorridor(arch, mats, yGrade) {
+    const roadGrp = new Group();
+    roadGrp.name = "WashingtonOrondoOkanoganCorridor";
+    const asphaltMat = new MeshStandardMaterial({
+      color: "#282c34",
+      map: getAsphaltTexture(),
+      roughness: 0.86,
+      metalness: 0.04,
+      side: DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
+    });
+    const concreteTableMat = new MeshStandardMaterial({
+      color: "#636973",
+      map: getConcreteTableTexture(),
+      roughness: 0.8,
+      metalness: 0.04,
+      side: DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2
+    });
+    const tableJointMat = new MeshStandardMaterial({
+      color: "#434850",
+      roughness: 0.9,
+      metalness: 0.02,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3
+    });
+    const paintWhiteMat = new MeshStandardMaterial({
+      color: "#f1f5f9",
+      roughness: 0.52,
+      metalness: 0.05,
+      side: DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4
+    });
+    const paintYellowMat = new MeshStandardMaterial({
+      color: "#eab308",
+      roughness: 0.5,
+      metalness: 0.05,
+      side: DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4
+    });
+    const manholeIronMat = new MeshStandardMaterial({
+      color: "#2b2927",
+      roughness: 0.65,
+      metalness: 0.55,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4
+    });
+    const manholeCollarMat = new MeshStandardMaterial({
+      color: "#d6d3cb",
+      roughness: 0.78,
+      metalness: 0.05,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3
+    });
+    const sidewalkConcreteMat = new MeshStandardMaterial({
+      color: "#e2dcd0",
+      roughness: 0.86,
+      metalness: 0.03,
+      side: DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2
+    });
+    const curbWhiteMat = new MeshStandardMaterial({
+      color: "#f2eee6",
+      roughness: 0.75,
+      metalness: 0.04,
+      side: DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3
+    });
+    const addGradedStripe = (lx0, lx1, lz0, lz1, mat, yOff = 0.036, segsX = 4, segsZ = 1) => {
+      const sX = Math.max(1, Math.min(segsX, Math.ceil(Math.abs(lx1 - lx0) / 3)));
+      const sZ = Math.max(1, Math.min(segsZ, Math.ceil(Math.abs(lz1 - lz0) / 3)));
+      const geom = buildGradedStripGeometry(lx0, lx1, lz0, lz1, sX, sZ, yGrade, yOff);
+      const mesh = new Mesh(geom, mat);
+      mesh.receiveShadow = true;
+      roadGrp.add(mesh);
+      return mesh;
+    };
+    const addOrientedStripe = (x0, z0, x1, z1, halfW, mat, yOff = 0.038, segs = 4) => {
+      const geom = buildOrientedRoadRibbonGeometry(x0, z0, x1, z1, halfW, halfW, segs, 1, yGrade, yOff);
+      const mesh = new Mesh(geom, mat);
+      mesh.receiveShadow = true;
+      roadGrp.add(mesh);
+      return mesh;
+    };
+    const addTwinBarPair = (cx, cz, lengthX, widthZ, rotY = 0) => {
+      const wy = yGrade(cx, cz) + 0.038;
+      const pairGrp = new Group();
+      pairGrp.position.set(cx, wy, cz);
+      pairGrp.rotation.y = rotY;
+      for (const offset of [-0.26, 0.26]) {
+        const bar = new Mesh(new BoxGeometry(lengthX, 0.016, widthZ), paintWhiteMat);
+        bar.position.set(0, 0, offset);
+        bar.receiveShadow = true;
+        pairGrp.add(bar);
+      }
+      roadGrp.add(pairGrp);
+    };
+    const leftArrowTex = getTurnArrowTexture("left");
+    const rightArrowTex = getTurnArrowTexture("right");
+    const bikeStencilTex = getBikeLaneStencilTexture();
+    const leftArrowMat = new MeshBasicMaterial({
+      map: leftArrowTex,
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -5,
+      polygonOffsetUnits: -5
+    });
+    const rightArrowMat = new MeshBasicMaterial({
+      map: rightArrowTex,
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -5,
+      polygonOffsetUnits: -5
+    });
+    const bikeStencilMat = new MeshBasicMaterial({
+      map: bikeStencilTex,
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -5,
+      polygonOffsetUnits: -5
+    });
+    const addRoadDecal = (cx, cz, w, h, mat, travelAngle, yOff = 0.041) => {
+      const cy = yGrade(cx, cz) + yOff;
+      const decal = new Mesh(new PlaneGeometry(w, h), mat);
+      decal.rotation.order = "YXZ";
+      decal.rotation.x = -Math.PI / 2;
+      decal.rotation.y = -travelAngle - Math.PI / 2;
+      decal.position.set(cx, cy, cz);
+      roadGrp.add(decal);
+    };
+    {
+      const swAsphalt = new Mesh(
+        buildGradedStripGeometry(-63.5, 19.45, 24.7, 38.65, 36, 6, yGrade, 0.016),
+        asphaltMat
+      );
+      swAsphalt.receiveShadow = true;
+      roadGrp.add(swAsphalt);
+      for (const [cx0, cx1, cz0, cz1] of [
+        [-63.8, -55.8, 19.2, 25],
+        [-62, -55, 38.4, 44.2]
+      ]) {
+        const cornerFill = new Mesh(
+          buildGradedStripGeometry(cx0, cx1, cz0, cz1, 4, 4, yGrade, 0.016),
+          asphaltMat
+        );
+        cornerFill.receiveShadow = true;
+        roadGrp.add(cornerFill);
+      }
+    }
+    {
+      const neAsphalt = new Mesh(
+        buildGradedStripGeometry(42.85, 125.05, 24.7, 38.75, 34, 6, yGrade, 0.016),
+        asphaltMat
+      );
+      neAsphalt.receiveShadow = true;
+      roadGrp.add(neAsphalt);
+      for (const [cx0, cx1, cz0, cz1, nx, nz] of [
+        [116.5, 125.05, 20, 25.6, 14, 10],
+        // Courthouse 350 rounded corner spandrel
+        [117.5, 123.38, 38.5, 43.35, 14, 10],
+        // Building 300 rounded corner spandrel
+        [91.5, 114.8, 38.5, 40.85, 20, 6]
+        // Building 300 recessed disabled parking turnout bay
+      ]) {
+        const cornerFill = new Mesh(
+          buildGradedStripGeometry(cx0, cx1, cz0, cz1, nx, nz, yGrade, 0.016),
+          asphaltMat
+        );
+        cornerFill.receiveShadow = true;
+        roadGrp.add(cornerFill);
+      }
+    }
+    {
+      const getDouglasSWCurbX = (lz) => {
+        if (lz <= 44.5) return 24.45;
+        return 24.62;
+      };
+      const getDouglasNECurbX = (lz) => {
+        if (lz <= 44.5) return 38.65;
+        return 38.46;
+      };
+      const dzStart = 43.2;
+      const dzEnd = 175;
+      const dzSegs = 132;
+      const dxSegs = 10;
+      const dougGeom = new BufferGeometry();
+      const dPos = [];
+      const dNorm = [];
+      const dUv = [];
+      const dIdx = [];
+      for (let iz = 0; iz <= dzSegs; iz++) {
+        const v = iz / dzSegs;
+        const lz = dzStart + (dzEnd - dzStart) * v;
+        const xMin = getDouglasSWCurbX(lz);
+        const xMax = getDouglasNECurbX(lz);
+        for (let ix = 0; ix <= dxSegs; ix++) {
+          const u = ix / dxSegs;
+          const lx = xMin + (xMax - xMin) * u;
+          const ly = yGrade(lx, lz) + 0.016;
+          dPos.push(lx, ly, lz);
+          dNorm.push(0, 1, 0);
+          dUv.push(u, v * 8);
+        }
+      }
+      for (let iz = 0; iz < dzSegs; iz++) {
+        for (let ix = 0; ix < dxSegs; ix++) {
+          const a = iz * (dxSegs + 1) + ix;
+          const b = a + 1;
+          const c = (iz + 1) * (dxSegs + 1) + ix;
+          const d = c + 1;
+          dIdx.push(a, c, b);
+          dIdx.push(b, c, d);
+        }
+      }
+      dougGeom.setAttribute("position", new Float32BufferAttribute(dPos, 3));
+      dougGeom.setAttribute("normal", new Float32BufferAttribute(dNorm, 3));
+      dougGeom.setAttribute("uv", new Float32BufferAttribute(dUv, 2));
+      dougGeom.setIndex(dIdx);
+      dougGeom.computeVertexNormals();
+      const douglasRoadMesh = new Mesh(dougGeom, asphaltMat);
+      douglasRoadMesh.receiveShadow = true;
+      roadGrp.add(douglasRoadMesh);
+      {
+        const b400PlazaCurb = new Mesh(
+          buildGradedStripGeometry(24.44, 24.64, 59.38, 74.4, 1, 20, yGrade, 0.125),
+          curbWhiteMat
+        );
+        b400PlazaCurb.receiveShadow = true;
+        roadGrp.add(b400PlazaCurb);
+      }
+      for (const [swZ0, swZ1, swSteps] of [
+        [79.8, 87.8, 16],
+        [93.6, 175, 68]
+      ]) {
+        const dougSWSidewalk = new Mesh(
+          buildGradedStripGeometry(22.4, 24.62, swZ0, swZ1, 3, swSteps, yGrade, 0.085),
+          sidewalkConcreteMat
+        );
+        dougSWSidewalk.receiveShadow = true;
+        roadGrp.add(dougSWSidewalk);
+        const dougSWCurb = new Mesh(
+          buildGradedStripGeometry(24.44, 24.64, swZ0, swZ1, 1, swSteps, yGrade, 0.125),
+          curbWhiteMat
+        );
+        dougSWCurb.receiveShadow = true;
+        roadGrp.add(dougSWCurb);
+      }
+      for (const [apZ0, apZ1] of [
+        [74.4, 79.8],
+        [87.8, 93.6]
+      ]) {
+        const dougSWDriveApron = new Mesh(
+          buildGradedStripGeometry(
+            22.4,
+            24.62,
+            apZ0,
+            apZ1,
+            4,
+            10,
+            (lx, lz) => {
+              const uCurb = MathUtils.clamp((lx - 22.4) / (24.62 - 22.4), 0, 1);
+              const innerExtra = apZ0 < 80 ? MathUtils.lerp(0.084, 0.046, MathUtils.smoothstep(lz, 74.4, 75.85)) : 0.046;
+              return yGrade(lx, lz) + MathUtils.lerp(innerExtra, 0, uCurb);
+            },
+            0.022
+          ),
+          sidewalkConcreteMat
+        );
+        dougSWDriveApron.receiveShadow = true;
+        roadGrp.add(dougSWDriveApron);
+        const dougSWCurbCutLip = new Mesh(
+          buildGradedStripGeometry(24.46, 24.64, apZ0, apZ1, 1, 10, yGrade, 0.028),
+          curbWhiteMat
+        );
+        dougSWCurbCutLip.receiveShadow = true;
+        roadGrp.add(dougSWCurbCutLip);
+      }
+      for (const [neZ0, neZ1, neSteps] of [
+        [106.2, 128.7, 10],
+        [133.4, 175, 18]
+      ]) {
+        const dougNESidewalk = new Mesh(
+          buildGradedStripGeometry(38.46, 40.68, neZ0, neZ1, 2, neSteps, yGrade, 0.085),
+          sidewalkConcreteMat
+        );
+        dougNESidewalk.receiveShadow = true;
+        roadGrp.add(dougNESidewalk);
+        const dougNECurb = new Mesh(
+          buildGradedStripGeometry(38.44, 38.64, neZ0, neZ1, 1, neSteps, yGrade, 0.125),
+          curbWhiteMat
+        );
+        dougNECurb.receiveShadow = true;
+        roadGrp.add(dougNECurb);
+      }
+      {
+        const dougAccessApron = new Mesh(
+          buildGradedStripGeometry(38.46, 40.68, 128.7, 133.4, 2, 4, yGrade, 0.024),
+          sidewalkConcreteMat
+        );
+        dougAccessApron.receiveShadow = true;
+        roadGrp.add(dougAccessApron);
+      }
+      for (let lz = 45.5; lz <= 171; lz += 7.5) {
+        if (lz > 127.8 && lz < 134.2) continue;
+        addGradedStripe(31.47, 31.61, lz, lz + 2.95, paintYellowMat, 0.036, 1, 2);
+      }
+      addGradedStripe(26.99, 27.11, 47, 71.8, paintWhiteMat, 0.036, 1, 10);
+      for (let tz = 47; tz <= 71.8; tz += 6.2) {
+        addGradedStripe(26.35, 27.11, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
+      }
+      addGradedStripe(26.99, 27.11, 95, 168, paintWhiteMat, 0.036, 1, 26);
+      for (let tz = 95; tz <= 168; tz += 6.08) {
+        addGradedStripe(26.35, 27.11, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
+      }
+      addGradedStripe(35.96, 36.08, 45.5, 79.8, paintWhiteMat, 0.036, 1, 14);
+      for (let tz = 45.5; tz <= 79.8; tz += 5.71) {
+        addGradedStripe(35.96, 36.68, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
+      }
+      addGradedStripe(35.96, 36.08, 135.8, 168, paintWhiteMat, 0.036, 1, 13);
+      for (let tz = 135.8; tz <= 168; tz += 5.8) {
+        addGradedStripe(35.96, 36.68, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
+      }
+      addGradedStripe(27.15, 31.45, 170.35, 170.75, paintWhiteMat, 0.038, 2, 1);
+      for (let s = 0; s < 5; s++) {
+        const sx = 27.5 + s * 2.02;
+        addTwinBarPair(sx, 172.8, 2.65, 0.22, Math.PI / 2);
+      }
+    }
+    {
+      const mainTable = new Mesh(
+        buildGradedStripGeometry(19.3, 42.95, 24.8, 38.6, 14, 6, yGrade, 0.025),
+        concreteTableMat
+      );
+      mainTable.receiveShadow = true;
+      roadGrp.add(mainTable);
+      const douglasTable = new Mesh(
+        buildGradedStripGeometry(19.3, 42.95, 38.45, 43.35, 14, 4, yGrade, 0.025),
+        concreteTableMat
+      );
+      douglasTable.receiveShadow = true;
+      roadGrp.add(douglasTable);
+      for (const jx of [19.35, 25.24, 31.13, 37.01, 42.9]) {
+        addGradedStripe(jx - 0.04, jx + 0.04, 24.85, 38.5, tableJointMat, 0.028, 1);
+      }
+      for (const jz of [28.2, 31.65, 35.1]) {
+        addGradedStripe(19.35, 42.9, jz - 0.04, jz + 0.04, tableJointMat, 0.028, 8);
+      }
+    }
+    {
+      for (let s = 0; s < 6; s++) {
+        const sz = 26.725 + s * 2;
+        addTwinBarPair(22.55, sz, 2.85, 0.22, 0);
+        addTwinBarPair(39.69, sz, 2.85, 0.22, 0);
+      }
+      for (let s = 0; s < 5; s++) {
+        const sx = 27.68 + s * 2;
+        addTwinBarPair(sx, 41.65, 2.65, 0.22, Math.PI / 2);
+      }
+      addGradedStripe(31.68, 35.8, 43.55, 43.95, paintWhiteMat, 0.038, 2);
+      const addSpeedTableChevron = (apexX, baseX, cz) => {
+        const cy = yGrade((apexX + baseX) * 0.5, cz) + 0.036;
+        const grp = new Group();
+        grp.position.set(0, cy, 0);
+        const dir = apexX > baseX ? 1 : -1;
+        const len = Math.abs(apexX - baseX);
+        const halfW = 0.78;
+        for (const side of [-1, 1]) {
+          const dx = len * dir;
+          const dz = -side * halfW;
+          const armLen = Math.hypot(dx, dz);
+          const angle = Math.atan2(dz, dx);
+          const arm = new Mesh(new BoxGeometry(armLen, 0.016, 0.18), paintWhiteMat);
+          arm.position.set(baseX + dx * 0.5, 0, cz + side * halfW * 0.5);
+          arm.rotation.y = -angle;
+          arm.receiveShadow = true;
+          grp.add(arm);
+          const arm2 = new Mesh(new BoxGeometry(armLen * 0.55, 0.016, 0.14), paintWhiteMat);
+          arm2.position.set(baseX + dx * 0.3, 0, cz + side * halfW * 0.28);
+          arm2.rotation.y = -angle;
+          arm2.receiveShadow = true;
+          grp.add(arm2);
+        }
+        roadGrp.add(grp);
+      };
+      addSpeedTableChevron(20.9, 19.45, 33.55);
+      addSpeedTableChevron(41.35, 42.8, 29.65);
+    }
+    for (const [mx, mz] of [
+      [29.8, 30.85],
+      [35.4, 33.85],
+      [28.15, 38.85],
+      [54.8, 33.25],
+      [63.4, 29.1]
+    ]) {
+      const my = yGrade(mx, mz) + 0.036;
+      const collar = new Mesh(new CylinderGeometry(0.46, 0.46, 0.014, 20), manholeCollarMat);
+      collar.position.set(mx, my, mz);
+      collar.receiveShadow = true;
+      roadGrp.add(collar);
+      const lid = new Mesh(new CylinderGeometry(0.34, 0.34, 0.018, 20), manholeIronMat);
+      lid.position.set(mx, my + 2e-3, mz);
+      lid.receiveShadow = true;
+      roadGrp.add(lid);
+    }
+    {
+      for (let s = 0; s < 6; s++) {
+        const sz = 26.725 + s * 2;
+        addTwinBarPair(-61.85, sz, 2.75, 0.22, 0);
+      }
+      addGradedStripe(-58.8, -58.4, 27.35, 31.65, paintWhiteMat, 0.038, 1);
+      for (let lx = -54.5; lx <= 15.2; lx += 7.5) {
+        addGradedStripe(lx, lx + 2.95, 31.58, 31.72, paintYellowMat, 0.036, 1);
+      }
+      addGradedStripe(-53.5, -16.5, 27.29, 27.41, paintWhiteMat, 0.036, 12);
+      for (let tx = -53.5; tx <= -16.5; tx += 7.4) {
+        addGradedStripe(tx - 0.06, tx + 0.06, 26.75, 27.41, paintWhiteMat, 0.036, 1);
+      }
+      addGradedStripe(-10.5, 17.5, 27.29, 27.41, paintWhiteMat, 0.036, 10);
+      for (let tx = -10.5; tx <= 17.5; tx += 7) {
+        addGradedStripe(tx - 0.06, tx + 0.06, 26.75, 27.41, paintWhiteMat, 0.036, 1);
+      }
+      addGradedStripe(-53.5, 17.5, 35.79, 35.91, paintWhiteMat, 0.036, 24);
+      for (let tx = -53.5; tx <= 17.5; tx += 6.45) {
+        addGradedStripe(tx - 0.06, tx + 0.06, 35.79, 36.45, paintWhiteMat, 0.036, 1);
+      }
+    }
+    {
+      for (let lx = 45.5; lx <= 69.5; lx += 7.4) {
+        addGradedStripe(lx, lx + 2.85, 31.18, 31.32, paintYellowMat, 0.036, 1);
+      }
+      addGradedStripe(73.2, 117.3, 30.98, 31.11, paintYellowMat, 0.036, 15);
+      addGradedStripe(73.2, 117.3, 31.25, 31.38, paintYellowMat, 0.036, 15);
+      addGradedStripe(45.2, 65.4, 27.39, 27.51, paintWhiteMat, 0.036, 8);
+      for (const tx of [45.2, 54.2, 60, 65.4]) {
+        addGradedStripe(tx - 0.06, tx + 0.06, 26.65, 27.51, paintWhiteMat, 0.036, 1);
+      }
+      addGradedStripe(69.5, 98.5, 27.19, 27.31, paintWhiteMat, 0.036, 10);
+      for (const tx of [69.5, 76.5, 83.5, 91, 98.5]) {
+        addGradedStripe(tx - 0.06, tx + 0.06, 26.55, 27.31, paintWhiteMat, 0.036, 1);
+      }
+      addGradedStripe(45.5, 76.8, 35.99, 36.11, paintWhiteMat, 0.036, 11);
+      for (let tx = 45.5; tx <= 76.8; tx += 6.26) {
+        addGradedStripe(tx - 0.06, tx + 0.06, 35.99, 36.68, paintWhiteMat, 0.036, 1);
+      }
+      addGradedStripe(91.5, 117.3, 34.84, 34.96, paintWhiteMat, 0.036, 9);
+      for (const ax of [96.8, 108.8]) {
+        addRoadDecal(ax, 33.12, 2.15, 2.5, leftArrowMat, 0, 0.041);
+        addRoadDecal(ax, 36.68, 2.15, 2.5, rightArrowMat, 0, 0.041);
+      }
+      addGradedStripe(117.3, 117.72, 31.32, 38.45, paintWhiteMat, 0.038, 1, 3);
+      for (let s = 0; s < 6; s++) {
+        const sz = 26.95 + s * 2;
+        addTwinBarPair(120.6, sz, 2.75, 0.22, 0);
+      }
+    }
+    {
+      const adaStencilTex = getAdaAsphaltStencilTexture();
+      const adaStencilMat = new MeshBasicMaterial({
+        map: adaStencilTex,
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -5,
+        polygonOffsetUnits: -5
+      });
+      {
+        addRoadDecal(50.4, 26.15, 1.55, 1.55, adaStencilMat, 0, 0.042);
+        addGradedStripe(47.55, 47.65, 25, 27.45, paintWhiteMat, 0.037, 1);
+        for (let hz = 25.25; hz <= 27.25; hz += 0.5) {
+          addGradedStripe(45.3, 47.55, hz - 0.04, hz + 0.04, paintWhiteMat, 0.037, 1);
+        }
+        const postX = 50.8, postZ = 24.55;
+        const postY = yGrade(postX, postZ);
+        const postMat = new MeshStandardMaterial({ color: "#94a3b8", roughness: 0.45, metalness: 0.75 });
+        const signFaceMat = new MeshStandardMaterial({ color: "#f8fafc", roughness: 0.35, metalness: 0.1 });
+        const signBlueMat = new MeshStandardMaterial({ color: "#0284c7", roughness: 0.4, metalness: 0.1 });
+        const post = new Mesh(new CylinderGeometry(0.032, 0.032, 2.25, 8), postMat);
+        post.position.set(postX, postY + 1.125, postZ);
+        post.castShadow = true;
+        roadGrp.add(post);
+        const signBoard = new Mesh(new BoxGeometry(0.03, 0.46, 0.32), signFaceMat);
+        signBoard.position.set(postX, postY + 2.05, postZ);
+        roadGrp.add(signBoard);
+        const signBadge = new Mesh(new BoxGeometry(0.036, 0.22, 0.24), signBlueMat);
+        signBadge.position.set(postX, postY + 2.12, postZ);
+        roadGrp.add(signBadge);
+      }
+      {
+        addRoadDecal(104.5, 39.55, 1.5, 1.5, adaStencilMat, Math.PI, 0.042);
+      }
+    }
+    {
+      const getOrondoSWCurbX = (lz) => {
+        if (lz <= 20.2) return 124.96;
+        if (lz <= 43.2) {
+          const t = (lz - 20.2) / (43.2 - 20.2);
+          return MathUtils.lerp(124.96, 123.18, t);
+        }
+        return 123.18;
+      };
+      const orondoNECurbX = 141.4;
+      const zStart = -62;
+      const zEnd = 175;
+      const zSegs = 96;
+      const xSegs = 8;
+      const orondoGeom = new BufferGeometry();
+      const oPos = [];
+      const oNorm = [];
+      const oUv = [];
+      const oIdx = [];
+      for (let iz = 0; iz <= zSegs; iz++) {
+        const v = iz / zSegs;
+        const lz = zStart + (zEnd - zStart) * v;
+        const xMin = getOrondoSWCurbX(lz);
+        const xMax = orondoNECurbX;
+        for (let ix = 0; ix <= xSegs; ix++) {
+          const u = ix / xSegs;
+          const lx = xMin + (xMax - xMin) * u;
+          const ly = yGrade(lx, lz) + 0.016;
+          oPos.push(lx, ly, lz);
+          oNorm.push(0, 1, 0);
+          oUv.push(u, v * 12);
+        }
+      }
+      const stride = xSegs + 1;
+      for (let iz = 0; iz < zSegs; iz++) {
+        for (let ix = 0; ix < xSegs; ix++) {
+          const a = iz * stride + ix;
+          const b = (iz + 1) * stride + ix;
+          const c = (iz + 1) * stride + (ix + 1);
+          const d = iz * stride + (ix + 1);
+          oIdx.push(a, b, c);
+          oIdx.push(a, c, d);
+        }
+      }
+      orondoGeom.setAttribute("position", new Float32BufferAttribute(oPos, 3));
+      orondoGeom.setAttribute("normal", new Float32BufferAttribute(oNorm, 3));
+      orondoGeom.setAttribute("uv", new Float32BufferAttribute(oUv, 2));
+      orondoGeom.setIndex(oIdx);
+      orondoGeom.computeVertexNormals();
+      const orondoAsphaltMesh = new Mesh(orondoGeom, asphaltMat);
+      orondoAsphaltMesh.receiveShadow = true;
+      roadGrp.add(orondoAsphaltMesh);
+      {
+        const serviceStub = new Mesh(
+          buildGradedStripGeometry(119.8, 123.25, 117.15, 121.85, 3, 3, yGrade, 0.017),
+          asphaltMat
+        );
+        serviceStub.receiveShadow = true;
+        roadGrp.add(serviceStub);
+      }
+      for (const [swZ0, swZ1, swSteps] of [
+        [-62, -51.95, 6],
+        [-3.95, 175, 76]
+      ]) {
+        const neSidewalk = new Mesh(
+          buildGradedStripGeometry(141.4, 143.65, swZ0, swZ1, 2, swSteps, yGrade, 0.085),
+          sidewalkConcreteMat
+        );
+        neSidewalk.receiveShadow = true;
+        roadGrp.add(neSidewalk);
+        const neCurb = new Mesh(
+          buildGradedStripGeometry(141.32, 141.5, swZ0, swZ1, 1, swSteps, yGrade, 0.11),
+          curbWhiteMat
+        );
+        neCurb.receiveShadow = true;
+        roadGrp.add(neCurb);
+      }
+      {
+        const mhX = 131.6, mhZ = 31.8;
+        const mhY = yGrade(mhX, mhZ) + 0.036;
+        const collar = new Mesh(new BoxGeometry(1.12, 0.02, 1.12), manholeCollarMat);
+        collar.rotation.y = Math.PI * 0.25;
+        collar.position.set(mhX, mhY, mhZ);
+        roadGrp.add(collar);
+        const lid = new Mesh(new CylinderGeometry(0.36, 0.36, 0.024, 18), manholeIronMat);
+        lid.position.set(mhX, mhY + 3e-3, mhZ);
+        roadGrp.add(lid);
+      }
+      for (let s = 0; s < 7; s++) {
+        const cx = 125.7 + s * 2.2;
+        addTwinBarPair(cx, 42.4, 2.75, 0.22, Math.PI / 2);
+      }
+      addGradedStripe(123.3, 130.65, 45.2, 45.62, paintWhiteMat, 0.038, 3, 1);
+      for (let s = 0; s < 7; s++) {
+        const cx = 126.9 + s * 2.1;
+        addTwinBarPair(cx, 21.2, 2.75, 0.22, Math.PI / 2);
+      }
+      {
+        const gZ0 = -4.5, gZ1 = 18.8;
+        const gX0 = 130.85, gX1 = 134.05;
+        addGradedStripe(gX0, gX0 + 0.12, gZ0, gZ1, paintYellowMat, 0.037, 1, 6);
+        addGradedStripe(gX0 + 0.24, gX0 + 0.36, gZ0, gZ1, paintYellowMat, 0.037, 1, 6);
+        addGradedStripe(gX1 - 0.12, gX1, gZ0, gZ1, paintYellowMat, 0.037, 1, 6);
+        addGradedStripe(gX1 - 0.36, gX1 - 0.24, gZ0, gZ1, paintYellowMat, 0.037, 1, 6);
+        addGradedStripe(gX0, gX1, gZ0, gZ0 + 0.25, paintYellowMat, 0.037, 2, 1);
+        addGradedStripe(gX0, gX1, gZ1 - 0.25, gZ1, paintYellowMat, 0.037, 2, 1);
+        for (let gz = gZ0 + 1.1; gz <= gZ1 - 1.1; gz += 1.45) {
+          addOrientedStripe(gX0 + 0.35, gz - 0.45, gX1 - 0.35, gz + 0.45, 0.09, paintYellowMat, 0.038, 2);
+        }
+      }
+      {
+        addGradedStripe(130.6, 130.73, 46.2, 174, paintYellowMat, 0.036, 1, 42);
+        addGradedStripe(130.86, 130.99, 46.2, 96, paintYellowMat, 0.036, 1, 18);
+        addGradedStripe(133.65, 133.78, 46.2, 96, paintYellowMat, 0.036, 1, 18);
+        addGradedStripe(133.9, 134.03, 46.2, 174, paintYellowMat, 0.036, 1, 42);
+        for (let z = 98; z <= 170; z += 7.5) {
+          addGradedStripe(130.86, 130.99, z, z + 2.8, paintYellowMat, 0.036, 1, 1);
+          addGradedStripe(133.65, 133.78, z, z + 2.8, paintYellowMat, 0.036, 1, 1);
+        }
+        for (const az of [52, 65]) {
+          addRoadDecal(132.3, az, 2.05, 2.4, leftArrowMat, -Math.PI / 2, 0.041);
+        }
+        addGradedStripe(124.79, 124.91, 46.2, 116.8, paintWhiteMat, 0.036, 1, 24);
+        addGradedStripe(124.79, 124.91, 122.2, 174, paintWhiteMat, 0.036, 1, 18);
+        addGradedStripe(139.59, 139.71, -3.95, 174, paintWhiteMat, 0.036, 1, 58);
+        for (const bz of [56, 82, 106, 136, 160]) {
+          addRoadDecal(124.05, bz, 1.1, 2.2, bikeStencilMat, -Math.PI / 2, 0.041);
+          addRoadDecal(140.45, bz, 1.1, 2.2, bikeStencilMat, Math.PI / 2, 0.041);
+        }
+      }
+      {
+        addGradedStripe(130.85, 130.98, -60, -35.1, paintYellowMat, 0.036, 1, 10);
+        addGradedStripe(131.1, 131.23, -60, -35.1, paintYellowMat, 0.036, 1, 10);
+        addGradedStripe(133.8, 133.93, -60, -35.1, paintYellowMat, 0.036, 1, 10);
+        addGradedStripe(134.05, 134.18, -60, -35.1, paintYellowMat, 0.036, 1, 10);
+        addRoadDecal(132.5, -42.1, 2.05, 2.4, leftArrowMat, Math.PI / 2, 0.041);
+        addRoadDecal(132.5, -56.5, 2.05, 2.4, leftArrowMat, Math.PI / 2, 0.041);
+        for (let z = -58; z <= -38.15; z += 6.8) {
+          addGradedStripe(137.34, 137.46, z, z + 2.6, paintWhiteMat, 0.036, 1, 1);
+        }
+        addGradedStripe(126.55, 126.67, -20.5, 18.5, paintWhiteMat, 0.036, 1, 14);
+        for (const bz of [-8, 10]) {
+          addRoadDecal(125.8, bz, 1.1, 2.2, bikeStencilMat, -Math.PI / 2, 0.041);
+        }
+        addGradedStripe(139.69, 139.81, -60, -51.95, paintWhiteMat, 0.036, 1, 5);
+        for (const bz of [-56]) {
+          addRoadDecal(140.55, bz, 1.1, 2.2, bikeStencilMat, Math.PI / 2, 0.041);
+        }
+      }
+    }
+    {
+      const okX0 = 141.4;
+      const okZ0 = -25.95;
+      const ux = 0.59429;
+      const uz = 0.80425;
+      const nx = -uz;
+      const nz = ux;
+      const okHalfW = 8.2;
+      const sJoin = 18.6;
+      const okLen = 92;
+      const okAngle = Math.atan2(uz, ux);
+      const evalOkPt = (s, off) => [
+        okX0 + ux * s + nx * off,
+        okZ0 + uz * s + nz * off
+      ];
+      const getApexZForOff = (off) => {
+        const sApex = off * (uz / ux);
+        return okZ0 + sApex * uz + off * nz;
+      };
+      const getStartZForOff = (off) => {
+        const u = (off + okHalfW) / (2 * okHalfW);
+        return -51.95 + u * (-3.95 - -51.95);
+      };
+      const evalQuadBezier2D = (x0, z0, x1, z1, x2, z2, t) => {
+        const omt = 1 - t;
+        return [
+          omt * omt * x0 + 2 * omt * t * x1 + t * t * x2,
+          omt * omt * z0 + 2 * omt * t * z1 + t * t * z2
+        ];
+      };
+      const evalThroatPoint = (t, off) => {
+        const clampedOff = MathUtils.clamp(off, -okHalfW, okHalfW);
+        const extraOut = off - clampedOff;
+        const p0x = okX0;
+        const p0z = getStartZForOff(clampedOff);
+        const p1x = okX0;
+        const p1z = getApexZForOff(clampedOff);
+        const [p2x, p2z] = evalOkPt(sJoin, clampedOff);
+        const [bx, bz] = evalQuadBezier2D(p0x, p0z, p1x, p1z, p2x, p2z, t);
+        if (Math.abs(extraOut) < 1e-5) return [bx, bz];
+        const tx = 2 * (1 - t) * (p1x - p0x) + 2 * t * (p2x - p1x);
+        const tz = 2 * (1 - t) * (p1z - p0z) + 2 * t * (p2z - p1z);
+        const tLen = Math.hypot(tx, tz) || 1;
+        const dirSign = clampedOff >= 0 ? -1 : 1;
+        const outNx = dirSign * (tz / tLen);
+        const outNz = dirSign * (-tx / tLen);
+        return [bx + outNx * Math.abs(extraOut), bz + outNz * Math.abs(extraOut)];
+      };
+      {
+        const segsT = 24;
+        const segsV = 12;
+        const throatGeom = new BufferGeometry();
+        const tPos = [];
+        const tNorm = [];
+        const tUv = [];
+        const tIdx = [];
+        for (let it = 0; it <= segsT; it++) {
+          const t = -0.02 + it / segsT * 1.04;
+          for (let iv = 0; iv <= segsV; iv++) {
+            const v = iv / segsV;
+            const off = -(okHalfW + 0.22) + v * (2 * (okHalfW + 0.22));
+            const [px2, pz2] = evalThroatPoint(t, off);
+            const py2 = yGrade(px2, pz2) + 0.0165;
+            tPos.push(px2, py2, pz2);
+            tNorm.push(0, 1, 0);
+            tUv.push(t * 2, v);
+          }
+        }
+        const stride = segsV + 1;
+        for (let it = 0; it < segsT; it++) {
+          for (let iv = 0; iv < segsV; iv++) {
+            const a = it * stride + iv;
+            const b = (it + 1) * stride + iv;
+            const c = (it + 1) * stride + (iv + 1);
+            const d = it * stride + (iv + 1);
+            tIdx.push(a, b, c);
+            tIdx.push(a, c, d);
+          }
+        }
+        throatGeom.setAttribute("position", new Float32BufferAttribute(tPos, 3));
+        throatGeom.setAttribute("normal", new Float32BufferAttribute(tNorm, 3));
+        throatGeom.setAttribute("uv", new Float32BufferAttribute(tUv, 2));
+        throatGeom.setIndex(tIdx);
+        throatGeom.computeVertexNormals();
+        const throatMesh = new Mesh(throatGeom, asphaltMat);
+        throatMesh.receiveShadow = true;
+        roadGrp.add(throatMesh);
+      }
+      {
+        const [jx0, jz0] = evalOkPt(sJoin, 0);
+        const [jx1, jz1] = evalOkPt(okLen, 0);
+        const okStraightAsphalt = new Mesh(
+          buildOrientedRoadRibbonGeometry(jx0, jz0, jx1, jz1, okHalfW, okHalfW, 28, 6, yGrade, 0.016),
+          asphaltMat
+        );
+        okStraightAsphalt.receiveShadow = true;
+        roadGrp.add(okStraightAsphalt);
+      }
+      const buildCurvedCornerStrip = (offInner, offOuter, yOff, mat, segsT = 24) => {
+        const geom = new BufferGeometry();
+        const pos = [];
+        const norm = [];
+        const uv = [];
+        const idx = [];
+        for (let it = 0; it <= segsT; it++) {
+          const t = it / segsT;
+          const [x0, z0] = evalThroatPoint(t, offInner);
+          const [x1, z1] = evalThroatPoint(t, offOuter);
+          pos.push(x0, yGrade(x0, z0) + yOff, z0);
+          pos.push(x1, yGrade(x1, z1) + yOff, z1);
+          norm.push(0, 1, 0, 0, 1, 0);
+          uv.push(t, 0, t, 1);
+        }
+        for (let it = 0; it < segsT; it++) {
+          const a = it * 2;
+          const b = a + 1;
+          const c = a + 2;
+          const d = a + 3;
+          idx.push(a, b, d);
+          idx.push(a, d, c);
+        }
+        geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
+        geom.setAttribute("normal", new Float32BufferAttribute(norm, 3));
+        geom.setAttribute("uv", new Float32BufferAttribute(uv, 2));
+        geom.setIndex(idx);
+        geom.computeVertexNormals();
+        const m = new Mesh(geom, mat);
+        m.receiveShadow = true;
+        roadGrp.add(m);
+      };
+      {
+        const segsT = 28;
+        const wInnerX0 = okX0 + 2.25;
+        const wInnerZ0 = getStartZForOff(okHalfW);
+        const sInnerApex = (2.25 - nx * (okHalfW + 2.25)) / ux;
+        const [wInnerX1, wInnerZ1] = evalOkPt(sInnerApex, okHalfW + 2.25);
+        const [wInnerX2, wInnerZ2] = evalOkPt(sJoin, okHalfW + 2.25);
+        const geom = new BufferGeometry();
+        const pos = [];
+        const norm = [];
+        const uv = [];
+        const idx = [];
+        for (let it = 0; it <= segsT; it++) {
+          const t = it / segsT;
+          const [x0, z0] = evalThroatPoint(t, okHalfW);
+          const [x1, z1] = evalQuadBezier2D(wInnerX0, wInnerZ0, wInnerX1, wInnerZ1, wInnerX2, wInnerZ2, t);
+          pos.push(x0, yGrade(x0, z0) + 0.085, z0);
+          pos.push(x1, yGrade(x1, z1) + 0.085, z1);
+          norm.push(0, 1, 0, 0, 1, 0);
+          uv.push(t, 0, t, 1);
+        }
+        for (let it = 0; it < segsT; it++) {
+          const a = it * 2;
+          const b = a + 1;
+          const c = a + 2;
+          const d = a + 3;
+          idx.push(a, b, d);
+          idx.push(a, d, c);
+        }
+        geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
+        geom.setAttribute("normal", new Float32BufferAttribute(norm, 3));
+        geom.setAttribute("uv", new Float32BufferAttribute(uv, 2));
+        geom.setIndex(idx);
+        geom.computeVertexNormals();
+        const wCornerSw = new Mesh(geom, sidewalkConcreteMat);
+        wCornerSw.receiveShadow = true;
+        roadGrp.add(wCornerSw);
+      }
+      buildCurvedCornerStrip(okHalfW - 0.08, okHalfW + 0.1, 0.11, curbWhiteMat, 28);
+      buildCurvedCornerStrip(-okHalfW - 2.25, -okHalfW, 0.085, sidewalkConcreteMat, 24);
+      buildCurvedCornerStrip(-okHalfW - 0.1, -okHalfW + 0.08, 0.11, curbWhiteMat, 24);
+      for (const side of [-1, 1]) {
+        const [swX0, swZ0] = evalOkPt(sJoin, side * (okHalfW + 1.125));
+        const [swX1, swZ1] = evalOkPt(okLen, side * (okHalfW + 1.125));
+        const swMesh = new Mesh(
+          buildOrientedRoadRibbonGeometry(swX0, swZ0, swX1, swZ1, 1.125, 1.125, 24, 2, yGrade, 0.085),
+          sidewalkConcreteMat
+        );
+        swMesh.receiveShadow = true;
+        roadGrp.add(swMesh);
+        const [cbX0, cbZ0] = evalOkPt(sJoin, side * okHalfW);
+        const [cbX1, cbZ1] = evalOkPt(okLen, side * okHalfW);
+        const cbMesh = new Mesh(
+          buildOrientedRoadRibbonGeometry(cbX0, cbZ0, cbX1, cbZ1, 0.09, 0.09, 24, 1, yGrade, 0.11),
+          curbWhiteMat
+        );
+        cbMesh.receiveShadow = true;
+        roadGrp.add(cbMesh);
+      }
+      const addBezierRibbonStripe = (x0, z0, x1, z1, x2, z2, halfW, mat, yOff = 0.037, segs = 22) => {
+        const geom = new BufferGeometry();
+        const pos = [];
+        const norm = [];
+        const uv = [];
+        const idx = [];
+        for (let i = 0; i <= segs; i++) {
+          const t = i / segs;
+          const [cx, cz] = evalQuadBezier2D(x0, z0, x1, z1, x2, z2, t);
+          const tx = 2 * (1 - t) * (x1 - x0) + 2 * t * (x2 - x1);
+          const tz = 2 * (1 - t) * (z1 - z0) + 2 * t * (z2 - z1);
+          const tLen = Math.hypot(tx, tz) || 1;
+          const pnx = -tz / tLen;
+          const pnz = tx / tLen;
+          const lxA = cx - pnx * halfW, lzA = cz - pnz * halfW;
+          const lxB = cx + pnx * halfW, lzB = cz + pnz * halfW;
+          pos.push(lxA, yGrade(lxA, lzA) + yOff, lzA);
+          pos.push(lxB, yGrade(lxB, lzB) + yOff, lzB);
+          norm.push(0, 1, 0, 0, 1, 0);
+          uv.push(t, 0, t, 1);
+        }
+        for (let i = 0; i < segs; i++) {
+          const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+          idx.push(a, b, d, a, d, c);
+        }
+        geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
+        geom.setAttribute("normal", new Float32BufferAttribute(norm, 3));
+        geom.setAttribute("uv", new Float32BufferAttribute(uv, 2));
+        geom.setIndex(idx);
+        geom.computeVertexNormals();
+        const m = new Mesh(geom, mat);
+        m.receiveShadow = true;
+        roadGrp.add(m);
+      };
+      {
+        const [eEndX, eEndZ] = evalOkPt(sJoin, -6.85);
+        addBezierRibbonStripe(139.75, -51.95, 139.75, -39.71, eEndX, eEndZ, 0.065, paintWhiteMat, 0.037, 22);
+        const [wEndX, wEndZ] = evalOkPt(sJoin, 6.85);
+        addBezierRibbonStripe(139.65, -3.95, 139.65, -16.78, wEndX, wEndZ, 0.065, paintWhiteMat, 0.037, 22);
+      }
+      {
+        const tCross = 0.56;
+        for (let k = 0; k < 6; k++) {
+          const off = -5.25 + k * 2.1;
+          const [bx, bz] = evalThroatPoint(tCross, off);
+          addTwinBarPair(bx, bz, 2.75, 0.22, -okAngle);
+        }
+      }
+      for (const cOff of [-0.14, 0.14]) {
+        const [xA, zA] = evalOkPt(14.5, cOff);
+        const [xB, zB] = evalOkPt(90, cOff);
+        addOrientedStripe(xA, zA, xB, zB, 0.065, paintYellowMat, 0.037, 24);
+      }
+      {
+        const divOff = -3.45;
+        const [dx0, dz0] = evalOkPt(14.5, divOff);
+        const [dx1, dz1] = evalOkPt(40, divOff);
+        addOrientedStripe(dx0, dz0, dx1, dz1, 0.065, paintWhiteMat, 0.037, 10);
+        const [sbX0, sbZ0] = evalOkPt(14.2, -6.8);
+        const [sbX1, sbZ1] = evalOkPt(14.2, -0.2);
+        addOrientedStripe(sbX0, sbZ0, sbX1, sbZ1, 0.22, paintWhiteMat, 0.038, 3);
+        const approachAngle = okAngle + Math.PI;
+        for (const sArr of [20.5, 32.5]) {
+          const [lxArr, lzArr] = evalOkPt(sArr, -1.75);
+          addRoadDecal(lxArr, lzArr, 2, 2.35, leftArrowMat, approachAngle, 0.041);
+          const [rxArr, rzArr] = evalOkPt(sArr, -5.1);
+          addRoadDecal(rxArr, rzArr, 2, 2.35, rightArrowMat, approachAngle, 0.041);
+        }
+      }
+      for (const bOff of [-6.85, 6.85]) {
+        const [bx0, bz0] = evalOkPt(sJoin, bOff);
+        const [bx1, bz1] = evalOkPt(90, bOff);
+        addOrientedStripe(bx0, bz0, bx1, bz1, 0.06, paintWhiteMat, 0.037, 24);
+      }
+      for (const sBike of [26, 58]) {
+        const [b1x, b1z] = evalOkPt(sBike, -7.55);
+        addRoadDecal(b1x, b1z, 1.05, 2.1, bikeStencilMat, okAngle + Math.PI, 0.041);
+        const [b2x, b2z] = evalOkPt(sBike, 7.55);
+        addRoadDecal(b2x, b2z, 1.05, 2.1, bikeStencilMat, okAngle, 0.041);
+      }
+      {
+        const sCross2 = 45;
+        for (let k = 0; k < 6; k++) {
+          const [cx2, cz2] = evalOkPt(sCross2, -5.25 + k * 2.1);
+          addTwinBarPair(cx2, cz2, 2.75, 0.22, -okAngle);
+        }
+      }
+    }
+    {
+      const getKingNECurbX = (lz) => {
+        if (lz <= 21.75) return -62.94;
+        if (lz <= 43.84) {
+          const t = (lz - 21.75) / (43.84 - 21.75);
+          return MathUtils.lerp(-62.94, -61.62, t);
+        }
+        if (lz <= 75.04) {
+          const t = (lz - 43.84) / (75.04 - 43.84);
+          return MathUtils.lerp(-61.62, -61.43, t);
+        }
+        return -61.43;
+      };
+      const getKingSWCurbX = (lz) => getKingNECurbX(lz) - 13.8;
+      const kzStart = -52;
+      const kzEnd = 175;
+      const kzSegs = 96;
+      const kxSegs = 6;
+      const kingGeom = new BufferGeometry();
+      const kPos = [];
+      const kNorm = [];
+      const kUv = [];
+      const kIdx = [];
+      for (let iz = 0; iz <= kzSegs; iz++) {
+        const v = iz / kzSegs;
+        const lz = kzStart + (kzEnd - kzStart) * v;
+        const xMin = getKingSWCurbX(lz);
+        const xMax = getKingNECurbX(lz);
+        for (let ix = 0; ix <= kxSegs; ix++) {
+          const u = ix / kxSegs;
+          const lx = xMin + (xMax - xMin) * u;
+          const ly = yGrade(lx, lz) + 0.016;
+          kPos.push(lx, ly, lz);
+          kNorm.push(0, 1, 0);
+          kUv.push(u, v * 12);
+        }
+      }
+      const kStride = kxSegs + 1;
+      for (let iz = 0; iz < kzSegs; iz++) {
+        for (let ix = 0; ix < kxSegs; ix++) {
+          const a = iz * kStride + ix;
+          const b = a + 1;
+          const c = (iz + 1) * kStride + ix;
+          const d = c + 1;
+          kIdx.push(a, c, b);
+          kIdx.push(b, c, d);
+        }
+      }
+      kingGeom.setAttribute("position", new Float32BufferAttribute(kPos, 3));
+      kingGeom.setAttribute("normal", new Float32BufferAttribute(kNorm, 3));
+      kingGeom.setAttribute("uv", new Float32BufferAttribute(kUv, 2));
+      kingGeom.setIndex(kIdx);
+      kingGeom.computeVertexNormals();
+      const kingRoadMesh = new Mesh(kingGeom, asphaltMat);
+      kingRoadMesh.receiveShadow = true;
+      roadGrp.add(kingRoadMesh);
+      {
+        const swWalkGeom = new BufferGeometry();
+        const swCurbGeom = new BufferGeometry();
+        const wPos = [], wNorm = [], wUv = [], wIdx = [];
+        const cPos = [], cNorm = [], cUv = [], cIdx = [];
+        const swSegs = 80;
+        for (let iz = 0; iz <= swSegs; iz++) {
+          const v = iz / swSegs;
+          const lz = kzStart + (kzEnd - kzStart) * v;
+          const curbX = getKingSWCurbX(lz);
+          const xOuter = curbX - 2.25;
+          wPos.push(xOuter, yGrade(xOuter, lz) + 0.085, lz);
+          wPos.push(curbX, yGrade(curbX, lz) + 0.085, lz);
+          wNorm.push(0, 1, 0, 0, 1, 0);
+          wUv.push(0, v * 20, 1, v * 20);
+          const isSwRampCut = Math.abs(lz - 23.2) < 1.35 || Math.abs(lz - 40.2) < 1.35;
+          const swCurbLift = isSwRampCut ? 0.088 : 0.125;
+          cPos.push(curbX - 0.16, yGrade(curbX - 0.16, lz) + swCurbLift, lz);
+          cPos.push(curbX + 0.04, yGrade(curbX + 0.04, lz) + swCurbLift, lz);
+          cNorm.push(0, 1, 0, 0, 1, 0);
+          cUv.push(0, v * 20, 1, v * 20);
+        }
+        for (let iz = 0; iz < swSegs; iz++) {
+          const a = iz * 2, b = a + 1, c = a + 2, d = a + 3;
+          wIdx.push(a, c, b, b, c, d);
+          cIdx.push(a, c, b, b, c, d);
+        }
+        swWalkGeom.setAttribute("position", new Float32BufferAttribute(wPos, 3));
+        swWalkGeom.setAttribute("normal", new Float32BufferAttribute(wNorm, 3));
+        swWalkGeom.setAttribute("uv", new Float32BufferAttribute(wUv, 2));
+        swWalkGeom.setIndex(wIdx);
+        swWalkGeom.computeVertexNormals();
+        const swWalkMesh = new Mesh(swWalkGeom, sidewalkConcreteMat);
+        swWalkMesh.receiveShadow = true;
+        roadGrp.add(swWalkMesh);
+        swCurbGeom.setAttribute("position", new Float32BufferAttribute(cPos, 3));
+        swCurbGeom.setAttribute("normal", new Float32BufferAttribute(cNorm, 3));
+        swCurbGeom.setAttribute("uv", new Float32BufferAttribute(cUv, 2));
+        swCurbGeom.setIndex(cIdx);
+        swCurbGeom.computeVertexNormals();
+        const swCurbMesh = new Mesh(swCurbGeom, curbWhiteMat);
+        swCurbMesh.receiveShadow = true;
+        roadGrp.add(swCurbMesh);
+        for (const rampZ of [23.2, 40.2]) {
+          const cX = getKingSWCurbX(rampZ);
+          const padX = cX - 0.56;
+          const padY = yGrade(padX, rampZ) + 0.092;
+          const rGrp = new Group();
+          rGrp.position.set(padX, padY, rampZ);
+          const throat = new Mesh(new BoxGeometry(0.95, 0.018, 2.1), curbWhiteMat);
+          throat.position.set(0.06, -2e-3, 0);
+          throat.rotation.z = -0.04;
+          throat.receiveShadow = true;
+          rGrp.add(throat);
+          const pad = new Mesh(new BoxGeometry(0.68, 0.024, 1.56), paintYellowMat);
+          pad.position.set(0.1, 8e-3, 0);
+          rGrp.add(pad);
+          const rows = 4, cols = 10;
+          for (let ix = 0; ix < rows; ix++) {
+            const dx = 0.1 - 0.22 + ix / (rows - 1) * 0.44;
+            for (let iz = 0; iz < cols; iz++) {
+              const dz = -0.64 + iz / (cols - 1) * 1.28;
+              const dome = new Mesh(new CylinderGeometry(0.022, 0.032, 0.014, 6), paintYellowMat);
+              dome.position.set(dx, 0.024, dz);
+              rGrp.add(dome);
+            }
+          }
+          roadGrp.add(rGrp);
+        }
+      }
+      for (const [neZ0, neZ1, neSteps, neX0, neW] of [
+        [-52, -20.735, 14, -62.88, 3.1],
+        [75, 175, 44, -61.43, 2.4]
+      ]) {
+        const neSidewalk = new Mesh(
+          buildGradedStripGeometry(neX0, neX0 + neW, neZ0, neZ1, 2, neSteps, yGrade, 0.085),
+          sidewalkConcreteMat
+        );
+        neSidewalk.receiveShadow = true;
+        roadGrp.add(neSidewalk);
+        const neCurb = new Mesh(
+          buildGradedStripGeometry(neX0 - 0.04, neX0 + 0.16, neZ0, neZ1, 1, neSteps, yGrade, 0.125),
+          curbWhiteMat
+        );
+        neCurb.receiveShadow = true;
+        roadGrp.add(neCurb);
+      }
+      for (let lz = -49; lz <= 16.5; lz += 7.4) {
+        const cx = getKingNECurbX(lz) - 6.9;
+        addGradedStripe(cx - 0.07, cx + 0.07, lz, lz + 2.85, paintYellowMat, 0.036, 1, 2);
+      }
+      for (let lz = 44.5; lz <= 167.5; lz += 7.5) {
+        const cx = getKingNECurbX(lz) - 6.9;
+        addGradedStripe(cx - 0.07, cx + 0.07, lz, lz + 2.95, paintYellowMat, 0.036, 1, 2);
+      }
+      addGradedStripe(-65.42, -65.3, -48, 18.5, paintWhiteMat, 0.036, 1, 22);
+      for (let tz = -48; tz <= 18.5; tz += 6.3) {
+        addGradedStripe(-65.42, -64.7, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
+      }
+      addGradedStripe(-64, -63.88, 44.5, 168, paintWhiteMat, 0.036, 1, 42);
+      for (let tz = 45; tz <= 168; tz += 6.15) {
+        addGradedStripe(-64, -63.28, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
+      }
+      addGradedStripe(-74.38, -74.26, -48, 18.5, paintWhiteMat, 0.036, 1, 22);
+      for (let tz = -48; tz <= 18.5; tz += 6.3) {
+        addGradedStripe(-75, -74.26, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
+      }
+      addGradedStripe(-72.96, -72.84, 44.5, 168, paintWhiteMat, 0.036, 1, 42);
+      for (let tz = 45; tz <= 168; tz += 6.15) {
+        addGradedStripe(-73.58, -72.84, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
+      }
+      addGradedStripe(-69.84, -65.42, 20.35, 20.75, paintWhiteMat, 0.038, 2, 1);
+      for (let s = 0; s < 5; s++) {
+        const sx = -73.88 + s * 2.02;
+        addTwinBarPair(sx, 23.2, 2.65, 0.22, Math.PI / 2);
+      }
+      addGradedStripe(-72.84, -68.43, 42.95, 43.35, paintWhiteMat, 0.038, 2, 1);
+      for (let s = 0; s < 5; s++) {
+        const sx = -72.74 + s * 2.02;
+        addTwinBarPair(sx, 40.2, 2.65, 0.22, Math.PI / 2);
+      }
+      addGradedStripe(-68.33, -63.9, 170.1, 170.5, paintWhiteMat, 0.038, 2, 1);
+      for (let s = 0; s < 5; s++) {
+        const sx = -72.37 + s * 2.02;
+        addTwinBarPair(sx, 172.8, 2.65, 0.22, Math.PI / 2);
+      }
+      {
+        const parkingConcreteTex = getBrushedParkingConcreteTexture();
+        const parkingConcreteMat = new MeshStandardMaterial({
+          color: "#d4cfc5",
+          map: parkingConcreteTex,
+          roughness: 0.84,
+          metalness: 0.03,
+          side: DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2
+        });
+        const retainingWallMat = new MeshStandardMaterial({
+          color: "#beb9ae",
+          roughness: 0.86,
+          metalness: 0.04
+        });
+        const retainingCapMat = new MeshStandardMaterial({
+          color: "#dedad0",
+          roughness: 0.76,
+          metalness: 0.04
+        });
+        const retainingJointMat = new MeshStandardMaterial({
+          color: "#78736a",
+          roughness: 0.92,
+          metalness: 0.02
+        });
+        const galvRailMat = new MeshStandardMaterial({
+          color: "#949ca4",
+          roughness: 0.38,
+          metalness: 0.72
+        });
+        const barricadeYellowMat = new MeshStandardMaterial({
+          color: "#eab308",
+          roughness: 0.42,
+          metalness: 0.22
+        });
+        const barricadeChevronMat = new MeshStandardMaterial({
+          map: getHazardBarricadeTexture(),
+          roughness: 0.45,
+          metalness: 0.12
+        });
+        const wheelStopConcreteMat = new MeshStandardMaterial({
+          color: "#e5e1d8",
+          roughness: 0.82,
+          metalness: 0.03
+        });
+        const paintBlueAdaMat = new MeshStandardMaterial({
+          color: "#2563eb",
+          roughness: 0.52,
+          metalness: 0.05,
+          side: DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -4,
+          polygonOffsetUnits: -4
+        });
+        const darkBronzePoleMat = new MeshStandardMaterial({
+          color: "#272a2e",
+          roughness: 0.44,
+          metalness: 0.62
+        });
+        const upperTurfMat = new MeshStandardMaterial({
+          color: "#4a7c36",
+          roughness: 0.86,
+          metalness: 0.02,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+          userData: { isCampusGrass: true }
+        });
+        const buildVariableZGradedPatch = (xMin, xMax, zMinFn, zMaxFn, segsX, segsZ, yEvalFn, mat, uvScale = 0.22) => {
+          const geom = new BufferGeometry();
+          const pos = [], norm = [], uv = [], idx = [];
+          for (let ix = 0; ix <= segsX; ix++) {
+            const u = ix / segsX;
+            const lx = xMin + (xMax - xMin) * u;
+            const z0 = zMinFn(lx);
+            const z1 = zMaxFn(lx);
+            for (let iz = 0; iz <= segsZ; iz++) {
+              const v = iz / segsZ;
+              const lz = z0 + (z1 - z0) * v;
+              const ly = yEvalFn(lx, lz);
+              pos.push(lx, ly, lz);
+              norm.push(0, 1, 0);
+              uv.push(lx * uvScale, lz * uvScale);
+            }
+          }
+          const stride = segsZ + 1;
+          for (let ix = 0; ix < segsX; ix++) {
+            for (let iz = 0; iz < segsZ; iz++) {
+              const a = ix * stride + iz;
+              const b = (ix + 1) * stride + iz;
+              const c = (ix + 1) * stride + (iz + 1);
+              const d = ix * stride + (iz + 1);
+              idx.push(a, c, b, a, d, c);
+            }
+          }
+          geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
+          geom.setAttribute("normal", new Float32BufferAttribute(norm, 3));
+          geom.setAttribute("uv", new Float32BufferAttribute(uv, 2));
+          geom.setIndex(idx);
+          geom.computeVertexNormals();
+          const mesh = new Mesh(geom, mat);
+          mesh.receiveShadow = true;
+          roadGrp.add(mesh);
+          return mesh;
+        };
+        const buildSplineRoadRibbon = (curve, halfW, segsU, segsV, yOffFn, mat, skirtDepth = 0.24, uvWorldScale = 0) => {
+          const geom = new BufferGeometry();
+          const pos = [], norm = [], uv = [], idx = [];
+          const totalLen = curve.getLength();
+          const evalYOff = typeof yOffFn === "function" ? yOffFn : () => yOffFn;
+          for (let iu = 0; iu <= segsU; iu++) {
+            const u = iu / segsU;
+            const pt = curve.getPointAt(u);
+            const tan = curve.getTangentAt(u);
+            const len = Math.hypot(tan.x, tan.z) || 1;
+            const nx = -tan.z / len;
+            const nz = tan.x / len;
+            const lxL = pt.x - nx * halfW, lzL = pt.z - nz * halfW;
+            pos.push(lxL, yGrade(lxL, lzL) + evalYOff(lxL, lzL, u) - skirtDepth, lzL);
+            norm.push(-nx, 0, -nz);
+            uv.push(uvWorldScale > 0 ? lxL * uvWorldScale : u * totalLen / 10, uvWorldScale > 0 ? lzL * uvWorldScale : -0.05);
+            for (let iv = 0; iv <= segsV; iv++) {
+              const v = iv / segsV;
+              const off = (v * 2 - 1) * halfW;
+              const px2 = pt.x + nx * off;
+              const pz2 = pt.z + nz * off;
+              pos.push(px2, yGrade(px2, pz2) + evalYOff(px2, pz2, u), pz2);
+              norm.push(0, 1, 0);
+              uv.push(uvWorldScale > 0 ? px2 * uvWorldScale : u * totalLen / 10, uvWorldScale > 0 ? pz2 * uvWorldScale : v);
+            }
+            const lxR = pt.x + nx * halfW, lzR = pt.z + nz * halfW;
+            pos.push(lxR, yGrade(lxR, lzR) + evalYOff(lxR, lzR, u) - skirtDepth, lzR);
+            norm.push(nx, 0, nz);
+            uv.push(uvWorldScale > 0 ? lxR * uvWorldScale : u * totalLen / 10, uvWorldScale > 0 ? lzR * uvWorldScale : 1.05);
+          }
+          const cols = segsV + 3;
+          for (let iu = 0; iu < segsU; iu++) {
+            for (let iv = 0; iv < cols - 1; iv++) {
+              const a = iu * cols + iv;
+              const b = (iu + 1) * cols + iv;
+              const c = (iu + 1) * cols + (iv + 1);
+              const d = iu * cols + (iv + 1);
+              idx.push(a, b, c, a, c, d);
+            }
+          }
+          geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
+          geom.setAttribute("normal", new Float32BufferAttribute(norm, 3));
+          geom.setAttribute("uv", new Float32BufferAttribute(uv, 2));
+          geom.setIndex(idx);
+          geom.computeVertexNormals();
+          const mesh = new Mesh(geom, mat);
+          mesh.receiveShadow = true;
+          roadGrp.add(mesh);
+          return mesh;
+        };
+        const buildSkirtedOrientedRoadRibbon = (x0, z0, x1, z1, halfW, segsU, segsV, yOffFn, mat, skirtDepth = 0.24, uvWorldScale = 0) => {
+          const lineCurve = new LineCurve3(new Vector3(x0, 0, z0), new Vector3(x1, 0, z1));
+          return buildSplineRoadRibbon(lineCurve, halfW, segsU, segsV, yOffFn, mat, skirtDepth, uvWorldScale);
+        };
+        const addCurbAlongPoints = (pts, halfThick, yOffTop, mat = curbWhiteMat) => {
+          if (pts.length < 2) return;
+          const geom = new BufferGeometry();
+          const pos = [], idx = [];
+          for (let i = 0; i < pts.length; i++) {
+            const [cx, cz] = pts[i];
+            const [prevX, prevZ] = pts[Math.max(0, i - 1)];
+            const [nextX, nextZ] = pts[Math.min(pts.length - 1, i + 1)];
+            const dx = nextX - prevX;
+            const dz = nextZ - prevZ;
+            const len = Math.hypot(dx, dz) || 1;
+            const nx = -dz / len;
+            const nz = dx / len;
+            const xL = cx - nx * halfThick, zL = cz - nz * halfThick;
+            const xR = cx + nx * halfThick, zR = cz + nz * halfThick;
+            const yTopL = yGrade(xL, zL) + yOffTop;
+            const yTopR = yGrade(xR, zR) + yOffTop;
+            const yBot = Math.min(yTopL, yTopR) - 0.24;
+            pos.push(
+              xL,
+              yBot,
+              zL,
+              xL,
+              yTopL,
+              zL,
+              xR,
+              yTopR,
+              zR,
+              xR,
+              yBot,
+              zR
+            );
+          }
+          for (let i = 0; i < pts.length - 1; i++) {
+            const b0 = i * 4;
+            const b1 = (i + 1) * 4;
+            idx.push(b0 + 0, b1 + 0, b1 + 1, b0 + 0, b1 + 1, b0 + 1);
+            idx.push(b0 + 1, b1 + 1, b1 + 2, b0 + 1, b1 + 2, b0 + 2);
+            idx.push(b0 + 2, b1 + 2, b1 + 3, b0 + 2, b1 + 3, b0 + 3);
+          }
+          geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
+          geom.setIndex(idx);
+          geom.computeVertexNormals();
+          const m = new Mesh(geom, mat);
+          m.castShadow = true;
+          m.receiveShadow = true;
+          roadGrp.add(m);
+        };
+        const addRoadTextStencil = (cx, cz, travelAngle, label, lenAlong = 5.4, widAcross = 1.35, color = "#f8fafc") => {
+          const tex = getRoadStencilTextTexture(label, color);
+          if (!tex) return;
+          const dMat = new MeshStandardMaterial({
+            map: tex,
+            transparent: true,
+            alphaTest: 0.08,
+            roughness: 0.62,
+            metalness: 0.04,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -5,
+            polygonOffsetUnits: -5
+          });
+          const geom = new BufferGeometry();
+          const segsU = 6, segsV = 2;
+          const ux = Math.cos(travelAngle), uz = Math.sin(travelAngle);
+          const nx = -uz, nz = ux;
+          const pos = [], norm = [], uv = [], idx = [];
+          for (let iu = 0; iu <= segsU; iu++) {
+            const u = iu / segsU;
+            const s = (u - 0.5) * lenAlong;
+            for (let iv = 0; iv <= segsV; iv++) {
+              const v = iv / segsV;
+              const t = (v - 0.5) * widAcross;
+              const px2 = cx + ux * s + nx * t;
+              const pz2 = cz + uz * s + nz * t;
+              pos.push(px2, yGrade(px2, pz2) + 0.039, pz2);
+              norm.push(0, 1, 0);
+              uv.push(u, 1 - v);
+            }
+          }
+          const stride = segsV + 1;
+          for (let iu = 0; iu < segsU; iu++) {
+            for (let iv = 0; iv < segsV; iv++) {
+              const a = iu * stride + iv;
+              const b = (iu + 1) * stride + iv;
+              const c = (iu + 1) * stride + (iv + 1);
+              const d = iu * stride + (iv + 1);
+              idx.push(a, c, b, a, d, c);
+            }
+          }
+          geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
+          geom.setAttribute("normal", new Float32BufferAttribute(norm, 3));
+          geom.setAttribute("uv", new Float32BufferAttribute(uv, 2));
+          geom.setIndex(idx);
+          geom.computeVertexNormals();
+          const m = new Mesh(geom, dMat);
+          m.receiveShadow = true;
+          roadGrp.add(m);
+        };
+        const addAccessRoadSignpost = (sx, sz, facingAngleY, title = "ACCESS ROAD", sub1 = "AUTHORIZED", sub2 = "VEHICLES ONLY") => {
+          const baseY = yGrade(sx, sz);
+          const post = new Mesh(new CylinderGeometry(0.032, 0.032, 2.35, 10), galvRailMat);
+          post.position.set(sx, baseY + 1.175, sz);
+          post.castShadow = true;
+          roadGrp.add(post);
+          const signTex = getAccessRoadSignTexture(title, sub1, sub2, "NO PARKING");
+          const faceMat = signTex ? new MeshStandardMaterial({ map: signTex, roughness: 0.42, metalness: 0.14 }) : paintWhiteMat;
+          const plate = new Mesh(
+            new BoxGeometry(0.46, 0.58, 0.026),
+            [galvRailMat, galvRailMat, galvRailMat, galvRailMat, faceMat, faceMat]
+          );
+          plate.position.set(sx, baseY + 2.02, sz);
+          plate.rotation.y = facingAngleY;
+          plate.castShadow = true;
+          roadGrp.add(plate);
+        };
+        const addArchitecturalRetainingWall = (x0, z0, x1, z1, {
+          thick = 0.34,
+          yTopFn,
+          yBotFn,
+          withGuardrail = false,
+          guardrailEndU = 1
+        }) => {
+          const dx = x1 - x0;
+          const dz = z1 - z0;
+          const totalLen = Math.hypot(dx, dz) || 1;
+          const steps = Math.max(2, Math.ceil(totalLen / 2.2));
+          const angle = Math.atan2(dz, dx);
+          for (let i = 0; i < steps; i++) {
+            const u0 = i / steps;
+            const u1 = (i + 1) / steps;
+            const um = 0.5 * (u0 + u1);
+            const xa = x0 + dx * u0, za = z0 + dz * u0;
+            const xb = x0 + dx * u1, zb = z0 + dz * u1;
+            const xm = x0 + dx * um, zm = z0 + dz * um;
+            const segLen = totalLen / steps + 0.025;
+            const topA = yTopFn(xa, za, u0);
+            const topB = yTopFn(xb, zb, u1);
+            const topM = 0.5 * (topA + topB);
+            const botM = Math.min(yBotFn(xm, zm, um), topM - 0.55);
+            const stemH = Math.max(0.45, topM - botM - 0.09);
+            const slopeAlong = Math.atan2(topB - topA, totalLen / steps);
+            const segGrp = new Group();
+            segGrp.position.set(xm, 0, zm);
+            segGrp.rotation.y = -angle;
+            const stem = new Mesh(new BoxGeometry(segLen, stemH, thick), retainingWallMat);
+            stem.position.set(0, botM + stemH * 0.5, 0);
+            stem.rotation.z = slopeAlong * 0.35;
+            stem.castShadow = true;
+            stem.receiveShadow = true;
+            segGrp.add(stem);
+            const cap = new Mesh(new BoxGeometry(segLen + 0.01, 0.1, thick + 0.08), retainingCapMat);
+            cap.position.set(0, topM - 0.04, 0);
+            cap.rotation.z = slopeAlong;
+            cap.castShadow = true;
+            cap.receiveShadow = true;
+            segGrp.add(cap);
+            if (i > 0) {
+              const jnt = new Mesh(new BoxGeometry(0.03, stemH - 0.06, thick + 0.02), retainingJointMat);
+              jnt.position.set(-segLen * 0.5 + 0.015, botM + stemH * 0.5, 0);
+              segGrp.add(jnt);
+            }
+            if (withGuardrail && um <= guardrailEndU) {
+              const railH = 0.96;
+              for (const railY of [railH, railH * 0.52]) {
+                const rBar = new Mesh(new CylinderGeometry(0.022, 0.022, segLen, 8), galvRailMat);
+                rBar.rotation.z = Math.PI * 0.5 + slopeAlong;
+                rBar.position.set(0, topM + railY, 0);
+                rBar.castShadow = true;
+                segGrp.add(rBar);
+              }
+              const rPost = new Mesh(new CylinderGeometry(0.025, 0.025, railH + 0.04, 8), galvRailMat);
+              rPost.position.set(-segLen * 0.5 + 0.04, topM + railH * 0.5, 0);
+              rPost.castShadow = true;
+              segGrp.add(rPost);
+              if (i === steps - 1 || (i + 1) / steps > guardrailEndU) {
+                const endPost = new Mesh(new CylinderGeometry(0.025, 0.025, railH + 0.04, 8), galvRailMat);
+                endPost.position.set(segLen * 0.5 - 0.04, topM + railH * 0.5, 0);
+                endPost.castShadow = true;
+                segGrp.add(endPost);
+              }
+            }
+            roadGrp.add(segGrp);
+          }
+        };
+        const accessRoadYOff = (px2) => {
+          const wDoug = MathUtils.smoothstep(px2, 38.46, 41.4);
+          const wOron = 1 - MathUtils.smoothstep(px2, 120.2, 123.25);
+          return 0.018 + 0.034 * wDoug * wOron;
+        };
+        const leg1CenterZ = (lx) => 131.05 + (lx - 38.46) / (79.36 - 38.46) * (129.42 - 131.05);
+        const leg1Angle = Math.atan2(129.42 - 131.05, 79.36 - 38.46);
+        const leg1HalfW = 2.3;
+        const leg1Mesh = buildSkirtedOrientedRoadRibbon(
+          38.46,
+          131.05,
+          79.36,
+          129.42,
+          leg1HalfW,
+          38,
+          8,
+          (px2) => accessRoadYOff(px2),
+          asphaltMat
+        );
+        leg1Mesh.name = "GymAccessRoad_DouglasLeg";
+        const accessCurve = new CatmullRomCurve3(
+          [
+            new Vector3(79.36, 0, 129.42),
+            new Vector3(80.75, 0, 126.4),
+            new Vector3(82.65, 0, 123.35),
+            new Vector3(85.65, 0, 120.92),
+            new Vector3(89.45, 0, 120.08),
+            new Vector3(94.8, 0, 120),
+            new Vector3(109, 0, 119.75),
+            new Vector3(123.25, 0, 119.5)
+          ],
+          false,
+          "centripetal",
+          0.35
+        );
+        const leg2HalfW = 2.35;
+        const leg2Mesh = buildSplineRoadRibbon(
+          accessCurve,
+          leg2HalfW,
+          56,
+          8,
+          (px2) => accessRoadYOff(px2) + 1e-3,
+          asphaltMat
+        );
+        leg2Mesh.name = "GymAccessRoad_OrondoCurveLeg";
+        const innerEdgeSamples = [];
+        const outerEdgeSamples = [];
+        for (let i = 0; i <= 72; i++) {
+          const u = i / 72;
+          const pt = accessCurve.getPointAt(u);
+          const tan = accessCurve.getTangentAt(u);
+          const l = Math.hypot(tan.x, tan.z) || 1;
+          const nx = -tan.z / l, nz = tan.x / l;
+          innerEdgeSamples.push([pt.x + nx * leg2HalfW, pt.z + nz * leg2HalfW]);
+          outerEdgeSamples.push([pt.x - nx * leg2HalfW, pt.z - nz * leg2HalfW]);
+        }
+        innerEdgeSamples.sort((a, b) => a[0] - b[0]);
+        outerEdgeSamples.sort((a, b) => a[0] - b[0]);
+        const evalSampledEdgeZ = (samples, lx) => {
+          if (lx <= samples[0][0]) return samples[0][1];
+          if (lx >= samples[samples.length - 1][0]) return samples[samples.length - 1][1];
+          for (let i = 0; i < samples.length - 1; i++) {
+            const [x0, z0] = samples[i];
+            const [x1, z1] = samples[i + 1];
+            if (lx >= x0 && lx <= x1) {
+              const t = x1 > x0 ? (lx - x0) / (x1 - x0) : 0;
+              return z0 + (z1 - z0) * t;
+            }
+          }
+          return samples[samples.length - 1][1];
+        };
+        const leg3HalfW = 2.15;
+        const leg3Mesh = buildSkirtedOrientedRoadRibbon(
+          80.55,
+          128.4,
+          81.05,
+          175,
+          leg3HalfW,
+          38,
+          6,
+          (px2, pz2) => 0.052 * (1 - 0.55 * MathUtils.smoothstep(pz2, 171.5, 175)),
+          asphaltMat
+        );
+        leg3Mesh.name = "GymAccessRoad_RearAlleyLeg";
+        buildVariableZGradedPatch(
+          76,
+          82.7,
+          (lx) => lx < 79.36 ? leg1CenterZ(lx) - leg1HalfW : 127,
+          (lx) => lx < 78.4 ? leg1CenterZ(lx) + leg1HalfW : 132.2,
+          10,
+          8,
+          (lx, lz) => yGrade(lx, lz) + 0.0515,
+          asphaltMat,
+          0.2
+        );
+        addCurbAlongPoints(
+          [[39, 133.37], [58, 132.61], [76.2, 131.89]],
+          0.09,
+          0.115
+        );
+        {
+          const outerCurbPts = outerEdgeSamples.filter(([cx]) => cx >= 77.5 && cx <= 120.8);
+          addCurbAlongPoints(outerCurbPts, 0.09, 0.115);
+        }
+        {
+          const innerSegs = [[], [], []];
+          for (const [cx, cz] of innerEdgeSamples) {
+            if (cx < 83.35 || cx > 120.8) continue;
+            if (cx <= 95.8) innerSegs[0].push([cx, cz]);
+            else if (cx >= 101 && cx <= 110.5) innerSegs[1].push([cx, cz]);
+            else if (cx >= 115.7) innerSegs[2].push([cx, cz]);
+          }
+          innerSegs.forEach((pts) => addCurbAlongPoints(pts, 0.09, 0.115));
+        }
+        addCurbAlongPoints([[78.38, 133.2], [78.88, 174.2]], 0.08, 0.108);
+        {
+          const barGrp = new Group();
+          barGrp.name = "GymAccessRoad_YellowBarricade";
+          const bx0 = 75.95, bz0 = leg1CenterZ(75.95) - 2.22;
+          const bx1 = 76.12, bz1 = leg1CenterZ(76.12) + 2.22;
+          const bdx = bx1 - bx0, bdz = bz1 - bz0;
+          const bLen = Math.hypot(bdx, bdz);
+          const bAng = Math.atan2(bdz, bdx);
+          for (let p = 0; p <= 2; p++) {
+            const u = p / 2;
+            const px2 = bx0 + bdx * u;
+            const pz2 = bz0 + bdz * u;
+            const py2 = yGrade(px2, pz2) + 0.05;
+            const collar = new Mesh(new CylinderGeometry(0.17, 0.19, 0.08, 12), wheelStopConcreteMat);
+            collar.position.set(px2, py2 + 0.04, pz2);
+            barGrp.add(collar);
+            const post = new Mesh(new CylinderGeometry(0.095, 0.095, 1.12, 14), barricadeYellowMat);
+            post.position.set(px2, py2 + 0.56, pz2);
+            post.castShadow = true;
+            barGrp.add(post);
+            const dome = new Mesh(new SphereGeometry(0.095, 12, 8), barricadeYellowMat);
+            dome.position.set(px2, py2 + 1.12, pz2);
+            barGrp.add(dome);
+          }
+          for (let bay = 0; bay < 2; bay++) {
+            const uA = bay / 2, uB = (bay + 1) / 2;
+            const um = 0.5 * (uA + uB);
+            const mx = bx0 + bdx * um, mz = bz0 + bdz * um;
+            const yA = yGrade(bx0 + bdx * uA, bz0 + bdz * uA) + 0.05;
+            const yB = yGrade(bx0 + bdx * uB, bz0 + bdz * uB) + 0.05;
+            const ym = 0.5 * (yA + yB);
+            const spanW = bLen / 2 - 0.14;
+            const tilt = Math.atan2(yB - yA, bLen / 2);
+            const bayNode = new Group();
+            bayNode.position.set(mx, ym, mz);
+            bayNode.rotation.y = -bAng;
+            for (const ry of [0.46, 0.96]) {
+              const tube = new Mesh(new CylinderGeometry(0.042, 0.042, spanW + 0.1, 10), barricadeYellowMat);
+              tube.rotation.z = Math.PI * 0.5 + tilt;
+              tube.position.y = ry;
+              tube.castShadow = true;
+              bayNode.add(tube);
+            }
+            const board = new Mesh(new BoxGeometry(spanW, 0.28, 0.055), barricadeChevronMat);
+            board.position.y = 0.72;
+            board.rotation.z = tilt;
+            board.castShadow = true;
+            bayNode.add(board);
+            barGrp.add(bayNode);
+          }
+          roadGrp.add(barGrp);
+        }
+        const park1ZSouth = (lx) => leg1CenterZ(lx) - leg1HalfW;
+        const park1ZNorth = (lx) => park1ZSouth(lx) - 8.15;
+        {
+          const p1Mesh = buildVariableZGradedPatch(
+            40.68,
+            75.55,
+            park1ZNorth,
+            park1ZSouth,
+            24,
+            8,
+            (lx, lz) => yGrade(lx, lz) + 0.068,
+            parkingConcreteMat,
+            0.24
+          );
+          p1Mesh.name = "GymConcreteParking_NorthWestStrip";
+          addCurbAlongPoints(
+            [
+              [40.72, park1ZSouth(40.72) - 0.15],
+              [40.72, park1ZNorth(40.72)],
+              [58, park1ZNorth(58)],
+              [75.55, park1ZNorth(75.55)],
+              [75.55, park1ZSouth(75.55) - 0.15]
+            ],
+            0.09,
+            0.138
+          );
+          const p1Dx = 79.36 - 38.46, p1Dz = 129.42 - 131.05;
+          const p1Len = Math.hypot(p1Dx, p1Dz);
+          const p1Nx = -p1Dz / p1Len;
+          for (let s = 0; s <= 12; s++) {
+            const sx = 41.35 + s * 2.8;
+            const zs = park1ZSouth(sx) - 0.25;
+            const zn = zs - 5.45;
+            addOrientedStripe(sx, zs, sx - p1Nx * 5.45, zn, 0.055, paintWhiteMat, 0.082, 3);
+            if (s < 12) {
+              const midX = sx + 1.4;
+              const wsZ = park1ZNorth(midX) + 0.85;
+              const ws = new Mesh(new BoxGeometry(1.82, 0.13, 0.18), wheelStopConcreteMat);
+              ws.position.set(midX, yGrade(midX, wsZ) + 0.13, wsZ);
+              ws.rotation.y = -leg1Angle;
+              ws.castShadow = true;
+              ws.receiveShadow = true;
+              roadGrp.add(ws);
+            }
+          }
+        }
+        const park2ZMin = (lx) => evalSampledEdgeZ(innerEdgeSamples, lx);
+        const park2ZMax = () => 150.55;
+        {
+          const p2Mesh = buildVariableZGradedPatch(
+            83.48,
+            118.15,
+            park2ZMin,
+            park2ZMax,
+            32,
+            22,
+            (lx, lz) => yGrade(lx, lz) + 0.068,
+            parkingConcreteMat,
+            0.24
+          );
+          p2Mesh.name = "GymConcreteParking_Lot426";
+          addCurbAlongPoints([[83.48, 150.55], [101, 150.55], [118.15, 150.55]], 0.09, 0.138);
+          for (const [apX0, apX1] of [[95.8, 101], [110.5, 115.7]]) {
+            buildVariableZGradedPatch(
+              apX0,
+              apX1,
+              (lx) => park2ZMin(lx) - 0.55,
+              (lx) => park2ZMin(lx) + 0.35,
+              4,
+              2,
+              (lx, lz) => yGrade(lx, lz) + 0.062,
+              parkingConcreteMat,
+              0.24
+            );
+          }
+          for (let s = 0; s <= 7; s++) {
+            const sz = 130.2 + s * 2.75;
+            addOrientedStripe(83.65, sz, 88.85, sz, 0.055, paintWhiteMat, 0.082, 3);
+            if (s < 7) {
+              const midZ = sz + 1.375;
+              const ws = new Mesh(new BoxGeometry(0.18, 0.13, 1.8), wheelStopConcreteMat);
+              ws.position.set(84.25, yGrade(84.25, midZ) + 0.13, midZ);
+              ws.castShadow = true;
+              roadGrp.add(ws);
+            }
+          }
+          addOrientedStripe(92.2, 138.8, 114.2, 138.8, 0.06, paintWhiteMat, 0.082, 8);
+          for (let s = 0; s <= 8; s++) {
+            const sx = 92.2 + s * 2.75;
+            addOrientedStripe(sx, 133.6, sx, 144, 0.055, paintWhiteMat, 0.082, 4);
+            if (s < 8) {
+              const midX = sx + 1.375;
+              for (const wzOff of [-0.62, 0.62]) {
+                const wz = 138.8 + wzOff;
+                const ws = new Mesh(new BoxGeometry(1.8, 0.13, 0.18), wheelStopConcreteMat);
+                ws.position.set(midX, yGrade(midX, wz) + 0.13, wz);
+                ws.castShadow = true;
+                roadGrp.add(ws);
+              }
+            }
+          }
+          for (let s = 0; s <= 9; s++) {
+            const sx = 92.2 + s * 2.75;
+            const isAda = s >= 8;
+            addOrientedStripe(sx, 145.35, sx, 150.35, 0.055, isAda ? paintBlueAdaMat : paintWhiteMat, 0.082, 3);
+            if (s < 9) {
+              const midX = sx + 1.375;
+              const ws = new Mesh(new BoxGeometry(1.8, 0.13, 0.18), wheelStopConcreteMat);
+              ws.position.set(midX, yGrade(midX, 149.75) + 0.13, 149.75);
+              ws.castShadow = true;
+              roadGrp.add(ws);
+            }
+          }
+          for (let s = 0; s <= 3; s++) {
+            const sx = 101.6 + s * 2.75;
+            addOrientedStripe(sx, 122.9, sx, 127.85, 0.055, paintWhiteMat, 0.082, 3);
+            if (s < 3) {
+              const midX = sx + 1.375;
+              const ws = new Mesh(new BoxGeometry(1.8, 0.13, 0.18), wheelStopConcreteMat);
+              ws.position.set(midX, yGrade(midX, 123.5) + 0.13, 123.5);
+              ws.castShadow = true;
+              roadGrp.add(ws);
+            }
+          }
+          for (const [lpX, lpZ, armDir] of [[84.05, 139.2, 1], [117.45, 136.8, -1]]) {
+            const lpY = yGrade(lpX, lpZ) + 0.068;
+            const ped = new Mesh(new CylinderGeometry(0.18, 0.2, 0.55, 12), wheelStopConcreteMat);
+            ped.position.set(lpX, lpY + 0.275, lpZ);
+            roadGrp.add(ped);
+            const pole = new Mesh(new CylinderGeometry(0.075, 0.105, 6.8, 12), darkBronzePoleMat);
+            pole.position.set(lpX, lpY + 0.55 + 3.4, lpZ);
+            pole.castShadow = true;
+            roadGrp.add(pole);
+            const arm = new Mesh(new BoxGeometry(0.85, 0.08, 0.18), darkBronzePoleMat);
+            arm.position.set(lpX + armDir * 0.38, lpY + 7.28, lpZ);
+            roadGrp.add(arm);
+            const head = new Mesh(new BoxGeometry(0.46, 0.1, 0.32), darkBronzePoleMat);
+            head.position.set(lpX + armDir * 0.72, lpY + 7.22, lpZ);
+            roadGrp.add(head);
+          }
+        }
+        const zWall2Center = (lx) => 115.45 + 0.47 * MathUtils.clamp((lx - 63.8) / (116.5 - 63.8), 0, 1);
+        addArchitecturalRetainingWall(51, 106.2, 51, 113.95, {
+          thick: 0.34,
+          yTopFn: (px2, pz2) => yGrade(49.2, pz2) + 0.24,
+          yBotFn: (px2, pz2) => yGrade(52.4, pz2) - 0.55,
+          withGuardrail: true
+        });
+        addArchitecturalRetainingWall(51, 113.95, 59.5, 113.95, {
+          thick: 0.34,
+          yTopFn: (px2) => yGrade(px2, 115.6) + 0.24,
+          yBotFn: (px2) => yGrade(px2, 112.5) - 0.55,
+          withGuardrail: true
+        });
+        addArchitecturalRetainingWall(63.8, 115.45, 116.5, 115.92, {
+          thick: 0.36,
+          yTopFn: (px2) => yGrade(px2, zWall2Center(px2) + 1.35) + 0.26,
+          yBotFn: (px2) => yGrade(px2, zWall2Center(px2) - 0.85) - 0.65,
+          withGuardrail: true,
+          guardrailEndU: 0.8
+          // Guardrail runs across the deep drop behind the Gym & Rec Yard, tapering off near Orondo Ave
+        });
+        addArchitecturalRetainingWall(39.2, 133.62, 76.2, 132.14, {
+          thick: 0.32,
+          yTopFn: (px2, pz2) => Math.max(yGrade(px2, pz2 + 2.2) + 0.22, yGrade(px2, pz2 - 0.8) + 0.78),
+          yBotFn: (px2, pz2) => yGrade(px2, pz2 - 0.8) - 0.45,
+          withGuardrail: false
+        });
+        addArchitecturalRetainingWall(83.3, 127, 83.35, 150.55, {
+          thick: 0.32,
+          yTopFn: (px2, pz2) => yGrade(81.5, pz2) + 0.38,
+          yBotFn: (px2, pz2) => yGrade(84.4, pz2) - 0.45,
+          withGuardrail: false
+        });
+        buildVariableZGradedPatch(
+          40.68,
+          51,
+          () => 106.2,
+          (lx) => park1ZNorth(lx) + 0.08,
+          10,
+          10,
+          (lx, lz) => yGrade(lx, lz) + 0.046,
+          upperTurfMat,
+          0.18
+        );
+        buildVariableZGradedPatch(
+          51,
+          59.5,
+          () => 113.95,
+          (lx) => park1ZNorth(lx) + 0.08,
+          8,
+          6,
+          (lx, lz) => yGrade(lx, lz) + 0.046,
+          upperTurfMat,
+          0.18
+        );
+        {
+          const zRoadOuterApprox = (lx) => {
+            if (lx <= 75.55) return park1ZNorth(lx) + 0.08;
+            if (lx <= 77.65) {
+              const u = (lx - 75.55) / (77.65 - 75.55);
+              return MathUtils.lerp(park1ZSouth(75.55) + 0.05, evalSampledEdgeZ(outerEdgeSamples, 77.65) + 0.05, u);
+            }
+            return evalSampledEdgeZ(outerEdgeSamples, lx) + 0.05;
+          };
+          buildVariableZGradedPatch(
+            63.8,
+            118.5,
+            (lx) => lx <= 116.5 ? zWall2Center(lx) : 115.92,
+            zRoadOuterApprox,
+            40,
+            10,
+            (lx, lz) => {
+              const zw = lx <= 116.5 ? zWall2Center(lx) : 115.92;
+              const sampleZ = Math.max(lz, zw + 1.25);
+              return yGrade(lx, sampleZ) + 0.046;
+            },
+            upperTurfMat,
+            0.18
+          );
+        }
+        buildVariableZGradedPatch(
+          59.5,
+          63.8,
+          () => 113.85,
+          (lx) => park1ZNorth(lx) + 0.08,
+          4,
+          12,
+          (lx, lz) => yGrade(lx, lz) + 0.062,
+          sidewalkConcreteMat,
+          0.24
+        );
+        for (const rx of [59.64, 63.66]) {
+          const zBot = 114.05, zTop = park1ZNorth(rx) - 0.1;
+          const yBot = yGrade(rx, zBot) + 0.065;
+          const yTop = yGrade(rx, zTop) + 0.065;
+          const rampSpan = Math.hypot(zTop - zBot, yTop - yBot);
+          const rampPitch = Math.atan2(yTop - yBot, zTop - zBot);
+          const railBar = new Mesh(new CylinderGeometry(0.022, 0.022, rampSpan, 8), galvRailMat);
+          railBar.position.set(rx, 0.5 * (yBot + yTop) + 0.88, 0.5 * (zBot + zTop));
+          railBar.rotation.x = Math.PI * 0.5 - rampPitch;
+          railBar.castShadow = true;
+          roadGrp.add(railBar);
+          for (const [pz2, py2] of [[zBot, yBot], [0.5 * (zBot + zTop), 0.5 * (yBot + yTop)], [zTop, yTop]]) {
+            const pPost = new Mesh(new CylinderGeometry(0.024, 0.024, 0.9, 8), galvRailMat);
+            pPost.position.set(rx, py2 + 0.45, pz2);
+            pPost.castShadow = true;
+            roadGrp.add(pPost);
+          }
+        }
+        {
+          const lowerBayYOff = (lz) => MathUtils.lerp(0.106, 0.068, MathUtils.smoothstep(lz, 74.4, 75.85));
+          const b400LowerMesh = buildVariableZGradedPatch(
+            -16.85,
+            22.42,
+            () => 74.4,
+            () => 82.32,
+            28,
+            10,
+            (lx, lz) => yGrade(lx, lz) + lowerBayYOff(lz),
+            parkingConcreteMat,
+            0.24
+          );
+          b400LowerMesh.name = "B400ConcreteParking_LowerBay";
+          addGradedStripe(-16.75, 22.4, 80.78, 82.28, sidewalkConcreteMat, 0.076, 14, 2);
+          addGradedStripe(-16.75, 22.4, 80.76, 80.8, tableJointMat, 0.08, 14, 1);
+          for (let jx = -15; jx <= 21.5; jx += 1.75) {
+            addGradedStripe(jx - 0.015, jx + 0.015, 80.8, 82.25, tableJointMat, 0.08, 1, 1);
+          }
+          for (let s = 0; s <= 11; s++) {
+            const sx = -14.8 + s * 2.82;
+            addOrientedStripe(sx, 76.25, sx, 80.75, 0.055, paintWhiteMat, 0.082, 3);
+            if (s < 11) {
+              const midX = sx + 1.41;
+              const wsZ = 80.22;
+              const ws = new Mesh(new BoxGeometry(1.8, 0.13, 0.18), wheelStopConcreteMat);
+              ws.position.set(midX, yGrade(midX, wsZ) + 0.13, wsZ);
+              ws.castShadow = true;
+              ws.receiveShadow = true;
+              roadGrp.add(ws);
+            }
+          }
+          const b400UpperMesh = buildVariableZGradedPatch(
+            -16.85,
+            22.42,
+            () => 82.52,
+            () => 97.12,
+            28,
+            16,
+            (lx, lz) => yGrade(lx, lz) + 0.068,
+            parkingConcreteMat,
+            0.24
+          );
+          b400UpperMesh.name = "B400ConcreteParking_UpperBay";
+          addGradedStripe(-16.75, 22.4, 82.55, 84.05, sidewalkConcreteMat, 0.076, 14, 2);
+          addGradedStripe(-16.75, 22.4, 84.03, 84.07, tableJointMat, 0.08, 14, 1);
+          addGradedStripe(-16.75, 22.4, 95.6, 97.1, sidewalkConcreteMat, 0.076, 14, 2);
+          addGradedStripe(-16.75, 22.4, 95.58, 95.62, tableJointMat, 0.08, 14, 1);
+          for (let jx = -15; jx <= 21.5; jx += 1.75) {
+            addGradedStripe(jx - 0.015, jx + 0.015, 82.58, 84.02, tableJointMat, 0.08, 1, 1);
+            addGradedStripe(jx - 0.015, jx + 0.015, 95.63, 97.07, tableJointMat, 0.08, 1, 1);
+          }
+          for (let s = 0; s <= 12; s++) {
+            const sx = -15.2 + s * 2.82;
+            addOrientedStripe(sx, 84.08, sx, 88.2, 0.055, paintWhiteMat, 0.082, 3);
+            if (s < 12) {
+              const midX = sx + 1.41;
+              const wsZ = 84.58;
+              const ws = new Mesh(new BoxGeometry(1.8, 0.13, 0.18), wheelStopConcreteMat);
+              ws.position.set(midX, yGrade(midX, wsZ) + 0.13, wsZ);
+              ws.castShadow = true;
+              ws.receiveShadow = true;
+              roadGrp.add(ws);
+            }
+          }
+          for (let s = 0; s <= 12; s++) {
+            const sx = -15.2 + s * 2.82;
+            const isAda = s >= 10;
+            addOrientedStripe(sx, 91.4, sx, 95.56, 0.055, isAda ? paintBlueAdaMat : paintWhiteMat, 0.082, 3);
+            if (s < 12) {
+              const midX = sx + 1.41;
+              const wsZ = 95.06;
+              const ws = new Mesh(new BoxGeometry(1.8, 0.13, 0.18), wheelStopConcreteMat);
+              ws.position.set(midX, yGrade(midX, wsZ) + 0.13, wsZ);
+              ws.castShadow = true;
+              ws.receiveShadow = true;
+              roadGrp.add(ws);
+            }
+          }
+          for (const [lpX, lpZ, armDir] of [[21.55, 81.55, -1], [21.55, 96.35, -1]]) {
+            const lpY = yGrade(lpX, lpZ) + 0.068;
+            const ped = new Mesh(new CylinderGeometry(0.18, 0.2, 0.55, 12), wheelStopConcreteMat);
+            ped.position.set(lpX, lpY + 0.275, lpZ);
+            roadGrp.add(ped);
+            const pole = new Mesh(new CylinderGeometry(0.075, 0.105, 6.6, 12), darkBronzePoleMat);
+            pole.position.set(lpX, lpY + 0.55 + 3.3, lpZ);
+            pole.castShadow = true;
+            roadGrp.add(pole);
+            const arm = new Mesh(new BoxGeometry(0.85, 0.08, 0.18), darkBronzePoleMat);
+            arm.position.set(lpX + armDir * 0.38, lpY + 7.08, lpZ);
+            roadGrp.add(arm);
+            const head = new Mesh(new BoxGeometry(0.46, 0.1, 0.32), darkBronzePoleMat);
+            head.position.set(lpX + armDir * 0.72, lpY + 7.02, lpZ);
+            roadGrp.add(head);
+          }
+          addArchitecturalRetainingWall(-16.75, 82.4, 22.25, 82.4, {
+            thick: 0.34,
+            yTopFn: (px2) => yGrade(px2, 83.25) + 0.22,
+            yBotFn: (px2) => yGrade(px2, 81.55) - 0.52,
+            withGuardrail: true
+          });
+          addArchitecturalRetainingWall(-16.75, 82.4, -16.75, 86.1, {
+            thick: 0.3,
+            yTopFn: (_px, pz2) => yGrade(-16, pz2) + 0.18,
+            yBotFn: (_px, pz2) => yGrade(-17.6, pz2) - 0.45,
+            withGuardrail: false
+          });
+          addArchitecturalRetainingWall(-16.8, 97.25, 22.25, 97.25, {
+            thick: 0.36,
+            yTopFn: (px2) => Math.max(yGrade(px2, 98.55) + 0.24, yGrade(px2, 96.4) + 0.88),
+            yBotFn: (px2) => yGrade(px2, 96.4) - 0.55,
+            withGuardrail: true
+          });
+          const b400AlleyMesh = buildSkirtedOrientedRoadRibbon(
+            -19.1,
+            74.35,
+            -19.1,
+            152,
+            2.25,
+            64,
+            6,
+            (_px, pz2) => MathUtils.lerp(0.106, 0.068, MathUtils.smoothstep(pz2, 74.35, 75.85)),
+            parkingConcreteMat,
+            0.26,
+            0.24
+          );
+          b400AlleyMesh.name = "B400ConcreteRearAlley";
+          const southAlleyCurbPts = [];
+          for (let cz = 75; cz <= 151.6; cz += 3.83) {
+            southAlleyCurbPts.push([-21.35, cz]);
+          }
+          addCurbAlongPoints(southAlleyCurbPts, 0.085, 0.135);
+          const northUphillAlleyCurbPts = [];
+          for (let cz = 97.35; cz <= 151.6; cz += 3.875) {
+            northUphillAlleyCurbPts.push([-16.85, cz]);
+          }
+          addCurbAlongPoints(northUphillAlleyCurbPts, 0.085, 0.135);
+        }
+      }
+    }
+    arch.add(roadGrp);
+  }
+
   // js/foundry/buildings/building411_412/buildBuilding411_412.js
   function buildPhotoRealisticBuilding411_412(foundry, group, building, shape, wallMat, trimMat, terrainY = 0, getTerrainHeightFn = null) {
     const arch = new Group();
@@ -25604,6 +28338,16 @@
       color: "#e2dcd0",
       roughness: 0.86,
       metalness: 0.03,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2
+    });
+    const parkingConcreteMat = new MeshStandardMaterial({
+      color: "#d4cfc5",
+      map: getBrushedParkingConcreteTexture(),
+      roughness: 0.84,
+      metalness: 0.03,
+      side: DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2
@@ -25805,6 +28549,7 @@
     };
     const addSlidingWindow = (lx, y, lz, w, h, facing, hasBlinds = true) => {
       const g = new Group();
+      g.userData.hideOnCutaway = true;
       g.position.set(lx, y, lz);
       if (facing === "+X") g.rotation.y = Math.PI * 0.5;
       else if (facing === "-X") g.rotation.y = -Math.PI * 0.5;
@@ -25966,9 +28711,9 @@
     addEdgeBand(-20.18, 4.45, -20.18, 11.6, 4.1, 0.48, 0.24, t111SidingMat, whiteTrimMat, 0.06);
     addEdgeBand(-20.25, 11.52, 15.73, 11.52, 4.13, 0.52, 0.24, t111SidingMat, whiteTrimMat, 0.06);
     addEdgeBand(15.68, 11.6, 15.68, 8.6, 4.18, 0.46, 0.24, lightT111Mat, whiteTrimMat, 0.06);
-    addBox(16.75, 0.16, 2.38, darkSashMat, -11.975, 2.76, 3.3);
-    addBox(16.65, 0.05, 2.3, canopyRoofMat, -11.975, 2.86, 3.3);
-    addBox(16.6, 0.04, 2.26, whiteTrimMat, -11.975, 2.67, 3.3);
+    addBox(16.75, 0.16, 2.38, darkSashMat, -11.975, 2.76, 3.3).userData.hideOnCutaway = true;
+    addBox(16.65, 0.05, 2.3, canopyRoofMat, -11.975, 2.86, 3.3).userData.hideOnCutaway = true;
+    addBox(16.6, 0.04, 2.26, whiteTrimMat, -11.975, 2.67, 3.3).userData.hideOnCutaway = true;
     const postXs412 = [-4.05, -7.25, -10.45, -13.65, -16.85, -20];
     const yellowResSignMat = createSignMat("#facc15", "#1f2937", [
       { text: "RESERVED", y: 42, font: "bold 28px Arial" },
@@ -25999,44 +28744,18 @@
     addBox(0.1, 2.08, 0.98, new MeshStandardMaterial({ color: "#f5f4ee", roughness: 0.5 }), 15.77, 1.23, 5.65);
     addBox(0.04, 0.18, 0.26, whiteTrimMat, 15.83, 1.48, 5.65, false);
     addBox(0.05, 0.05, 0.08, galvMetalMat, 15.83, 1.05, 6.02, false);
-    addBox(0.85, 0.12, 1.35, concreteMat, 16.15, 0.06, 5.65);
-    addBox(1.18, 0.16, 1.45, concreteMat, 16.75, 0.08, 3.15);
-    addBox(1.04, 1.02, 1.32, transformerGreenMat, 16.75, 0.67, 3.15);
-    addBox(0.02, 0.08, 0.22, yellowGuyMat, 17.28, 1.08, 3.15, false);
-    [10.85, 4.45].forEach((pz2, pIdx) => {
-      const px2 = pIdx === 0 ? 16.85 : 16.65;
-      const poleH = 8.8;
-      const pole = new Mesh(new CylinderGeometry(0.12, 0.16, poleH, 12), utilityWoodPoleMat);
-      pole.position.set(px2, poleH * 0.5 - 0.2, pz2);
-      pole.castShadow = true;
-      arch.add(pole);
-      addBox(0.12, 0.14, 1.85, utilityWoodPoleMat, px2, poleH - 0.65, pz2);
-      if (pIdx === 1) {
-        const cond = new Mesh(new CylinderGeometry(0.04, 0.04, 7.8, 8), galvMetalMat);
-        cond.position.set(px2 + 0.18, 3.8, pz2 - 0.15);
-        arch.add(cond);
-        const guyGuard = new Mesh(new CylinderGeometry(0.028, 0.028, 3.1, 8), yellowGuyMat);
-        guyGuard.position.set(px2 + 0.08, 1.45, 2.55);
-        guyGuard.rotation.x = 0.68;
-        arch.add(guyGuard);
-      } else {
-        const transCan = new Mesh(new CylinderGeometry(0.24, 0.24, 0.92, 14), galvMetalMat);
-        transCan.position.set(px2 - 0.34, poleH - 1.35, pz2);
-        arch.add(transCan);
-      }
-    });
     addBox(3.95, 0.34, 2.35, concreteMat, 13.66, 0.17, -0.12);
     addBox(2.45, 0.17, 1.15, concreteMat, 13.15, 0.085, -1.78);
-    addBox(2.9, 0.22, 3.22, fasciaTrimMat, 13.12, 2.98, -0.55);
-    addBox(2.96, 0.05, 3.28, darkSashMat, 13.12, 3.1, -0.55);
-    addBox(2.84, 0.06, 3.16, roofMembraneMat, 13.12, 3.12, -0.55);
-    addBox(2.78, 0.04, 3.1, whiteTrimMat, 13.12, 2.86, -0.55);
+    addBox(2.9, 0.22, 3.22, fasciaTrimMat, 13.12, 2.98, -0.55).userData.hideOnCutaway = true;
+    addBox(2.96, 0.05, 3.28, darkSashMat, 13.12, 3.1, -0.55).userData.hideOnCutaway = true;
+    addBox(2.84, 0.06, 3.16, roofMembraneMat, 13.12, 3.12, -0.55).userData.hideOnCutaway = true;
+    addBox(2.78, 0.04, 3.1, whiteTrimMat, 13.12, 2.86, -0.55).userData.hideOnCutaway = true;
     addBox(0.12, 2.54, 0.12, whiteTrimMat, 14.38, 1.61, -1.96);
-    addBox(1.38, 2.86, 0.08, whiteTrimMat, 14.85, 1.77, 1.02);
-    addBox(0.84, 1.98, 0.1, puttyDoorMat, 15.08, 1.33, 1);
-    addBox(0.4, 1.98, 0.1, windowGlassMat, 14.42, 1.33, 1);
-    addBox(0.82, 0.72, 0.1, blindGlassMat, 15.08, 2.74, 1);
-    addBox(0.4, 0.72, 0.1, blindGlassMat, 14.42, 2.74, 1);
+    addBox(1.38, 2.86, 0.08, whiteTrimMat, 14.85, 1.77, 1.02).userData.hideOnCutaway = true;
+    addBox(0.84, 1.98, 0.1, puttyDoorMat, 15.08, 1.33, 1).userData.hideOnCutaway = true;
+    addBox(0.4, 1.98, 0.1, windowGlassMat, 14.42, 1.33, 1).userData.hideOnCutaway = true;
+    addBox(0.82, 0.72, 0.1, blindGlassMat, 15.08, 2.74, 1).userData.hideOnCutaway = true;
+    addBox(0.4, 0.72, 0.1, blindGlassMat, 14.42, 2.74, 1).userData.hideOnCutaway = true;
     addSlidingWindow(13.48, 2.02, 1.03, 1.15, 1.28, "-Z", true);
     addBox(0.68, 0.62, 0.14, galvMetalMat, 12.35, 1.12, 0.98);
     [-0.16, 0.16].forEach((mx) => {
@@ -26083,23 +28802,70 @@
       const yLin = MathUtils.lerp(yFront, yRear, tZ);
       return Math.max(yLin, yStreetGrade(lx, lz) + 0.06);
     };
+    const zOuter411 = (lx) => 11.11 + 635e-5 * lx;
     const yAlleyLot = (lx, lz) => {
       if (lx >= 23.62) {
-        const tDoug = MathUtils.clamp((lx - 23.62) / (64.6 - 23.62), 0, 1);
-        const hBias = MathUtils.lerp(0.12, 0.1, tDoug);
+        const zOut2 = zOuter411(lx);
+        const tDoug = MathUtils.clamp((lx - 23.62) / (64.4 - 23.62), 0, 1);
+        const baseBias = MathUtils.lerp(0.12, 0.085, tDoug);
+        const rearWeldBias = MathUtils.lerp(
+          0.106,
+          0.085,
+          MathUtils.smoothstep(lx, 62.18, 64.4)
+        );
+        const hBias = MathUtils.lerp(
+          baseBias,
+          rearWeldBias,
+          MathUtils.smoothstep(lz, 6, zOut2)
+        );
         return yStreetGrade(lx, lz) + hBias;
       }
+      const zOut = zOuter411(lx);
+      const zOut23 = zOuter411(23.62);
       const tZ = MathUtils.clamp((lz - -22.03) / (1.05 - -22.03), 0, 1);
       const yLeft = lz >= 1.05 ? 0.01 : MathUtils.lerp(ySwTop(11.68), 0.01, tZ);
-      const yFound400 = yStreetGrade(23.62, lz) + 0.12;
+      const yFound400 = yStreetGrade(23.62, lz) + MathUtils.lerp(0.12, 0.106, MathUtils.smoothstep(lz, 6, zOut23));
       const zBlendFront = MathUtils.smoothstep(lz, -22.03, -19.5);
       const yRight = MathUtils.lerp(ySwTop(23.62), yFound400, zBlendFront);
       const xAnchorLeft = MathUtils.lerp(11.68, 15.73, MathUtils.smoothstep(lz, 0.5, 2.5));
       const tX = MathUtils.clamp((lx - xAnchorLeft) / (23.62 - xAnchorLeft), 0, 1);
       const yCross = MathUtils.lerp(yLeft, yRight, tX);
-      const ySurface = MathUtils.lerp(ySwTop(lx), yCross, zBlendFront);
-      return Math.max(ySurface, yStreetGrade(lx, lz) + 0.04);
+      const rearAlleyWeld = MathUtils.smoothstep(lx, 15.85, 18.55) * MathUtils.smoothstep(lz, 2.5, zOut);
+      const yTargetRear = yStreetGrade(lx, lz) + MathUtils.lerp(0.12, 0.106, MathUtils.smoothstep(lz, 6, zOut));
+      const yWelded = MathUtils.lerp(yCross, yTargetRear, rearAlleyWeld);
+      return MathUtils.lerp(ySwTop(lx), yWelded, zBlendFront);
     };
+    {
+      const stoopY = yAlleyLot(16.15, 5.65);
+      addBox(0.85, 0.16, 1.35, concreteMat, 16.15, stoopY + 0.06, 5.65);
+      const xfmrPadY = yAlleyLot(16.75, 3.15);
+      addBox(1.18, 0.18, 1.45, concreteMat, 16.75, xfmrPadY + 0.08, 3.15);
+      addBox(1.04, 1.02, 1.32, transformerGreenMat, 16.75, xfmrPadY + 0.67, 3.15);
+      addBox(0.02, 0.08, 0.22, yellowGuyMat, 17.28, xfmrPadY + 1.08, 3.15, false);
+    }
+    [10.85, 4.45].forEach((pz2, pIdx) => {
+      const px2 = pIdx === 0 ? 16.85 : 16.65;
+      const pGroundY = yAlleyLot(px2, pz2);
+      const poleH = 8.8;
+      const pole = new Mesh(new CylinderGeometry(0.12, 0.16, poleH, 12), utilityWoodPoleMat);
+      pole.position.set(px2, pGroundY + poleH * 0.5 - 0.2, pz2);
+      pole.castShadow = true;
+      arch.add(pole);
+      addBox(0.12, 0.14, 1.85, utilityWoodPoleMat, px2, pGroundY + poleH - 0.65, pz2);
+      if (pIdx === 1) {
+        const cond = new Mesh(new CylinderGeometry(0.04, 0.04, 7.8, 8), galvMetalMat);
+        cond.position.set(px2 + 0.18, pGroundY + 3.8, pz2 - 0.15);
+        arch.add(cond);
+        const guyGuard = new Mesh(new CylinderGeometry(0.028, 0.028, 3.1, 8), yellowGuyMat);
+        guyGuard.position.set(px2 + 0.08, pGroundY + 1.45, 2.55);
+        guyGuard.rotation.x = 0.68;
+        arch.add(guyGuard);
+      } else {
+        const transCan = new Mesh(new CylinderGeometry(0.24, 0.24, 0.92, 14), galvMetalMat);
+        transCan.position.set(px2 - 0.34, pGroundY + poleH - 1.35, pz2);
+        arch.add(transCan);
+      }
+    });
     const walkZRear = -0.2;
     const walkZFront = -20.85;
     const walkSegs = 16;
@@ -26209,16 +28975,17 @@
     addBox(0.08, 2.12, 1.04, whiteTrimMat, -1.69, 1.4, 1.45);
     addBox(0.1, 2.04, 0.92, puttyDoorMat, -1.71, 1.36, 1.45);
     const awningSlope = addBox(0.76, 0.06, 1.44, darkAwningMat, -2.02, 2.62, 1.45);
+    awningSlope.userData.hideOnCutaway = true;
     awningSlope.rotation.z = 0.38;
     [0.78, 2.12].forEach((az) => {
-      addBox(0.68, 0.03, 0.03, darkMetalMat, -2.02, 2.46, az);
+      addBox(0.68, 0.03, 0.03, darkMetalMat, -2.02, 2.46, az).userData.hideOnCutaway = true;
     });
-    addBox(0.08, 1.62, 1.46, whiteTrimMat, -1.69, 1.68, 2.98);
-    addBox(0.1, 1.48, 1.32, windowGlassMat, -1.71, 1.68, 2.98);
+    addBox(0.08, 1.62, 1.46, whiteTrimMat, -1.69, 1.68, 2.98).userData.hideOnCutaway = true;
+    addBox(0.1, 1.48, 1.32, windowGlassMat, -1.71, 1.68, 2.98).userData.hideOnCutaway = true;
     const openSignMat = createSignMat("#1e3a8a", "#93c5fd", [
       { text: "OPEN", y: 64, color: "#ffffff", font: "bold 42px Arial" }
     ], 160, 96);
-    addBox(0.02, 0.18, 0.32, openSignMat, -1.72, 1.68, 2.48, false);
+    addBox(0.02, 0.18, 0.32, openSignMat, -1.72, 1.68, 2.48, false).userData.hideOnCutaway = true;
     const vert410Mat = createSignMat("#8e8f88", null, [
       { text: "4", y: 28, color: "#1e2226", font: "bold 44px Arial" },
       { text: "1", y: 64, color: "#1e2226", font: "bold 44px Arial" },
@@ -26285,6 +29052,15 @@
       const dx = fn(lx + 0.5, lz) - fn(lx - 0.5, lz);
       return { pitchX: -Math.atan2(dz, 1), rollZ: Math.atan2(dx, 1) };
     };
+    const evalParkingUv = (px2, pz2) => {
+      const wx = bCenter[0] + px2 * cosA + pz2 * sinA;
+      const wz = bCenter[1] - px2 * sinA + pz2 * cosA;
+      const dx401 = wx - -4.22;
+      const dz401 = wz - -38.74;
+      const lx401 = dx401 * 0.80425 + dz401 * 0.59429;
+      const lz401 = -dx401 * 0.59429 + dz401 * 0.80425;
+      return [lx401 * 0.24, lz401 * 0.24];
+    };
     const addGradedQuad = (p00, p10, p11, p01, mat, yBias = 0) => {
       const geom = new BufferGeometry();
       const crossY = (p10[2] - p00[2]) * (p11[0] - p00[0]) - (p10[0] - p00[0]) * (p11[2] - p00[2]);
@@ -26309,20 +29085,29 @@
         d[1] + yBias,
         d[2]
       ]);
-      const uvs = new Float32Array([
-        a[0] * 0.25,
-        a[2] * 0.25,
-        b[0] * 0.25,
-        b[2] * 0.25,
-        c[0] * 0.25,
-        c[2] * 0.25,
-        a[0] * 0.25,
-        a[2] * 0.25,
-        c[0] * 0.25,
-        c[2] * 0.25,
-        d[0] * 0.25,
-        d[2] * 0.25
-      ]);
+      let uvs;
+      if (mat === parkingConcreteMat) {
+        const [ua, va] = evalParkingUv(a[0], a[2]);
+        const [ub, vb] = evalParkingUv(b[0], b[2]);
+        const [uc, vc] = evalParkingUv(c[0], c[2]);
+        const [ud, vd] = evalParkingUv(d[0], d[2]);
+        uvs = new Float32Array([ua, va, ub, vb, uc, vc, ua, va, uc, vc, ud, vd]);
+      } else {
+        uvs = new Float32Array([
+          a[0] * 0.25,
+          a[2] * 0.25,
+          b[0] * 0.25,
+          b[2] * 0.25,
+          c[0] * 0.25,
+          c[2] * 0.25,
+          a[0] * 0.25,
+          a[2] * 0.25,
+          c[0] * 0.25,
+          c[2] * 0.25,
+          d[0] * 0.25,
+          d[2] * 0.25
+        ]);
+      }
       geom.setAttribute("position", new BufferAttribute(verts, 3));
       geom.setAttribute("uv", new BufferAttribute(uvs, 2));
       geom.computeVertexNormals();
@@ -26362,10 +29147,64 @@
       aBar.rotation.x = pitchX;
       aBar.rotation.z = rollZ;
     }
+    const swConcreteMat = new MeshStandardMaterial({
+      color: "#e2dcd0",
+      roughness: 0.86,
+      metalness: 0.03,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2
+    });
+    const swJointMat = new MeshBasicMaterial({
+      color: "#9c9588",
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3
+    });
+    const neWalkX0 = 11.68;
+    const neWalkX1 = 13.18;
+    const neWalkZ0 = -22.03;
+    const neWalkZ1 = -2.25;
+    const neWalkSegs = 14;
+    for (let iz = 0; iz < neWalkSegs; iz++) {
+      const z0 = neWalkZ0 + (neWalkZ1 - neWalkZ0) * iz / neWalkSegs;
+      const z1 = neWalkZ0 + (neWalkZ1 - neWalkZ0) * (iz + 1) / neWalkSegs;
+      addGradedQuad(
+        [neWalkX0, yAlleyLot(neWalkX0, z0), z0],
+        [neWalkX1, yAlleyLot(neWalkX1, z0), z0],
+        [neWalkX1, yAlleyLot(neWalkX1, z1), z1],
+        [neWalkX0, yAlleyLot(neWalkX0, z1), z1],
+        swConcreteMat,
+        8e-3
+      );
+      if (iz > 0) {
+        addGradedQuad(
+          [neWalkX0 + 0.04, yAlleyLot(neWalkX0 + 0.04, z0 - 0.014), z0 - 0.014],
+          [neWalkX1 - 0.04, yAlleyLot(neWalkX1 - 0.04, z0 - 0.014), z0 - 0.014],
+          [neWalkX1 - 0.04, yAlleyLot(neWalkX1 - 0.04, z0 + 0.014), z0 + 0.014],
+          [neWalkX0 + 0.04, yAlleyLot(neWalkX0 + 0.04, z0 + 0.014), z0 + 0.014],
+          swJointMat,
+          0.014
+        );
+      }
+    }
+    for (let iz = 0; iz < neWalkSegs; iz++) {
+      const z0 = neWalkZ0 + (neWalkZ1 - neWalkZ0) * iz / neWalkSegs;
+      const z1 = neWalkZ0 + (neWalkZ1 - neWalkZ0) * (iz + 1) / neWalkSegs;
+      addGradedQuad(
+        [neWalkX1 - 0.02, yAlleyLot(neWalkX1 - 0.02, z0), z0],
+        [neWalkX1 + 0.02, yAlleyLot(neWalkX1 + 0.02, z0), z0],
+        [neWalkX1 + 0.02, yAlleyLot(neWalkX1 + 0.02, z1), z1],
+        [neWalkX1 - 0.02, yAlleyLot(neWalkX1 - 0.02, z1), z1],
+        swJointMat,
+        0.014
+      );
+    }
     const stallCos = Math.cos(0.36);
     const stallSin = Math.sin(0.36);
-    [-3.6, -6.1, -8.6, -11.1, -13.6].forEach((yz) => {
-      const cx = 13.85;
+    const stallNormalAngle = 0.36 + Math.PI * 0.5;
+    [-3.6, -6.1, -8.6, -11.1, -13.6].forEach((yz, sIdx) => {
+      const cx = 15.25;
       const hd = 0.05;
       for (let s = 0; s < 3; s++) {
         const u0 = -2.2 + 4.4 * s / 3;
@@ -26382,6 +29221,15 @@
           yellowGuyMat,
           0.015
         );
+      }
+      if (sIdx < 4) {
+        const wsZ = yz - 1.25 + 1.85 * stallSin;
+        const wsX = cx - 1.85 * stallCos;
+        const { pitchX, rollZ } = getSurfaceAngles(yAlleyLot, wsX, wsZ);
+        const ws = addBox(1.65, 0.13, 0.2, concreteMat, wsX, yAlleyLot(wsX, wsZ) + 0.065, wsZ);
+        ws.rotation.y = stallNormalAngle;
+        ws.rotation.x = pitchX;
+        ws.rotation.z = rollZ;
       }
     });
     [-2.35, -4.65].forEach((ax) => {
@@ -26451,20 +29299,6 @@
     const capStoneMat = new MeshStandardMaterial({ color: "#f2eee6", roughness: 0.75, metalness: 0.04, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const riverGravelMat = new MeshStandardMaterial({ color: "#78736a", roughness: 0.95, metalness: 0.02 });
     const mulchBedMat = new MeshStandardMaterial({ color: "#6b4f35", roughness: 0.95, metalness: 0.02 });
-    const swConcreteMat = new MeshStandardMaterial({
-      color: "#e2dcd0",
-      roughness: 0.86,
-      metalness: 0.03,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2
-    });
-    const swJointMat = new MeshBasicMaterial({
-      color: "#9c9588",
-      polygonOffset: true,
-      polygonOffsetFactor: -3,
-      polygonOffsetUnits: -3
-    });
     const curbYellowMat = new MeshStandardMaterial({ color: "#eab308", roughness: 0.62, metalness: 0.05 });
     const poleSilverMat = new MeshStandardMaterial({ color: "#b8c0c8", roughness: 0.38, metalness: 0.72 });
     const addGradedWallSegment = (x0, z0, x1, z1, thick, yTopOrFn, wallMat2, capH = 0.045) => {
@@ -26565,7 +29399,7 @@
           [x1, yLotSurface(x1, z0), z0],
           [x1, yLotSurface(x1, z1), z1],
           [x0, yLotSurface(x0, z1), z1],
-          concreteMat
+          parkingConcreteMat
         );
       }
     }
@@ -26582,10 +29416,10 @@
         [-16, yInner0, z0],
         [-16, yInner1, z1],
         [-19.45, yOuter1, z1],
-        concreteMat
+        parkingConcreteMat
       );
     }
-    addGradedWallSegment(-19.45, -4.5, -19.45, 2.15, 0.18, (px2, pz2) => yLotSurface(px2, pz2), concreteMat, 0);
+    addGradedWallSegment(-19.45, -4.5, -19.45, 2.15, 0.18, (px2, pz2) => yLotSurface(px2, pz2), parkingConcreteMat, 0);
     const rockXSteps = 10;
     const rockZSteps = 10;
     for (let ix = 0; ix < rockXSteps; ix++) {
@@ -26617,56 +29451,50 @@
     const alleyX0 = 11.68;
     const alleyX1 = 23.62;
     const alleyXSteps = 12;
-    const alleyZSteps = 20;
+    const alleyZMid = -2.26;
+    const alleyFrontZSteps = 14;
+    const alleyRearZSteps = 22;
     for (let ix = 0; ix < alleyXSteps; ix++) {
       const x0 = alleyX0 + (alleyX1 - alleyX0) * ix / alleyXSteps;
       const x1 = alleyX0 + (alleyX1 - alleyX0) * (ix + 1) / alleyXSteps;
-      for (let iz = 0; iz < alleyZSteps; iz++) {
-        const z0 = -22.03 + 33.63 * iz / alleyZSteps;
-        const z1 = -22.03 + 33.63 * (iz + 1) / alleyZSteps;
+      for (let iz = 0; iz < alleyFrontZSteps; iz++) {
+        const z0 = -22.03 + (alleyZMid - -22.03) * iz / alleyFrontZSteps;
+        const z1 = -22.03 + (alleyZMid - -22.03) * (iz + 1) / alleyFrontZSteps;
         addGradedQuad(
           [x0, yAlleyLot(x0, z0), z0],
           [x1, yAlleyLot(x1, z0), z0],
           [x1, yAlleyLot(x1, z1), z1],
           [x0, yAlleyLot(x0, z1), z1],
-          concreteMat
+          parkingConcreteMat
+        );
+      }
+      const zOut0 = zOuter411(x0);
+      const zOut1 = zOuter411(x1);
+      for (let iz = 0; iz < alleyRearZSteps; iz++) {
+        const t0 = iz / alleyRearZSteps;
+        const t1 = (iz + 1) / alleyRearZSteps;
+        const z00 = alleyZMid + (zOut0 - alleyZMid) * t0;
+        const z10 = alleyZMid + (zOut1 - alleyZMid) * t0;
+        const z11 = alleyZMid + (zOut1 - alleyZMid) * t1;
+        const z01 = alleyZMid + (zOut0 - alleyZMid) * t1;
+        addGradedQuad(
+          [x0, yAlleyLot(x0, z00), z00],
+          [x1, yAlleyLot(x1, z10), z10],
+          [x1, yAlleyLot(x1, z11), z11],
+          [x0, yAlleyLot(x0, z01), z01],
+          parkingConcreteMat
         );
       }
     }
-    const dougExtSpans = [
-      { xStart: 23.62, xEnd: 28.98, zInner: -2.26, xSteps: 4 },
-      { xStart: 28.98, xEnd: 47.48, zInner: -3.4, xSteps: 10 },
-      { xStart: 47.48, xEnd: 56.65, zInner: -4.52, xSteps: 5 },
-      { xStart: 56.65, xEnd: 64.6, zInner: -3.4, xSteps: 5 }
-    ];
-    const dougZOuter = 11.6;
-    const dougZSteps = 10;
-    dougExtSpans.forEach(({ xStart, xEnd, zInner, xSteps }) => {
-      for (let ix = 0; ix < xSteps; ix++) {
-        const x0 = xStart + (xEnd - xStart) * ix / xSteps;
-        const x1 = xStart + (xEnd - xStart) * (ix + 1) / xSteps;
-        for (let iz = 0; iz < dougZSteps; iz++) {
-          const z0 = zInner + (dougZOuter - zInner) * iz / dougZSteps;
-          const z1 = zInner + (dougZOuter - zInner) * (iz + 1) / dougZSteps;
-          addGradedQuad(
-            [x0, yAlleyLot(x0, z0), z0],
-            [x1, yAlleyLot(x1, z0), z0],
-            [x1, yAlleyLot(x1, z1), z1],
-            [x0, yAlleyLot(x0, z1), z1],
-            concreteMat
-          );
-        }
-      }
-    });
-    for (let ix = 0; ix < 24; ix++) {
-      const sx0 = 15.73 + (64.6 - 15.73) * ix / 24;
-      const sx1 = 15.73 + (64.6 - 15.73) * (ix + 1) / 24;
-      addGradedWallSegment(sx0, 11.6, sx1, 11.6, 0.16, (px2, pz2) => yAlleyLot(px2, pz2), concreteMat, 0);
+    for (let ix = 0; ix < 2; ix++) {
+      const sx0 = 15.73 + (18.45 - 15.73) * ix / 2;
+      const sx1 = 15.73 + (18.45 - 15.73) * (ix + 1) / 2;
+      addGradedWallSegment(sx0, zOuter411(sx0), sx1, zOuter411(sx1), 0.18, (px2, pz2) => yAlleyLot(px2, pz2) - 0.02, parkingConcreteMat, 0);
     }
-    for (let iz = 0; iz < 8; iz++) {
-      const sz0 = -3.4 + (11.6 - -3.4) * iz / 8;
-      const sz1 = -3.4 + (11.6 - -3.4) * (iz + 1) / 8;
-      addGradedWallSegment(64.6, sz0, 64.6, sz1, 0.16, (px2, pz2) => yAlleyLot(px2, pz2), concreteMat, 0);
+    for (let iz = 0; iz < 10; iz++) {
+      const sz0 = -22.03 + (-2.26 - -22.03) * iz / 10;
+      const sz1 = -22.03 + (-2.26 - -22.03) * (iz + 1) / 10;
+      addGradedWallSegment(23.62, sz0, 23.62, sz1, 0.18, (px2, pz2) => yAlleyLot(px2, pz2) - 0.02, parkingConcreteMat, 0);
     }
     const washSwX0 = -16.5;
     const washSwX1 = 19.85;
@@ -27850,6 +30678,7 @@
       glassMat
     } = mats;
     const g = new Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(x, 0, z);
     g.rotation.y = rotY;
     const archRadius = bayW * 0.5;
@@ -27998,7 +30827,11 @@
       darkFrameMat
     } = mats;
     const g = new Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(cx, 0, frontZ);
+    const groundFixtures = new Group();
+    groundFixtures.position.set(cx, 0, frontZ);
+    parent.add(groundFixtures);
     const openW = 2.48;
     const openH = 3.56;
     const vestBackMat = new MeshStandardMaterial({ color: "#181c20", roughness: 0.75, metalness: 0.1 });
@@ -28007,7 +30840,7 @@
     g.add(vestBack);
     const thresholdSill = new Mesh(new BoxGeometry(openW + 0.16, 0.42, 0.24), terraCottaTrimMat);
     thresholdSill.position.set(0, 0.21, 0.14);
-    g.add(thresholdSill);
+    groundFixtures.add(thresholdSill);
     const topSoffit = new Mesh(new BoxGeometry(openW + 0.2, 0.18, 0.28), terraCottaMat);
     topSoffit.position.set(0, openH + 0.05, 0.16);
     g.add(topSoffit);
@@ -28160,6 +30993,7 @@
   }
   function buildGraniteBaseWindow(parent, x, y, z, w, h, rotY, graniteMat, frameMat, glassMat) {
     const g = new Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(x, y, z);
     g.rotation.y = rotY;
     const glass = new Mesh(new PlaneGeometry(w - 0.1, h - 0.1), glassMat);
@@ -28187,6 +31021,7 @@
   }
   function buildRecessedRectWindow(parent, x, y, z, w, h, rotY, frameMat, glassMat, trimMat, hasSill = true) {
     const g = new Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(x, y, z);
     g.rotation.y = rotY;
     const glass = new Mesh(new PlaneGeometry(w - 0.08, h - 0.08), glassMat);
@@ -28211,6 +31046,7 @@
   }
   function buildFriezeAtticWindow(parent, x, y, z, w, h, rotY, frameMat, glassMat, trimMat) {
     const g = new Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(x, y, z);
     g.rotation.y = rotY;
     const border = new Mesh(new BoxGeometry(w + 0.24, h + 0.24, 0.08), trimMat);
@@ -28501,6 +31337,7 @@
         arch.add(alarm);
       } else if (floor2Type === "recessed" || floor2Type === "transom") {
         const topDark = new Mesh(new BoxGeometry(0.1, 0.96, 2.68), darkFrameMat);
+        topDark.userData.hideOnCutaway = true;
         topDark.position.set(minX - 0.02, 3.38, bz);
         arch.add(topDark);
         buildGraniteBaseWindow(arch, minX, 1.82, bz - 0.76, 1.1, 1.68, washRotY, rusticatedGraniteMat, darkFrameMat, glassMat);
@@ -28536,6 +31373,7 @@
       }
       if (idx !== 3) {
         const bsmtWin = new Mesh(new PlaneGeometry(1.16, 1.15), glassMat);
+        bsmtWin.userData.hideOnCutaway = true;
         bsmtWin.rotation.y = parkRotY;
         bsmtWin.position.set(maxX + 0.1, -0.45, bz);
         arch.add(bsmtWin);
@@ -28582,6 +31420,7 @@
       verdigrisMat
     } = mats;
     const g = new Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(sideX, 0, bz);
     g.rotation.y = -Math.PI * 0.5;
     const openW = 2.28;
@@ -28723,6 +31562,7 @@
       glassMat
     } = mats;
     const g = new Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(sideX, 0, bz);
     g.rotation.y = Math.PI * 0.5;
     const openW = 2.42;
@@ -28864,6 +31704,7 @@
     pent2.castShadow = true;
     arch.add(pent2);
     const skylight = new Mesh(new BoxGeometry(2.2, 0.45, 2.8), darkMat);
+    skylight.userData.hideOnCutaway = true;
     skylight.position.set(midX + 1.6, roofY + 0.22, 11.2);
     arch.add(skylight);
     const hvacMat = new MeshStandardMaterial({ color: "#9aa2a8", roughness: 0.5, metalness: 0.45 });
@@ -31026,6 +33867,9 @@
       vestOpenFloor.position.set(0, vestFloorY - 0.05, connMidZ);
       vestOpenFloor.receiveShadow = true;
       arch.add(vestOpenFloor);
+      const vestCoverGroup = new Group();
+      vestCoverGroup.userData.hideOnCutaway = true;
+      arch.add(vestCoverGroup);
       const leftVestDepthX = leftVestFrontX - coreWallX;
       const leftVestRoof = new Mesh(
         new BoxGeometry(leftVestDepthX + 0.12, 0.14, leftVestSpanZ),
@@ -31033,7 +33877,7 @@
       );
       leftVestRoof.position.set(coreWallX + leftVestDepthX * 0.5, leftVestTopY - 0.07, leftVestMidZ);
       leftVestRoof.castShadow = true;
-      arch.add(leftVestRoof);
+      vestCoverGroup.add(leftVestRoof);
       const vestThreshold = new Mesh(
         new BoxGeometry(0.28, 0.08, leftVestSpanZ + 0.04),
         concreteWalkMat
@@ -31046,7 +33890,7 @@
       );
       leftVestGlass.rotation.y = Math.PI * 0.5;
       leftVestGlass.position.set(leftVestFrontX + 0.015, vestFloorY + leftVestH * 0.5, leftVestMidZ);
-      arch.add(leftVestGlass);
+      vestCoverGroup.add(leftVestGlass);
       const canopyY = vestFloorY + 2.49;
       const canopyBand = new Mesh(
         new BoxGeometry(0.18, 0.22, leftVestSpanZ + 0.06),
@@ -31054,7 +33898,7 @@
       );
       canopyBand.position.set(leftVestFrontX + 0.05, canopyY, leftVestMidZ);
       canopyBand.castShadow = true;
-      arch.add(canopyBand);
+      vestCoverGroup.add(canopyBand);
       const vDoorH = canopyY - vestFloorY - 0.1;
       [leftVestMinZ + 0.06, -19.95, -19.05, -18.15, leftVestMaxZ - 0.06].forEach((mz, idx) => {
         const isDoorCenter = idx === 2;
@@ -31065,7 +33909,7 @@
           blackVestFrameMat
         );
         mull.position.set(leftVestFrontX + 0.01, mY, mz);
-        arch.add(mull);
+        vestCoverGroup.add(mull);
       });
       [-19.5, -18.6].forEach((dzDoor, dIdx) => {
         const kickRail = new Mesh(
@@ -31073,41 +33917,41 @@
           blackVestFrameMat
         );
         kickRail.position.set(leftVestFrontX + 0.015, vestFloorY + 0.14, dzDoor);
-        arch.add(kickRail);
+        vestCoverGroup.add(kickRail);
         const topDoorRail = new Mesh(
           new BoxGeometry(0.08, 0.11, 0.82),
           blackVestFrameMat
         );
         topDoorRail.position.set(leftVestFrontX + 0.015, canopyY - 0.15, dzDoor);
-        arch.add(topDoorRail);
+        vestCoverGroup.add(topDoorRail);
         [-0.36, 0.36].forEach((szOff) => {
           const leafStile = new Mesh(
             new BoxGeometry(0.075, vDoorH, 0.065),
             blackVestFrameMat
           );
           leafStile.position.set(leftVestFrontX + 0.015, vestFloorY + vDoorH * 0.5, dzDoor + szOff);
-          arch.add(leafStile);
+          vestCoverGroup.add(leafStile);
         });
         const pushBar = new Mesh(
           new BoxGeometry(0.05, 0.04, 0.68),
           silverFasciaMat
         );
         pushBar.position.set(leftVestFrontX + 0.06, vestFloorY + 1.02, dzDoor);
-        arch.add(pushBar);
+        vestCoverGroup.add(pushBar);
         const handleZ = dIdx === 0 ? dzDoor + 0.28 : dzDoor - 0.28;
         const pullHandle = new Mesh(
           new CylinderGeometry(0.014, 0.014, 0.36, 8),
           silverFasciaMat
         );
         pullHandle.position.set(leftVestFrontX + 0.07, vestFloorY + 1.12, handleZ);
-        arch.add(pullHandle);
+        vestCoverGroup.add(pullHandle);
       });
       const sideBayBox = new Mesh(
         new BoxGeometry(1.15, 2.48, 0.52),
         blackVestFrameMat
       );
       sideBayBox.position.set(6.02, vestFloorY + 1.24, connMaxZ - 0.26);
-      arch.add(sideBayBox);
+      vestCoverGroup.add(sideBayBox);
       const trashBin = new Mesh(
         new BoxGeometry(0.46, 0.86, 0.44),
         new MeshStandardMaterial({ color: "#8a8e92", roughness: 0.6, metalness: 0.25 })
@@ -31129,21 +33973,21 @@
       );
       rightRoof.position.set(coreWallX + (rightVestDepthX + 0.42) * 0.5, rightVestTopY - 0.12, rightVestMidZ);
       rightRoof.castShadow = true;
-      arch.add(rightRoof);
+      vestCoverGroup.add(rightRoof);
       const rightFrontGlass = new Mesh(
         new PlaneGeometry(rightVestSpanZ - 0.1, rightVestH - 0.24),
         glassMat
       );
       rightFrontGlass.rotation.y = Math.PI * 0.5;
       rightFrontGlass.position.set(rightVestFrontX - 0.02, vestFloorY + (rightVestH - 0.24) * 0.5, rightVestMidZ);
-      arch.add(rightFrontGlass);
+      vestCoverGroup.add(rightFrontGlass);
       [-23.55, -22.15].forEach((tz) => {
         const troffer = new Mesh(
           new BoxGeometry(1.45, 0.06, 0.85),
           ceilingTrofferMat
         );
         troffer.position.set(rightVestFrontX - 1.1, rightVestTopY - 0.32, tz);
-        arch.add(troffer);
+        vestCoverGroup.add(troffer);
       });
       [rightVestMinZ + 0.06, -23.45, -22.25, rightVestMaxZ - 0.04].forEach((mz) => {
         const mull = new Mesh(
@@ -31151,7 +33995,7 @@
           blackVestFrameMat
         );
         mull.position.set(rightVestFrontX, vestFloorY + rightVestH * 0.5, mz);
-        arch.add(mull);
+        vestCoverGroup.add(mull);
       });
       [canopyY, leftVestTopY].forEach((hy) => {
         const hBar = new Mesh(
@@ -31159,7 +34003,7 @@
           blackVestFrameMat
         );
         hBar.position.set(rightVestFrontX, hy, rightVestMidZ);
-        arch.add(hBar);
+        vestCoverGroup.add(hBar);
       });
       const rampStartX = leftVestFrontX;
       const turnInnerX = 17.9;
@@ -32093,6 +34937,7 @@
     const washZ = mainMaxZ;
     const addWhiteMetalAwning = (x, yTop, z, width, side = "+Z") => {
       const awningGrp = new Group();
+      awningGrp.userData.hideOnCutaway = true;
       awningGrp.position.set(x, yTop, z);
       if (side === "-X") awningGrp.rotation.y = -Math.PI / 2;
       const proj = 0.78;
@@ -32120,6 +34965,7 @@
     };
     const addMultiPaneWindow = (x, yCenter, z, width, height, cols, rows, side = "+Z", opts = {}) => {
       const winGrp = new Group();
+      winGrp.userData.hideOnCutaway = true;
       winGrp.position.set(x, yCenter, z);
       if (side === "-X") winGrp.rotation.y = -Math.PI / 2;
       else if (side === "+X") winGrp.rotation.y = Math.PI / 2;
@@ -33927,18 +36773,21 @@
       addBox(0.05, brickH, 0.04, jx, plinthTopY + brickH * 0.5, mainMaxZ + 0.015, jointMat);
       addBox(0.05, brickH, 0.04, jx, plinthTopY + brickH * 0.5, mainMinZ - 0.015, jointMat);
     }
+    const winCoverGrp = new Group();
+    winCoverGrp.userData.hideOnCutaway = true;
+    arch.add(winCoverGrp);
     const clereH = clerestoryTopY - brickTopY;
     const clereCY = brickTopY + clereH * 0.5;
-    addBox(mainW - 0.36, clereH, mainD - 0.36, mainCX, clereCY, mainCZ, clerestoryGlassMat, arch, true);
+    addBox(mainW - 0.36, clereH, mainD - 0.36, mainCX, clereCY, mainCZ, clerestoryGlassMat, winCoverGrp, true);
     addBox(mainW + 0.08, 0.12, mainD + 0.08, mainCX, brickTopY + 0.04, mainCZ, concretePlinthMat);
     const mullionStep = 1.32;
     for (let mx = mainMinX + 1.2; mx <= mainMaxX - 1.2; mx += mullionStep) {
-      addBox(0.06, clereH, 0.12, mx, clereCY, mainMaxZ - 0.14, darkBronzeFrameMat);
-      addBox(0.06, clereH, 0.12, mx, clereCY, mainMinZ + 0.14, darkBronzeFrameMat);
+      addBox(0.06, clereH, 0.12, mx, clereCY, mainMaxZ - 0.14, darkBronzeFrameMat, winCoverGrp);
+      addBox(0.06, clereH, 0.12, mx, clereCY, mainMinZ + 0.14, darkBronzeFrameMat, winCoverGrp);
     }
     for (let mz = mainMinZ + 1.2; mz <= mainMaxZ - 1.2; mz += mullionStep) {
-      addBox(0.12, clereH, 0.06, mainMaxX - 0.14, clereCY, mz, darkBronzeFrameMat);
-      addBox(0.12, clereH, 0.06, mainMinX + 0.14, clereCY, mz, darkBronzeFrameMat);
+      addBox(0.12, clereH, 0.06, mainMaxX - 0.14, clereCY, mz, darkBronzeFrameMat, winCoverGrp);
+      addBox(0.12, clereH, 0.06, mainMinX + 0.14, clereCY, mz, darkBronzeFrameMat, winCoverGrp);
     }
     for (const [cxCorner, czCorner] of [
       [mainMinX + 0.55, mainMaxZ - 0.55],
@@ -33986,15 +36835,15 @@
     const paneCount = 52;
     const paneW = ribbonW / paneCount;
     for (const bandY of [5.85, 10.15]) {
-      addBox(ribbonW + 0.16, ribbonH + 0.12, 0.1, ribbonCX, bandY, mainMaxZ + 0.02, darkBronzeFrameMat);
-      addBox(ribbonW + 0.2, 0.08, 0.16, ribbonCX, bandY - ribbonH * 0.5 - 0.04, mainMaxZ + 0.05, copingDarkMat);
+      addBox(ribbonW + 0.16, ribbonH + 0.12, 0.1, ribbonCX, bandY, mainMaxZ + 0.02, darkBronzeFrameMat, winCoverGrp);
+      addBox(ribbonW + 0.2, 0.08, 0.16, ribbonCX, bandY - ribbonH * 0.5 - 0.04, mainMaxZ + 0.05, copingDarkMat, winCoverGrp);
       for (let p = 0; p < paneCount; p++) {
         const px2 = ribbonStartX + (p + 0.5) * paneW;
         const isFrosted = (p * 7 + (bandY > 8 ? 3 : 0)) % 5 === 0 || (p + 2) % 9 === 0;
         const gMat = isFrosted ? frostedSecurityGlassMat : darkSecurityGlassMat;
-        addBox(paneW - 0.06, ribbonH - 0.08, 0.08, px2, bandY, mainMaxZ + 0.045, gMat);
+        addBox(paneW - 0.06, ribbonH - 0.08, 0.08, px2, bandY, mainMaxZ + 0.045, gMat, winCoverGrp);
         if (p > 0) {
-          addBox(0.05, ribbonH + 0.04, 0.12, ribbonStartX + p * paneW, bandY, mainMaxZ + 0.05, darkBronzeFrameMat);
+          addBox(0.05, ribbonH + 0.04, 0.12, ribbonStartX + p * paneW, bandY, mainMaxZ + 0.05, darkBronzeFrameMat, winCoverGrp);
         }
       }
     }
@@ -34006,15 +36855,15 @@
     const southPaneCount = 52;
     const southPaneW = southRibbonW / southPaneCount;
     for (const sBandY of [4.65, 7.35, 11.65]) {
-      addBox(southRibbonW + 0.16, southRibbonH + 0.1, 0.1, southRibbonCX, sBandY, mainMinZ - 0.02, darkBronzeFrameMat);
-      addBox(southRibbonW + 0.2, 0.07, 0.15, southRibbonCX, sBandY - southRibbonH * 0.5 - 0.035, mainMinZ - 0.045, copingDarkMat);
+      addBox(southRibbonW + 0.16, southRibbonH + 0.1, 0.1, southRibbonCX, sBandY, mainMinZ - 0.02, darkBronzeFrameMat, winCoverGrp);
+      addBox(southRibbonW + 0.2, 0.07, 0.15, southRibbonCX, sBandY - southRibbonH * 0.5 - 0.035, mainMinZ - 0.045, copingDarkMat, winCoverGrp);
       for (let p = 0; p < southPaneCount; p++) {
         const px2 = southRibbonStartX + (p + 0.5) * southPaneW;
         const isFrosted = (p * 5 + Math.round(sBandY)) % 4 !== 0;
         const gMat = isFrosted ? frostedSecurityGlassMat : darkSecurityGlassMat;
-        addBox(southPaneW - 0.06, southRibbonH - 0.08, 0.08, px2, sBandY, mainMinZ - 0.04, gMat);
+        addBox(southPaneW - 0.06, southRibbonH - 0.08, 0.08, px2, sBandY, mainMinZ - 0.04, gMat, winCoverGrp);
         if (p > 0) {
-          addBox(0.05, southRibbonH + 0.04, 0.12, southRibbonStartX + p * southPaneW, sBandY, mainMinZ - 0.045, darkBronzeFrameMat);
+          addBox(0.05, southRibbonH + 0.04, 0.12, southRibbonStartX + p * southPaneW, sBandY, mainMinZ - 0.045, darkBronzeFrameMat, winCoverGrp);
         }
       }
     }
@@ -34079,9 +36928,9 @@
     addBox(0.55, 3.1, 0.26, -4.08, 0.05, mainMinZ - 0.08, precastPanelMat);
     const sLowWinW = 39;
     const sLowWinCX = 15.7;
-    addBox(sLowWinW, 1.42, 0.14, sLowWinCX, 0.86, mainMinZ - 0.08, darkSecurityGlassMat);
+    addBox(sLowWinW, 1.42, 0.14, sLowWinCX, 0.86, mainMinZ - 0.08, darkSecurityGlassMat, winCoverGrp);
     for (let sx = -3.8; sx <= 35.2; sx += 1.62) {
-      addBox(0.06, 1.46, 0.18, sx, 0.86, mainMinZ - 0.09, darkBronzeFrameMat);
+      addBox(0.06, 1.46, 0.18, sx, 0.86, mainMinZ - 0.09, darkBronzeFrameMat, winCoverGrp);
     }
     addBox(0.92, 0.66, 0.34, 30.6, 2.38, mainMinZ - 0.26, whiteMetalMat);
     addBox(0.06, 0.06, 0.32, 30.22, 2.02, mainMinZ - 0.24, blackMetalMat);
@@ -34104,15 +36953,15 @@
     addBox(0.45, 2.55, 0.26, 39, 0.325, mainMinZ - 0.08, precastPanelMat);
     addBox(10.3, 1.14, 0.26, 44.35, -0.38, mainMinZ - 0.08, precastPanelMat);
     addBox(10.34, 0.07, 0.3, 44.35, 0.17, mainMinZ - 0.1, concretePlinthMat);
-    addBox(10.3, 1.38, 0.14, 44.35, 0.88, mainMinZ - 0.08, darkSecurityGlassMat);
+    addBox(10.3, 1.38, 0.14, 44.35, 0.88, mainMinZ - 0.08, darkSecurityGlassMat, winCoverGrp);
     for (let sx = 39.2; sx <= 49.5; sx += 1.47) {
-      addBox(0.06, 1.42, 0.18, sx, 0.88, mainMinZ - 0.09, darkBronzeFrameMat);
+      addBox(0.06, 1.42, 0.18, sx, 0.88, mainMinZ - 0.09, darkBronzeFrameMat, winCoverGrp);
     }
     addBox(2.2, 2.55, 0.26, 50.6, 0.325, mainMinZ - 0.08, precastPanelMat);
     addBox(12.9, 0.18, 0.3, 45.25, -0.86, mainMinZ - 0.1, concretePlinthMat);
-    addBox(0.16, clerestoryTopY - brickTopY, 8.2, mainMinX - 0.03, (clerestoryTopY + brickTopY) * 0.5, 13.3, clerestoryGlassMat);
+    addBox(0.16, clerestoryTopY - brickTopY, 8.2, mainMinX - 0.03, (clerestoryTopY + brickTopY) * 0.5, 13.3, clerestoryGlassMat, winCoverGrp);
     for (let wz = 10.2; wz <= 16.8; wz += 1.1) {
-      addBox(0.2, clerestoryTopY - brickTopY + 0.04, 0.06, mainMinX - 0.04, (clerestoryTopY + brickTopY) * 0.5, wz, darkBronzeFrameMat);
+      addBox(0.2, clerestoryTopY - brickTopY + 0.04, 0.06, mainMinX - 0.04, (clerestoryTopY + brickTopY) * 0.5, wz, darkBronzeFrameMat, winCoverGrp);
     }
     const eastPrecastD = 14.4;
     const eastPrecastCZ = 5;
@@ -34336,36 +37185,36 @@
     addBox(connW + 0.14, 0.28, 0.28, connCX, nConnRoofY + 0.14, nConnMinZ + 0.14, precastPanelMat);
     {
       const bzFloorY = yGrade(connCX, 11.5) + 0.09;
-      addBox(connW, 0.12, nConnD - 0.08, connCX, connUnderpassTopY - 0.04, nConnCZ, copingDarkMat);
+      addBox(connW, 0.12, nConnD - 0.08, connCX, connUnderpassTopY - 0.04, nConnCZ, copingDarkMat, winCoverGrp);
       for (const lxLight of [connMinX + 1.45, connCX, connMaxX - 1.45]) {
-        addBox(0.65, 0.04, 1.1, lxLight, connUnderpassTopY - 0.09, nConnCZ + 0.35, whiteMetalMat);
+        addBox(0.65, 0.04, 1.1, lxLight, connUnderpassTopY - 0.09, nConnCZ + 0.35, whiteMetalMat, winCoverGrp);
       }
       const sfH = connUnderpassTopY - bzFloorY;
       const sfCY = bzFloorY + sfH * 0.5;
       const canopyY = bzFloorY + 2.54;
-      addBox(connW - 0.06, 0.26, 0.56, connCX, canopyY, nConnMinZ + 0.24, silverMetalMat);
-      addBox(connW - 0.04, 0.06, 0.58, connCX, canopyY - 0.12, nConnMinZ + 0.24, darkBronzeFrameMat);
+      addBox(connW - 0.06, 0.26, 0.56, connCX, canopyY, nConnMinZ + 0.24, silverMetalMat, winCoverGrp);
+      addBox(connW - 0.04, 0.06, 0.58, connCX, canopyY - 0.12, nConnMinZ + 0.24, darkBronzeFrameMat, winCoverGrp);
       const trBotY = canopyY + 0.13;
       const trTopY = connUnderpassTopY - 0.08;
       const trH = trTopY - trBotY;
       const trCY = (trBotY + trTopY) * 0.5;
-      addBox(connW - 0.16, trH, 0.12, connCX, trCY, nConnMinZ + 0.04, darkSecurityGlassMat);
-      addBox(connW, 0.08, 0.16, connCX, trTopY, nConnMinZ + 0.05, darkBronzeFrameMat);
+      addBox(connW - 0.16, trH, 0.12, connCX, trCY, nConnMinZ + 0.04, darkSecurityGlassMat, winCoverGrp);
+      addBox(connW, 0.08, 0.16, connCX, trTopY, nConnMinZ + 0.05, darkBronzeFrameMat, winCoverGrp);
       for (const mx of [connMinX + 0.08, connMinX + 1.85, connMinX + 3.65, connMinX + 5.45, connMaxX - 0.08]) {
-        addBox(0.07, trH + 0.06, 0.16, mx, trCY, nConnMinZ + 0.05, darkBronzeFrameMat);
+        addBox(0.07, trH + 0.06, 0.16, mx, trCY, nConnMinZ + 0.05, darkBronzeFrameMat, winCoverGrp);
       }
       const lowTopY = canopyY - 0.12;
       const lowH = lowTopY - bzFloorY;
       const lowCY = bzFloorY + lowH * 0.5;
-      addBox(connW - 0.12, lowH, 0.12, connCX, lowCY, nConnMinZ + 0.04, darkSecurityGlassMat);
-      addBox(connW, 0.1, 0.16, connCX, bzFloorY + 0.05, nConnMinZ + 0.06, darkBronzeFrameMat);
+      addBox(connW - 0.12, lowH, 0.12, connCX, lowCY, nConnMinZ + 0.04, darkSecurityGlassMat, winCoverGrp);
+      addBox(connW, 0.1, 0.16, connCX, bzFloorY + 0.05, nConnMinZ + 0.06, darkBronzeFrameMat, winCoverGrp);
       for (const mx of [connMinX + 0.08, 53.2, 54.7, 55.7, 56.7, 57.85, connMaxX - 0.08]) {
         const mW = mx === 54.7 || mx === 55.7 || mx === 56.7 ? 0.09 : 0.065;
-        addBox(mW, lowH, 0.16, mx, lowCY, nConnMinZ + 0.06, darkBronzeFrameMat);
+        addBox(mW, lowH, 0.16, mx, lowCY, nConnMinZ + 0.06, darkBronzeFrameMat, winCoverGrp);
       }
-      addBox(3, 0.05, 0.15, 53.2, bzFloorY + 1.02, nConnMinZ + 0.06, darkBronzeFrameMat);
-      addBox(1.84, 0.05, 0.18, 55.7, bzFloorY + 1.02, nConnMinZ + 0.09, silverMetalMat);
-      addBox(0.36, 0.18, 0.02, 56.18, bzFloorY + 1.48, nConnMinZ + 0.12, whiteMetalMat);
+      addBox(3, 0.05, 0.15, 53.2, bzFloorY + 1.02, nConnMinZ + 0.06, darkBronzeFrameMat, winCoverGrp);
+      addBox(1.84, 0.05, 0.18, 55.7, bzFloorY + 1.02, nConnMinZ + 0.09, silverMetalMat, winCoverGrp);
+      addBox(0.36, 0.18, 0.02, 56.18, bzFloorY + 1.48, nConnMinZ + 0.12, whiteMetalMat, winCoverGrp);
       addBox(0.14, 2.22, 1.06, connMinX + 0.06, bzFloorY + 1.11, 10.1, darkBronzeFrameMat);
       addBox(0.12, 2.08, 0.9, connMinX + 0.07, bzFloorY + 1.08, 10.1, darkSecurityGlassMat);
       addBox(0.04, 0.22, 0.14, connMinX + 0.09, bzFloorY + 1.28, 10.77, whiteMetalMat);
@@ -34511,1426 +37360,6 @@
         arch.add(fanShroud);
       }
     }
-  }
-
-  // js/foundry/buildings/building401/WashingtonStreetCorridor.js
-  var _cachedAsphaltTex = null;
-  var _cachedConcreteTableTex = null;
-  var _cachedAdaAsphaltStencilTex = null;
-  var _cachedTurnArrowLeftTex = null;
-  var _cachedTurnArrowRightTex = null;
-  var _cachedBikeLaneStencilTex = null;
-  function getAsphaltTexture() {
-    if (_cachedAsphaltTex) return _cachedAsphaltTex;
-    if (typeof document === "undefined") return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#252930";
-    ctx.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 4200; i++) {
-      const x = i * 73 % 256;
-      const y = i * 137 % 256;
-      const v = 30 + i * 29 % 24;
-      ctx.fillStyle = `rgb(${v},${v + 2},${v + 5})`;
-      ctx.fillRect(x, y, 2, 2);
-    }
-    const tex = new CanvasTexture(canvas);
-    tex.wrapS = RepeatWrapping;
-    tex.wrapT = RepeatWrapping;
-    tex.repeat.set(6, 28);
-    _cachedAsphaltTex = tex;
-    return tex;
-  }
-  function getConcreteTableTexture() {
-    if (_cachedConcreteTableTex) return _cachedConcreteTableTex;
-    if (typeof document === "undefined") return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#5c626b";
-    ctx.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 2800; i++) {
-      const x = i * 61 % 256;
-      const y = i * 113 % 256;
-      const v = 82 + i * 19 % 22;
-      ctx.fillStyle = `rgb(${v},${v + 2},${v + 4})`;
-      ctx.fillRect(x, y, 2, 2);
-    }
-    const tex = new CanvasTexture(canvas);
-    tex.wrapS = RepeatWrapping;
-    tex.wrapT = RepeatWrapping;
-    tex.repeat.set(4, 4);
-    _cachedConcreteTableTex = tex;
-    return tex;
-  }
-  function getAdaAsphaltStencilTexture() {
-    if (_cachedAdaAsphaltStencilTex) return _cachedAdaAsphaltStencilTex;
-    if (typeof document === "undefined") return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, 256, 256);
-    ctx.strokeStyle = "#f8fafc";
-    ctx.fillStyle = "#f8fafc";
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = 18;
-    ctx.beginPath();
-    ctx.arc(114, 154, 46, 0.22 * Math.PI, 1.42 * Math.PI, false);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(122, 62, 16, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(122, 84);
-    ctx.lineTo(122, 136);
-    ctx.lineTo(166, 136);
-    ctx.lineTo(184, 184);
-    ctx.lineTo(202, 178);
-    ctx.stroke();
-    ctx.lineWidth = 15;
-    ctx.beginPath();
-    ctx.moveTo(122, 112);
-    ctx.lineTo(158, 112);
-    ctx.stroke();
-    const tex = new CanvasTexture(canvas);
-    tex.colorSpace = SRGBColorSpace;
-    _cachedAdaAsphaltStencilTex = tex;
-    return tex;
-  }
-  function getTurnArrowTexture(direction = "left") {
-    if (direction === "left" && _cachedTurnArrowLeftTex) return _cachedTurnArrowLeftTex;
-    if (direction === "right" && _cachedTurnArrowRightTex) return _cachedTurnArrowRightTex;
-    if (typeof document === "undefined") return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, 256, 256);
-    ctx.save();
-    if (direction === "right") {
-      ctx.translate(256, 0);
-      ctx.scale(-1, 1);
-    }
-    ctx.strokeStyle = "#f1f5f9";
-    ctx.fillStyle = "#f1f5f9";
-    ctx.lineWidth = 26;
-    ctx.lineCap = "butt";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(156, 228);
-    ctx.lineTo(156, 132);
-    ctx.quadraticCurveTo(156, 78, 102, 78);
-    ctx.lineTo(78, 78);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(34, 78);
-    ctx.lineTo(92, 38);
-    ctx.lineTo(92, 118);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-    const tex = new CanvasTexture(canvas);
-    tex.colorSpace = SRGBColorSpace;
-    if (direction === "left") _cachedTurnArrowLeftTex = tex;
-    else _cachedTurnArrowRightTex = tex;
-    return tex;
-  }
-  function getBikeLaneStencilTexture() {
-    if (_cachedBikeLaneStencilTex) return _cachedBikeLaneStencilTex;
-    if (typeof document === "undefined") return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = 128;
-    canvas.height = 256;
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, 128, 256);
-    ctx.strokeStyle = "#f1f5f9";
-    ctx.fillStyle = "#f1f5f9";
-    ctx.lineWidth = 8;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(64, 76);
-    ctx.lineTo(64, 34);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(64, 16);
-    ctx.lineTo(42, 44);
-    ctx.lineTo(86, 44);
-    ctx.closePath();
-    ctx.fill();
-    ctx.lineWidth = 7;
-    ctx.beginPath();
-    ctx.arc(38, 198, 20, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(90, 198, 20, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(38, 198);
-    ctx.lineTo(58, 166);
-    ctx.lineTo(84, 166);
-    ctx.lineTo(90, 198);
-    ctx.moveTo(58, 166);
-    ctx.lineTo(66, 198);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(62, 124, 10, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = 9;
-    ctx.beginPath();
-    ctx.moveTo(60, 138);
-    ctx.lineTo(56, 166);
-    ctx.lineTo(76, 152);
-    ctx.stroke();
-    const tex = new CanvasTexture(canvas);
-    tex.colorSpace = SRGBColorSpace;
-    _cachedBikeLaneStencilTex = tex;
-    return tex;
-  }
-  function buildGradedStripGeometry(lx0, lx1, lz0, lz1, segsX, segsZ, yGrade, yOffset) {
-    const geom = new BufferGeometry();
-    const positions = [];
-    const normals = [];
-    const uvs = [];
-    const indices = [];
-    for (let ix = 0; ix <= segsX; ix++) {
-      const u = ix / segsX;
-      const lx = lx0 + (lx1 - lx0) * u;
-      for (let iz = 0; iz <= segsZ; iz++) {
-        const v = iz / segsZ;
-        const lz = lz0 + (lz1 - lz0) * v;
-        const ly = yGrade(lx, lz) + yOffset;
-        positions.push(lx, ly, lz);
-        normals.push(0, 1, 0);
-        uvs.push(u, v);
-      }
-    }
-    const stride = segsZ + 1;
-    for (let ix = 0; ix < segsX; ix++) {
-      for (let iz = 0; iz < segsZ; iz++) {
-        const a = ix * stride + iz;
-        const b = (ix + 1) * stride + iz;
-        const c = (ix + 1) * stride + (iz + 1);
-        const d = ix * stride + (iz + 1);
-        indices.push(a, c, b);
-        indices.push(a, d, c);
-      }
-    }
-    geom.setAttribute("position", new Float32BufferAttribute(positions, 3));
-    geom.setAttribute("normal", new Float32BufferAttribute(normals, 3));
-    geom.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
-    geom.setIndex(indices);
-    geom.computeVertexNormals();
-    return geom;
-  }
-  function buildOrientedRoadRibbonGeometry(x0, z0, x1, z1, halfW0, halfW1, segsAlong, segsAcross, yGrade, yOffset) {
-    const geom = new BufferGeometry();
-    const positions = [];
-    const normals = [];
-    const uvs = [];
-    const indices = [];
-    const dx = x1 - x0;
-    const dz = z1 - z0;
-    const len = Math.hypot(dx, dz) || 1;
-    const nx = -dz / len;
-    const nz = dx / len;
-    for (let i = 0; i <= segsAlong; i++) {
-      const u = i / segsAlong;
-      const cx = x0 + dx * u;
-      const cz = z0 + dz * u;
-      const hw = halfW0 + (halfW1 - halfW0) * u;
-      for (let j = 0; j <= segsAcross; j++) {
-        const v = j / segsAcross;
-        const off = (v * 2 - 1) * hw;
-        const px2 = cx + nx * off;
-        const pz2 = cz + nz * off;
-        const py2 = yGrade(px2, pz2) + yOffset;
-        positions.push(px2, py2, pz2);
-        normals.push(0, 1, 0);
-        uvs.push(u * (len / 12), v);
-      }
-    }
-    const stride = segsAcross + 1;
-    for (let i = 0; i < segsAlong; i++) {
-      for (let j = 0; j < segsAcross; j++) {
-        const a = i * stride + j;
-        const b = (i + 1) * stride + j;
-        const c = (i + 1) * stride + (j + 1);
-        const d = i * stride + (j + 1);
-        indices.push(a, b, c);
-        indices.push(a, c, d);
-      }
-    }
-    geom.setAttribute("position", new Float32BufferAttribute(positions, 3));
-    geom.setAttribute("normal", new Float32BufferAttribute(normals, 3));
-    geom.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
-    geom.setIndex(indices);
-    geom.computeVertexNormals();
-    return geom;
-  }
-  function buildWashingtonStreetCorridor(arch, mats, yGrade) {
-    const roadGrp = new Group();
-    roadGrp.name = "WashingtonOrondoOkanoganCorridor";
-    const asphaltMat = new MeshStandardMaterial({
-      color: "#282c34",
-      map: getAsphaltTexture(),
-      roughness: 0.86,
-      metalness: 0.04,
-      side: DoubleSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1
-    });
-    const concreteTableMat = new MeshStandardMaterial({
-      color: "#636973",
-      map: getConcreteTableTexture(),
-      roughness: 0.8,
-      metalness: 0.04,
-      side: DoubleSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2
-    });
-    const tableJointMat = new MeshStandardMaterial({
-      color: "#434850",
-      roughness: 0.9,
-      metalness: 0.02,
-      polygonOffset: true,
-      polygonOffsetFactor: -3,
-      polygonOffsetUnits: -3
-    });
-    const paintWhiteMat = new MeshStandardMaterial({
-      color: "#f1f5f9",
-      roughness: 0.52,
-      metalness: 0.05,
-      side: DoubleSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -4,
-      polygonOffsetUnits: -4
-    });
-    const paintYellowMat = new MeshStandardMaterial({
-      color: "#eab308",
-      roughness: 0.5,
-      metalness: 0.05,
-      side: DoubleSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -4,
-      polygonOffsetUnits: -4
-    });
-    const manholeIronMat = new MeshStandardMaterial({
-      color: "#2b2927",
-      roughness: 0.65,
-      metalness: 0.55,
-      polygonOffset: true,
-      polygonOffsetFactor: -4,
-      polygonOffsetUnits: -4
-    });
-    const manholeCollarMat = new MeshStandardMaterial({
-      color: "#d6d3cb",
-      roughness: 0.78,
-      metalness: 0.05,
-      polygonOffset: true,
-      polygonOffsetFactor: -3,
-      polygonOffsetUnits: -3
-    });
-    const sidewalkConcreteMat = new MeshStandardMaterial({
-      color: "#e2dcd0",
-      roughness: 0.86,
-      metalness: 0.03,
-      side: DoubleSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2
-    });
-    const curbWhiteMat = new MeshStandardMaterial({
-      color: "#f2eee6",
-      roughness: 0.75,
-      metalness: 0.04,
-      side: DoubleSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -3,
-      polygonOffsetUnits: -3
-    });
-    const addGradedStripe = (lx0, lx1, lz0, lz1, mat, yOff = 0.036, segsX = 4, segsZ = 1) => {
-      const sX = Math.max(1, Math.min(segsX, Math.ceil(Math.abs(lx1 - lx0) / 3)));
-      const sZ = Math.max(1, Math.min(segsZ, Math.ceil(Math.abs(lz1 - lz0) / 3)));
-      const geom = buildGradedStripGeometry(lx0, lx1, lz0, lz1, sX, sZ, yGrade, yOff);
-      const mesh = new Mesh(geom, mat);
-      mesh.receiveShadow = true;
-      roadGrp.add(mesh);
-      return mesh;
-    };
-    const addOrientedStripe = (x0, z0, x1, z1, halfW, mat, yOff = 0.038, segs = 4) => {
-      const geom = buildOrientedRoadRibbonGeometry(x0, z0, x1, z1, halfW, halfW, segs, 1, yGrade, yOff);
-      const mesh = new Mesh(geom, mat);
-      mesh.receiveShadow = true;
-      roadGrp.add(mesh);
-      return mesh;
-    };
-    const addTwinBarPair = (cx, cz, lengthX, widthZ, rotY = 0) => {
-      const wy = yGrade(cx, cz) + 0.038;
-      const pairGrp = new Group();
-      pairGrp.position.set(cx, wy, cz);
-      pairGrp.rotation.y = rotY;
-      for (const offset of [-0.26, 0.26]) {
-        const bar = new Mesh(new BoxGeometry(lengthX, 0.016, widthZ), paintWhiteMat);
-        bar.position.set(0, 0, offset);
-        bar.receiveShadow = true;
-        pairGrp.add(bar);
-      }
-      roadGrp.add(pairGrp);
-    };
-    const leftArrowTex = getTurnArrowTexture("left");
-    const rightArrowTex = getTurnArrowTexture("right");
-    const bikeStencilTex = getBikeLaneStencilTexture();
-    const leftArrowMat = new MeshBasicMaterial({
-      map: leftArrowTex,
-      transparent: true,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -5,
-      polygonOffsetUnits: -5
-    });
-    const rightArrowMat = new MeshBasicMaterial({
-      map: rightArrowTex,
-      transparent: true,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -5,
-      polygonOffsetUnits: -5
-    });
-    const bikeStencilMat = new MeshBasicMaterial({
-      map: bikeStencilTex,
-      transparent: true,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -5,
-      polygonOffsetUnits: -5
-    });
-    const addRoadDecal = (cx, cz, w, h, mat, travelAngle, yOff = 0.041) => {
-      const cy = yGrade(cx, cz) + yOff;
-      const decal = new Mesh(new PlaneGeometry(w, h), mat);
-      decal.rotation.order = "YXZ";
-      decal.rotation.x = -Math.PI / 2;
-      decal.rotation.y = -travelAngle - Math.PI / 2;
-      decal.position.set(cx, cy, cz);
-      roadGrp.add(decal);
-    };
-    {
-      const swAsphalt = new Mesh(
-        buildGradedStripGeometry(-63.5, 19.45, 24.7, 38.65, 36, 6, yGrade, 0.016),
-        asphaltMat
-      );
-      swAsphalt.receiveShadow = true;
-      roadGrp.add(swAsphalt);
-      for (const [cx0, cx1, cz0, cz1] of [
-        [-63.8, -55.8, 19.2, 25],
-        [-62, -55, 38.4, 44.2]
-      ]) {
-        const cornerFill = new Mesh(
-          buildGradedStripGeometry(cx0, cx1, cz0, cz1, 4, 4, yGrade, 0.016),
-          asphaltMat
-        );
-        cornerFill.receiveShadow = true;
-        roadGrp.add(cornerFill);
-      }
-    }
-    {
-      const neAsphalt = new Mesh(
-        buildGradedStripGeometry(42.85, 125.05, 24.7, 38.75, 34, 6, yGrade, 0.016),
-        asphaltMat
-      );
-      neAsphalt.receiveShadow = true;
-      roadGrp.add(neAsphalt);
-      for (const [cx0, cx1, cz0, cz1, nx, nz] of [
-        [116.5, 125.05, 20, 25.6, 14, 10],
-        // Courthouse 350 rounded corner spandrel
-        [117.5, 123.38, 38.5, 43.35, 14, 10],
-        // Building 300 rounded corner spandrel
-        [91.5, 114.8, 38.5, 40.85, 20, 6]
-        // Building 300 recessed disabled parking turnout bay
-      ]) {
-        const cornerFill = new Mesh(
-          buildGradedStripGeometry(cx0, cx1, cz0, cz1, nx, nz, yGrade, 0.016),
-          asphaltMat
-        );
-        cornerFill.receiveShadow = true;
-        roadGrp.add(cornerFill);
-      }
-    }
-    {
-      const getDouglasSWCurbX = (lz) => {
-        if (lz <= 44.5) return 24.45;
-        return 24.62;
-      };
-      const getDouglasNECurbX = (lz) => {
-        if (lz <= 44.5) return 38.65;
-        return 38.46;
-      };
-      const dzStart = 43.2;
-      const dzEnd = 175;
-      const dzSegs = 68;
-      const dxSegs = 6;
-      const dougGeom = new BufferGeometry();
-      const dPos = [];
-      const dNorm = [];
-      const dUv = [];
-      const dIdx = [];
-      for (let iz = 0; iz <= dzSegs; iz++) {
-        const v = iz / dzSegs;
-        const lz = dzStart + (dzEnd - dzStart) * v;
-        const xMin = getDouglasSWCurbX(lz);
-        const xMax = getDouglasNECurbX(lz);
-        for (let ix = 0; ix <= dxSegs; ix++) {
-          const u = ix / dxSegs;
-          const lx = xMin + (xMax - xMin) * u;
-          const ly = yGrade(lx, lz) + 0.016;
-          dPos.push(lx, ly, lz);
-          dNorm.push(0, 1, 0);
-          dUv.push(u, v * 8);
-        }
-      }
-      for (let iz = 0; iz < dzSegs; iz++) {
-        for (let ix = 0; ix < dxSegs; ix++) {
-          const a = iz * (dxSegs + 1) + ix;
-          const b = a + 1;
-          const c = (iz + 1) * (dxSegs + 1) + ix;
-          const d = c + 1;
-          dIdx.push(a, c, b);
-          dIdx.push(b, c, d);
-        }
-      }
-      dougGeom.setAttribute("position", new Float32BufferAttribute(dPos, 3));
-      dougGeom.setAttribute("normal", new Float32BufferAttribute(dNorm, 3));
-      dougGeom.setAttribute("uv", new Float32BufferAttribute(dUv, 2));
-      dougGeom.setIndex(dIdx);
-      dougGeom.computeVertexNormals();
-      const douglasRoadMesh = new Mesh(dougGeom, asphaltMat);
-      douglasRoadMesh.receiveShadow = true;
-      roadGrp.add(douglasRoadMesh);
-      const dougSWSidewalk = new Mesh(
-        buildGradedStripGeometry(22.4, 24.62, 87.35, 175, 2, 36, yGrade, 0.085),
-        sidewalkConcreteMat
-      );
-      dougSWSidewalk.receiveShadow = true;
-      roadGrp.add(dougSWSidewalk);
-      const dougSWCurb = new Mesh(
-        buildGradedStripGeometry(24.44, 24.64, 87.35, 175, 1, 36, yGrade, 0.125),
-        curbWhiteMat
-      );
-      dougSWCurb.receiveShadow = true;
-      roadGrp.add(dougSWCurb);
-      for (const [neZ0, neZ1, neSteps] of [
-        [113.95, 130.5, 8],
-        [138.2, 175, 16]
-      ]) {
-        const dougNESidewalk = new Mesh(
-          buildGradedStripGeometry(38.46, 40.68, neZ0, neZ1, 2, neSteps, yGrade, 0.085),
-          sidewalkConcreteMat
-        );
-        dougNESidewalk.receiveShadow = true;
-        roadGrp.add(dougNESidewalk);
-        const dougNECurb = new Mesh(
-          buildGradedStripGeometry(38.44, 38.64, neZ0, neZ1, 1, neSteps, yGrade, 0.125),
-          curbWhiteMat
-        );
-        dougNECurb.receiveShadow = true;
-        roadGrp.add(dougNECurb);
-      }
-      for (let lz = 45.5; lz <= 171; lz += 7.5) {
-        if (lz > 128.5 && lz < 139) continue;
-        addGradedStripe(31.47, 31.61, lz, lz + 2.95, paintYellowMat, 0.036, 1, 2);
-      }
-      addGradedStripe(26.99, 27.11, 47, 71.8, paintWhiteMat, 0.036, 1, 10);
-      for (let tz = 47; tz <= 71.8; tz += 6.2) {
-        addGradedStripe(26.35, 27.11, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
-      }
-      addGradedStripe(26.99, 27.11, 89, 168, paintWhiteMat, 0.036, 1, 28);
-      for (let tz = 89; tz <= 168; tz += 6.08) {
-        addGradedStripe(26.35, 27.11, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
-      }
-      addGradedStripe(35.96, 36.08, 45.5, 79.8, paintWhiteMat, 0.036, 1, 14);
-      for (let tz = 45.5; tz <= 79.8; tz += 5.71) {
-        addGradedStripe(35.96, 36.68, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
-      }
-      addGradedStripe(35.96, 36.08, 139, 168, paintWhiteMat, 0.036, 1, 12);
-      for (let tz = 139; tz <= 168; tz += 5.8) {
-        addGradedStripe(35.96, 36.68, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
-      }
-      addGradedStripe(27.15, 31.45, 170.35, 170.75, paintWhiteMat, 0.038, 2, 1);
-      for (let s = 0; s < 5; s++) {
-        const sx = 27.5 + s * 2.02;
-        addTwinBarPair(sx, 172.8, 2.65, 0.22, Math.PI / 2);
-      }
-    }
-    {
-      const mainTable = new Mesh(
-        buildGradedStripGeometry(19.3, 42.95, 24.8, 38.6, 14, 6, yGrade, 0.025),
-        concreteTableMat
-      );
-      mainTable.receiveShadow = true;
-      roadGrp.add(mainTable);
-      const douglasTable = new Mesh(
-        buildGradedStripGeometry(19.3, 42.95, 38.45, 43.35, 14, 4, yGrade, 0.025),
-        concreteTableMat
-      );
-      douglasTable.receiveShadow = true;
-      roadGrp.add(douglasTable);
-      for (const jx of [19.35, 25.24, 31.13, 37.01, 42.9]) {
-        addGradedStripe(jx - 0.04, jx + 0.04, 24.85, 38.5, tableJointMat, 0.028, 1);
-      }
-      for (const jz of [28.2, 31.65, 35.1]) {
-        addGradedStripe(19.35, 42.9, jz - 0.04, jz + 0.04, tableJointMat, 0.028, 8);
-      }
-    }
-    {
-      for (let s = 0; s < 6; s++) {
-        const sz = 26.725 + s * 2;
-        addTwinBarPair(22.55, sz, 2.85, 0.22, 0);
-        addTwinBarPair(39.69, sz, 2.85, 0.22, 0);
-      }
-      for (let s = 0; s < 5; s++) {
-        const sx = 27.68 + s * 2;
-        addTwinBarPair(sx, 41.65, 2.65, 0.22, Math.PI / 2);
-      }
-      addGradedStripe(31.68, 35.8, 43.55, 43.95, paintWhiteMat, 0.038, 2);
-      const addSpeedTableChevron = (apexX, baseX, cz) => {
-        const cy = yGrade((apexX + baseX) * 0.5, cz) + 0.036;
-        const grp = new Group();
-        grp.position.set(0, cy, 0);
-        const dir = apexX > baseX ? 1 : -1;
-        const len = Math.abs(apexX - baseX);
-        const halfW = 0.78;
-        for (const side of [-1, 1]) {
-          const dx = len * dir;
-          const dz = -side * halfW;
-          const armLen = Math.hypot(dx, dz);
-          const angle = Math.atan2(dz, dx);
-          const arm = new Mesh(new BoxGeometry(armLen, 0.016, 0.18), paintWhiteMat);
-          arm.position.set(baseX + dx * 0.5, 0, cz + side * halfW * 0.5);
-          arm.rotation.y = -angle;
-          arm.receiveShadow = true;
-          grp.add(arm);
-          const arm2 = new Mesh(new BoxGeometry(armLen * 0.55, 0.016, 0.14), paintWhiteMat);
-          arm2.position.set(baseX + dx * 0.3, 0, cz + side * halfW * 0.28);
-          arm2.rotation.y = -angle;
-          arm2.receiveShadow = true;
-          grp.add(arm2);
-        }
-        roadGrp.add(grp);
-      };
-      addSpeedTableChevron(20.9, 19.45, 33.55);
-      addSpeedTableChevron(41.35, 42.8, 29.65);
-    }
-    for (const [mx, mz] of [
-      [29.8, 30.85],
-      [35.4, 33.85],
-      [28.15, 38.85],
-      [54.8, 33.25],
-      [63.4, 29.1]
-    ]) {
-      const my = yGrade(mx, mz) + 0.036;
-      const collar = new Mesh(new CylinderGeometry(0.46, 0.46, 0.014, 20), manholeCollarMat);
-      collar.position.set(mx, my, mz);
-      collar.receiveShadow = true;
-      roadGrp.add(collar);
-      const lid = new Mesh(new CylinderGeometry(0.34, 0.34, 0.018, 20), manholeIronMat);
-      lid.position.set(mx, my + 2e-3, mz);
-      lid.receiveShadow = true;
-      roadGrp.add(lid);
-    }
-    {
-      for (let s = 0; s < 6; s++) {
-        const sz = 26.725 + s * 2;
-        addTwinBarPair(-61.85, sz, 2.75, 0.22, 0);
-      }
-      addGradedStripe(-58.8, -58.4, 27.35, 31.65, paintWhiteMat, 0.038, 1);
-      for (let lx = -54.5; lx <= 15.2; lx += 7.5) {
-        addGradedStripe(lx, lx + 2.95, 31.58, 31.72, paintYellowMat, 0.036, 1);
-      }
-      addGradedStripe(-53.5, -16.5, 27.29, 27.41, paintWhiteMat, 0.036, 12);
-      for (let tx = -53.5; tx <= -16.5; tx += 7.4) {
-        addGradedStripe(tx - 0.06, tx + 0.06, 26.75, 27.41, paintWhiteMat, 0.036, 1);
-      }
-      addGradedStripe(-10.5, 17.5, 27.29, 27.41, paintWhiteMat, 0.036, 10);
-      for (let tx = -10.5; tx <= 17.5; tx += 7) {
-        addGradedStripe(tx - 0.06, tx + 0.06, 26.75, 27.41, paintWhiteMat, 0.036, 1);
-      }
-      addGradedStripe(-53.5, 17.5, 35.79, 35.91, paintWhiteMat, 0.036, 24);
-      for (let tx = -53.5; tx <= 17.5; tx += 6.45) {
-        addGradedStripe(tx - 0.06, tx + 0.06, 35.79, 36.45, paintWhiteMat, 0.036, 1);
-      }
-    }
-    {
-      for (let lx = 45.5; lx <= 69.5; lx += 7.4) {
-        addGradedStripe(lx, lx + 2.85, 31.18, 31.32, paintYellowMat, 0.036, 1);
-      }
-      addGradedStripe(73.2, 117.3, 30.98, 31.11, paintYellowMat, 0.036, 15);
-      addGradedStripe(73.2, 117.3, 31.25, 31.38, paintYellowMat, 0.036, 15);
-      addGradedStripe(45.2, 65.4, 27.39, 27.51, paintWhiteMat, 0.036, 8);
-      for (const tx of [45.2, 54.2, 60, 65.4]) {
-        addGradedStripe(tx - 0.06, tx + 0.06, 26.65, 27.51, paintWhiteMat, 0.036, 1);
-      }
-      addGradedStripe(69.5, 98.5, 27.19, 27.31, paintWhiteMat, 0.036, 10);
-      for (const tx of [69.5, 76.5, 83.5, 91, 98.5]) {
-        addGradedStripe(tx - 0.06, tx + 0.06, 26.55, 27.31, paintWhiteMat, 0.036, 1);
-      }
-      addGradedStripe(45.5, 76.8, 35.99, 36.11, paintWhiteMat, 0.036, 11);
-      for (let tx = 45.5; tx <= 76.8; tx += 6.26) {
-        addGradedStripe(tx - 0.06, tx + 0.06, 35.99, 36.68, paintWhiteMat, 0.036, 1);
-      }
-      addGradedStripe(91.5, 117.3, 34.84, 34.96, paintWhiteMat, 0.036, 9);
-      for (const ax of [96.8, 108.8]) {
-        addRoadDecal(ax, 33.12, 2.15, 2.5, leftArrowMat, 0, 0.041);
-        addRoadDecal(ax, 36.68, 2.15, 2.5, rightArrowMat, 0, 0.041);
-      }
-      addGradedStripe(117.3, 117.72, 31.32, 38.45, paintWhiteMat, 0.038, 1, 3);
-      for (let s = 0; s < 6; s++) {
-        const sz = 26.95 + s * 2;
-        addTwinBarPair(120.6, sz, 2.75, 0.22, 0);
-      }
-    }
-    {
-      const adaStencilTex = getAdaAsphaltStencilTexture();
-      const adaStencilMat = new MeshBasicMaterial({
-        map: adaStencilTex,
-        transparent: true,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -5,
-        polygonOffsetUnits: -5
-      });
-      {
-        addRoadDecal(50.4, 26.15, 1.55, 1.55, adaStencilMat, 0, 0.042);
-        addGradedStripe(47.55, 47.65, 25, 27.45, paintWhiteMat, 0.037, 1);
-        for (let hz = 25.25; hz <= 27.25; hz += 0.5) {
-          addGradedStripe(45.3, 47.55, hz - 0.04, hz + 0.04, paintWhiteMat, 0.037, 1);
-        }
-        const postX = 50.8, postZ = 24.55;
-        const postY = yGrade(postX, postZ);
-        const postMat = new MeshStandardMaterial({ color: "#94a3b8", roughness: 0.45, metalness: 0.75 });
-        const signFaceMat = new MeshStandardMaterial({ color: "#f8fafc", roughness: 0.35, metalness: 0.1 });
-        const signBlueMat = new MeshStandardMaterial({ color: "#0284c7", roughness: 0.4, metalness: 0.1 });
-        const post = new Mesh(new CylinderGeometry(0.032, 0.032, 2.25, 8), postMat);
-        post.position.set(postX, postY + 1.125, postZ);
-        post.castShadow = true;
-        roadGrp.add(post);
-        const signBoard = new Mesh(new BoxGeometry(0.03, 0.46, 0.32), signFaceMat);
-        signBoard.position.set(postX, postY + 2.05, postZ);
-        roadGrp.add(signBoard);
-        const signBadge = new Mesh(new BoxGeometry(0.036, 0.22, 0.24), signBlueMat);
-        signBadge.position.set(postX, postY + 2.12, postZ);
-        roadGrp.add(signBadge);
-      }
-      {
-        addRoadDecal(104.5, 39.55, 1.5, 1.5, adaStencilMat, Math.PI, 0.042);
-      }
-    }
-    {
-      const getOrondoSWCurbX = (lz) => {
-        if (lz <= 20.2) return 124.96;
-        if (lz <= 43.2) {
-          const t = (lz - 20.2) / (43.2 - 20.2);
-          return MathUtils.lerp(124.96, 123.18, t);
-        }
-        return 123.18;
-      };
-      const orondoNECurbX = 141.4;
-      const zStart = -62;
-      const zEnd = 175;
-      const zSegs = 96;
-      const xSegs = 8;
-      const orondoGeom = new BufferGeometry();
-      const oPos = [];
-      const oNorm = [];
-      const oUv = [];
-      const oIdx = [];
-      for (let iz = 0; iz <= zSegs; iz++) {
-        const v = iz / zSegs;
-        const lz = zStart + (zEnd - zStart) * v;
-        const xMin = getOrondoSWCurbX(lz);
-        const xMax = orondoNECurbX;
-        for (let ix = 0; ix <= xSegs; ix++) {
-          const u = ix / xSegs;
-          const lx = xMin + (xMax - xMin) * u;
-          const ly = yGrade(lx, lz) + 0.016;
-          oPos.push(lx, ly, lz);
-          oNorm.push(0, 1, 0);
-          oUv.push(u, v * 12);
-        }
-      }
-      const stride = xSegs + 1;
-      for (let iz = 0; iz < zSegs; iz++) {
-        for (let ix = 0; ix < xSegs; ix++) {
-          const a = iz * stride + ix;
-          const b = (iz + 1) * stride + ix;
-          const c = (iz + 1) * stride + (ix + 1);
-          const d = iz * stride + (ix + 1);
-          oIdx.push(a, b, c);
-          oIdx.push(a, c, d);
-        }
-      }
-      orondoGeom.setAttribute("position", new Float32BufferAttribute(oPos, 3));
-      orondoGeom.setAttribute("normal", new Float32BufferAttribute(oNorm, 3));
-      orondoGeom.setAttribute("uv", new Float32BufferAttribute(oUv, 2));
-      orondoGeom.setIndex(oIdx);
-      orondoGeom.computeVertexNormals();
-      const orondoAsphaltMesh = new Mesh(orondoGeom, asphaltMat);
-      orondoAsphaltMesh.receiveShadow = true;
-      roadGrp.add(orondoAsphaltMesh);
-      {
-        const serviceStub = new Mesh(
-          buildGradedStripGeometry(116.5, 123.25, 115.85, 122.95, 4, 4, yGrade, 0.015),
-          asphaltMat
-        );
-        serviceStub.receiveShadow = true;
-        roadGrp.add(serviceStub);
-      }
-      for (const [swZ0, swZ1, swSteps] of [
-        [-62, -51.95, 6],
-        [-3.95, 175, 76]
-      ]) {
-        const neSidewalk = new Mesh(
-          buildGradedStripGeometry(141.4, 143.65, swZ0, swZ1, 2, swSteps, yGrade, 0.085),
-          sidewalkConcreteMat
-        );
-        neSidewalk.receiveShadow = true;
-        roadGrp.add(neSidewalk);
-        const neCurb = new Mesh(
-          buildGradedStripGeometry(141.32, 141.5, swZ0, swZ1, 1, swSteps, yGrade, 0.11),
-          curbWhiteMat
-        );
-        neCurb.receiveShadow = true;
-        roadGrp.add(neCurb);
-      }
-      {
-        const mhX = 131.6, mhZ = 31.8;
-        const mhY = yGrade(mhX, mhZ) + 0.036;
-        const collar = new Mesh(new BoxGeometry(1.12, 0.02, 1.12), manholeCollarMat);
-        collar.rotation.y = Math.PI * 0.25;
-        collar.position.set(mhX, mhY, mhZ);
-        roadGrp.add(collar);
-        const lid = new Mesh(new CylinderGeometry(0.36, 0.36, 0.024, 18), manholeIronMat);
-        lid.position.set(mhX, mhY + 3e-3, mhZ);
-        roadGrp.add(lid);
-      }
-      for (let s = 0; s < 7; s++) {
-        const cx = 125.7 + s * 2.2;
-        addTwinBarPair(cx, 42.4, 2.75, 0.22, Math.PI / 2);
-      }
-      addGradedStripe(123.3, 130.65, 45.2, 45.62, paintWhiteMat, 0.038, 3, 1);
-      for (let s = 0; s < 7; s++) {
-        const cx = 126.9 + s * 2.1;
-        addTwinBarPair(cx, 21.2, 2.75, 0.22, Math.PI / 2);
-      }
-      {
-        const gZ0 = -4.5, gZ1 = 18.8;
-        const gX0 = 130.85, gX1 = 134.05;
-        addGradedStripe(gX0, gX0 + 0.12, gZ0, gZ1, paintYellowMat, 0.037, 1, 6);
-        addGradedStripe(gX0 + 0.24, gX0 + 0.36, gZ0, gZ1, paintYellowMat, 0.037, 1, 6);
-        addGradedStripe(gX1 - 0.12, gX1, gZ0, gZ1, paintYellowMat, 0.037, 1, 6);
-        addGradedStripe(gX1 - 0.36, gX1 - 0.24, gZ0, gZ1, paintYellowMat, 0.037, 1, 6);
-        addGradedStripe(gX0, gX1, gZ0, gZ0 + 0.25, paintYellowMat, 0.037, 2, 1);
-        addGradedStripe(gX0, gX1, gZ1 - 0.25, gZ1, paintYellowMat, 0.037, 2, 1);
-        for (let gz = gZ0 + 1.1; gz <= gZ1 - 1.1; gz += 1.45) {
-          addOrientedStripe(gX0 + 0.35, gz - 0.45, gX1 - 0.35, gz + 0.45, 0.09, paintYellowMat, 0.038, 2);
-        }
-      }
-      {
-        addGradedStripe(130.6, 130.73, 46.2, 174, paintYellowMat, 0.036, 1, 42);
-        addGradedStripe(130.86, 130.99, 46.2, 96, paintYellowMat, 0.036, 1, 18);
-        addGradedStripe(133.65, 133.78, 46.2, 96, paintYellowMat, 0.036, 1, 18);
-        addGradedStripe(133.9, 134.03, 46.2, 174, paintYellowMat, 0.036, 1, 42);
-        for (let z = 98; z <= 170; z += 7.5) {
-          addGradedStripe(130.86, 130.99, z, z + 2.8, paintYellowMat, 0.036, 1, 1);
-          addGradedStripe(133.65, 133.78, z, z + 2.8, paintYellowMat, 0.036, 1, 1);
-        }
-        for (const az of [52, 65]) {
-          addRoadDecal(132.3, az, 2.05, 2.4, leftArrowMat, -Math.PI / 2, 0.041);
-        }
-        addGradedStripe(124.79, 124.91, 46.2, 115.2, paintWhiteMat, 0.036, 1, 24);
-        addGradedStripe(124.79, 124.91, 123.5, 174, paintWhiteMat, 0.036, 1, 18);
-        addGradedStripe(139.59, 139.71, -3.95, 174, paintWhiteMat, 0.036, 1, 58);
-        for (const bz of [56, 82, 106, 136, 160]) {
-          addRoadDecal(124.05, bz, 1.1, 2.2, bikeStencilMat, -Math.PI / 2, 0.041);
-          addRoadDecal(140.45, bz, 1.1, 2.2, bikeStencilMat, Math.PI / 2, 0.041);
-        }
-      }
-      {
-        addGradedStripe(130.85, 130.98, -60, -35.1, paintYellowMat, 0.036, 1, 10);
-        addGradedStripe(131.1, 131.23, -60, -35.1, paintYellowMat, 0.036, 1, 10);
-        addGradedStripe(133.8, 133.93, -60, -35.1, paintYellowMat, 0.036, 1, 10);
-        addGradedStripe(134.05, 134.18, -60, -35.1, paintYellowMat, 0.036, 1, 10);
-        addRoadDecal(132.5, -42.1, 2.05, 2.4, leftArrowMat, Math.PI / 2, 0.041);
-        addRoadDecal(132.5, -56.5, 2.05, 2.4, leftArrowMat, Math.PI / 2, 0.041);
-        for (let z = -58; z <= -38.15; z += 6.8) {
-          addGradedStripe(137.34, 137.46, z, z + 2.6, paintWhiteMat, 0.036, 1, 1);
-        }
-        addGradedStripe(126.55, 126.67, -20.5, 18.5, paintWhiteMat, 0.036, 1, 14);
-        for (const bz of [-8, 10]) {
-          addRoadDecal(125.8, bz, 1.1, 2.2, bikeStencilMat, -Math.PI / 2, 0.041);
-        }
-        addGradedStripe(139.69, 139.81, -60, -51.95, paintWhiteMat, 0.036, 1, 5);
-        for (const bz of [-56]) {
-          addRoadDecal(140.55, bz, 1.1, 2.2, bikeStencilMat, Math.PI / 2, 0.041);
-        }
-      }
-    }
-    {
-      const okX0 = 141.4;
-      const okZ0 = -25.95;
-      const ux = 0.59429;
-      const uz = 0.80425;
-      const nx = -uz;
-      const nz = ux;
-      const okHalfW = 8.2;
-      const sJoin = 18.6;
-      const okLen = 92;
-      const okAngle = Math.atan2(uz, ux);
-      const evalOkPt = (s, off) => [
-        okX0 + ux * s + nx * off,
-        okZ0 + uz * s + nz * off
-      ];
-      const getApexZForOff = (off) => {
-        const sApex = off * (uz / ux);
-        return okZ0 + sApex * uz + off * nz;
-      };
-      const getStartZForOff = (off) => {
-        const u = (off + okHalfW) / (2 * okHalfW);
-        return -51.95 + u * (-3.95 - -51.95);
-      };
-      const evalQuadBezier2D = (x0, z0, x1, z1, x2, z2, t) => {
-        const omt = 1 - t;
-        return [
-          omt * omt * x0 + 2 * omt * t * x1 + t * t * x2,
-          omt * omt * z0 + 2 * omt * t * z1 + t * t * z2
-        ];
-      };
-      const evalThroatPoint = (t, off) => {
-        const clampedOff = MathUtils.clamp(off, -okHalfW, okHalfW);
-        const extraOut = off - clampedOff;
-        const p0x = okX0;
-        const p0z = getStartZForOff(clampedOff);
-        const p1x = okX0;
-        const p1z = getApexZForOff(clampedOff);
-        const [p2x, p2z] = evalOkPt(sJoin, clampedOff);
-        const [bx, bz] = evalQuadBezier2D(p0x, p0z, p1x, p1z, p2x, p2z, t);
-        if (Math.abs(extraOut) < 1e-5) return [bx, bz];
-        const tx = 2 * (1 - t) * (p1x - p0x) + 2 * t * (p2x - p1x);
-        const tz = 2 * (1 - t) * (p1z - p0z) + 2 * t * (p2z - p1z);
-        const tLen = Math.hypot(tx, tz) || 1;
-        const dirSign = clampedOff >= 0 ? -1 : 1;
-        const outNx = dirSign * (tz / tLen);
-        const outNz = dirSign * (-tx / tLen);
-        return [bx + outNx * Math.abs(extraOut), bz + outNz * Math.abs(extraOut)];
-      };
-      {
-        const segsT = 24;
-        const segsV = 12;
-        const throatGeom = new BufferGeometry();
-        const tPos = [];
-        const tNorm = [];
-        const tUv = [];
-        const tIdx = [];
-        for (let it = 0; it <= segsT; it++) {
-          const t = -0.02 + it / segsT * 1.04;
-          for (let iv = 0; iv <= segsV; iv++) {
-            const v = iv / segsV;
-            const off = -(okHalfW + 0.22) + v * (2 * (okHalfW + 0.22));
-            const [px2, pz2] = evalThroatPoint(t, off);
-            const py2 = yGrade(px2, pz2) + 0.0165;
-            tPos.push(px2, py2, pz2);
-            tNorm.push(0, 1, 0);
-            tUv.push(t * 2, v);
-          }
-        }
-        const stride = segsV + 1;
-        for (let it = 0; it < segsT; it++) {
-          for (let iv = 0; iv < segsV; iv++) {
-            const a = it * stride + iv;
-            const b = (it + 1) * stride + iv;
-            const c = (it + 1) * stride + (iv + 1);
-            const d = it * stride + (iv + 1);
-            tIdx.push(a, b, c);
-            tIdx.push(a, c, d);
-          }
-        }
-        throatGeom.setAttribute("position", new Float32BufferAttribute(tPos, 3));
-        throatGeom.setAttribute("normal", new Float32BufferAttribute(tNorm, 3));
-        throatGeom.setAttribute("uv", new Float32BufferAttribute(tUv, 2));
-        throatGeom.setIndex(tIdx);
-        throatGeom.computeVertexNormals();
-        const throatMesh = new Mesh(throatGeom, asphaltMat);
-        throatMesh.receiveShadow = true;
-        roadGrp.add(throatMesh);
-      }
-      {
-        const [jx0, jz0] = evalOkPt(sJoin, 0);
-        const [jx1, jz1] = evalOkPt(okLen, 0);
-        const okStraightAsphalt = new Mesh(
-          buildOrientedRoadRibbonGeometry(jx0, jz0, jx1, jz1, okHalfW, okHalfW, 28, 6, yGrade, 0.016),
-          asphaltMat
-        );
-        okStraightAsphalt.receiveShadow = true;
-        roadGrp.add(okStraightAsphalt);
-      }
-      const buildCurvedCornerStrip = (offInner, offOuter, yOff, mat, segsT = 24) => {
-        const geom = new BufferGeometry();
-        const pos = [];
-        const norm = [];
-        const uv = [];
-        const idx = [];
-        for (let it = 0; it <= segsT; it++) {
-          const t = it / segsT;
-          const [x0, z0] = evalThroatPoint(t, offInner);
-          const [x1, z1] = evalThroatPoint(t, offOuter);
-          pos.push(x0, yGrade(x0, z0) + yOff, z0);
-          pos.push(x1, yGrade(x1, z1) + yOff, z1);
-          norm.push(0, 1, 0, 0, 1, 0);
-          uv.push(t, 0, t, 1);
-        }
-        for (let it = 0; it < segsT; it++) {
-          const a = it * 2;
-          const b = a + 1;
-          const c = a + 2;
-          const d = a + 3;
-          idx.push(a, b, d);
-          idx.push(a, d, c);
-        }
-        geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
-        geom.setAttribute("normal", new Float32BufferAttribute(norm, 3));
-        geom.setAttribute("uv", new Float32BufferAttribute(uv, 2));
-        geom.setIndex(idx);
-        geom.computeVertexNormals();
-        const m = new Mesh(geom, mat);
-        m.receiveShadow = true;
-        roadGrp.add(m);
-      };
-      buildCurvedCornerStrip(okHalfW, okHalfW + 2.25, 0.085, sidewalkConcreteMat, 24);
-      buildCurvedCornerStrip(okHalfW - 0.08, okHalfW + 0.1, 0.11, curbWhiteMat, 24);
-      buildCurvedCornerStrip(-okHalfW - 2.25, -okHalfW, 0.085, sidewalkConcreteMat, 24);
-      buildCurvedCornerStrip(-okHalfW - 0.1, -okHalfW + 0.08, 0.11, curbWhiteMat, 24);
-      for (const side of [-1, 1]) {
-        const [swX0, swZ0] = evalOkPt(sJoin, side * (okHalfW + 1.125));
-        const [swX1, swZ1] = evalOkPt(okLen, side * (okHalfW + 1.125));
-        const swMesh = new Mesh(
-          buildOrientedRoadRibbonGeometry(swX0, swZ0, swX1, swZ1, 1.125, 1.125, 24, 2, yGrade, 0.085),
-          sidewalkConcreteMat
-        );
-        swMesh.receiveShadow = true;
-        roadGrp.add(swMesh);
-        const [cbX0, cbZ0] = evalOkPt(sJoin, side * okHalfW);
-        const [cbX1, cbZ1] = evalOkPt(okLen, side * okHalfW);
-        const cbMesh = new Mesh(
-          buildOrientedRoadRibbonGeometry(cbX0, cbZ0, cbX1, cbZ1, 0.09, 0.09, 24, 1, yGrade, 0.11),
-          curbWhiteMat
-        );
-        cbMesh.receiveShadow = true;
-        roadGrp.add(cbMesh);
-      }
-      {
-        const islandX = 148.2, islandZ = -4.65;
-        const islandY = yGrade(islandX, islandZ);
-        const mulchMat = new MeshStandardMaterial({ color: "#4a3b31", roughness: 0.92 });
-        const shrubMat = new MeshStandardMaterial({ color: "#3b622b", roughness: 0.88 });
-        const rockMat = new MeshStandardMaterial({ color: "#7a756c", roughness: 0.85 });
-        const mulchBed = new Mesh(new CylinderGeometry(2.5, 2.7, 0.14, 18), mulchMat);
-        mulchBed.position.set(islandX, islandY + 0.08, islandZ);
-        roadGrp.add(mulchBed);
-        for (const [dx, dz, r] of [
-          [-0.7, -0.6, 0.48],
-          [0.6, -0.4, 0.42],
-          [0.1, 0.7, 0.52],
-          [-0.8, 0.6, 0.38]
-        ]) {
-          const bush = new Mesh(new DodecahedronGeometry(r, 1), shrubMat);
-          bush.scale.set(1.1, 0.72, 1.1);
-          bush.position.set(islandX + dx, islandY + 0.26, islandZ + dz);
-          bush.castShadow = true;
-          roadGrp.add(bush);
-        }
-        const boulder = new Mesh(new DodecahedronGeometry(0.42, 0), rockMat);
-        boulder.scale.set(1.2, 0.75, 0.95);
-        boulder.position.set(islandX - 0.2, islandY + 0.24, islandZ - 1.1);
-        roadGrp.add(boulder);
-      }
-      const addBezierRibbonStripe = (x0, z0, x1, z1, x2, z2, halfW, mat, yOff = 0.037, segs = 22) => {
-        const geom = new BufferGeometry();
-        const pos = [];
-        const norm = [];
-        const uv = [];
-        const idx = [];
-        for (let i = 0; i <= segs; i++) {
-          const t = i / segs;
-          const [cx, cz] = evalQuadBezier2D(x0, z0, x1, z1, x2, z2, t);
-          const tx = 2 * (1 - t) * (x1 - x0) + 2 * t * (x2 - x1);
-          const tz = 2 * (1 - t) * (z1 - z0) + 2 * t * (z2 - z1);
-          const tLen = Math.hypot(tx, tz) || 1;
-          const pnx = -tz / tLen;
-          const pnz = tx / tLen;
-          const lxA = cx - pnx * halfW, lzA = cz - pnz * halfW;
-          const lxB = cx + pnx * halfW, lzB = cz + pnz * halfW;
-          pos.push(lxA, yGrade(lxA, lzA) + yOff, lzA);
-          pos.push(lxB, yGrade(lxB, lzB) + yOff, lzB);
-          norm.push(0, 1, 0, 0, 1, 0);
-          uv.push(t, 0, t, 1);
-        }
-        for (let i = 0; i < segs; i++) {
-          const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
-          idx.push(a, b, d, a, d, c);
-        }
-        geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
-        geom.setAttribute("normal", new Float32BufferAttribute(norm, 3));
-        geom.setAttribute("uv", new Float32BufferAttribute(uv, 2));
-        geom.setIndex(idx);
-        geom.computeVertexNormals();
-        const m = new Mesh(geom, mat);
-        m.receiveShadow = true;
-        roadGrp.add(m);
-      };
-      {
-        const [eEndX, eEndZ] = evalOkPt(sJoin, -6.85);
-        addBezierRibbonStripe(139.75, -51.95, 139.75, -39.71, eEndX, eEndZ, 0.065, paintWhiteMat, 0.037, 22);
-        const [wEndX, wEndZ] = evalOkPt(sJoin, 6.85);
-        addBezierRibbonStripe(139.65, -3.95, 139.65, -16.78, wEndX, wEndZ, 0.065, paintWhiteMat, 0.037, 22);
-      }
-      {
-        const tCross = 0.56;
-        for (let k = 0; k < 6; k++) {
-          const off = -5.25 + k * 2.1;
-          const [bx, bz] = evalThroatPoint(tCross, off);
-          addTwinBarPair(bx, bz, 2.75, 0.22, -okAngle);
-        }
-      }
-      for (const cOff of [-0.14, 0.14]) {
-        const [xA, zA] = evalOkPt(14.5, cOff);
-        const [xB, zB] = evalOkPt(90, cOff);
-        addOrientedStripe(xA, zA, xB, zB, 0.065, paintYellowMat, 0.037, 24);
-      }
-      {
-        const divOff = -3.45;
-        const [dx0, dz0] = evalOkPt(14.5, divOff);
-        const [dx1, dz1] = evalOkPt(40, divOff);
-        addOrientedStripe(dx0, dz0, dx1, dz1, 0.065, paintWhiteMat, 0.037, 10);
-        const [sbX0, sbZ0] = evalOkPt(14.2, -6.8);
-        const [sbX1, sbZ1] = evalOkPt(14.2, -0.2);
-        addOrientedStripe(sbX0, sbZ0, sbX1, sbZ1, 0.22, paintWhiteMat, 0.038, 3);
-        const approachAngle = okAngle + Math.PI;
-        for (const sArr of [20.5, 32.5]) {
-          const [lxArr, lzArr] = evalOkPt(sArr, -1.75);
-          addRoadDecal(lxArr, lzArr, 2, 2.35, leftArrowMat, approachAngle, 0.041);
-          const [rxArr, rzArr] = evalOkPt(sArr, -5.1);
-          addRoadDecal(rxArr, rzArr, 2, 2.35, rightArrowMat, approachAngle, 0.041);
-        }
-      }
-      for (const bOff of [-6.85, 6.85]) {
-        const [bx0, bz0] = evalOkPt(sJoin, bOff);
-        const [bx1, bz1] = evalOkPt(90, bOff);
-        addOrientedStripe(bx0, bz0, bx1, bz1, 0.06, paintWhiteMat, 0.037, 24);
-      }
-      for (const sBike of [26, 58]) {
-        const [b1x, b1z] = evalOkPt(sBike, -7.55);
-        addRoadDecal(b1x, b1z, 1.05, 2.1, bikeStencilMat, okAngle + Math.PI, 0.041);
-        const [b2x, b2z] = evalOkPt(sBike, 7.55);
-        addRoadDecal(b2x, b2z, 1.05, 2.1, bikeStencilMat, okAngle, 0.041);
-      }
-      {
-        const sCross2 = 45;
-        for (let k = 0; k < 6; k++) {
-          const [cx2, cz2] = evalOkPt(sCross2, -5.25 + k * 2.1);
-          addTwinBarPair(cx2, cz2, 2.75, 0.22, -okAngle);
-        }
-      }
-    }
-    {
-      const getKingNECurbX = (lz) => {
-        if (lz <= 21.75) return -62.94;
-        if (lz <= 43.84) {
-          const t = (lz - 21.75) / (43.84 - 21.75);
-          return MathUtils.lerp(-62.94, -61.62, t);
-        }
-        if (lz <= 75.04) {
-          const t = (lz - 43.84) / (75.04 - 43.84);
-          return MathUtils.lerp(-61.62, -61.43, t);
-        }
-        return -61.43;
-      };
-      const getKingSWCurbX = (lz) => getKingNECurbX(lz) - 13.8;
-      const kzStart = -52;
-      const kzEnd = 175;
-      const kzSegs = 96;
-      const kxSegs = 6;
-      const kingGeom = new BufferGeometry();
-      const kPos = [];
-      const kNorm = [];
-      const kUv = [];
-      const kIdx = [];
-      for (let iz = 0; iz <= kzSegs; iz++) {
-        const v = iz / kzSegs;
-        const lz = kzStart + (kzEnd - kzStart) * v;
-        const xMin = getKingSWCurbX(lz);
-        const xMax = getKingNECurbX(lz);
-        for (let ix = 0; ix <= kxSegs; ix++) {
-          const u = ix / kxSegs;
-          const lx = xMin + (xMax - xMin) * u;
-          const ly = yGrade(lx, lz) + 0.016;
-          kPos.push(lx, ly, lz);
-          kNorm.push(0, 1, 0);
-          kUv.push(u, v * 12);
-        }
-      }
-      const kStride = kxSegs + 1;
-      for (let iz = 0; iz < kzSegs; iz++) {
-        for (let ix = 0; ix < kxSegs; ix++) {
-          const a = iz * kStride + ix;
-          const b = a + 1;
-          const c = (iz + 1) * kStride + ix;
-          const d = c + 1;
-          kIdx.push(a, c, b);
-          kIdx.push(b, c, d);
-        }
-      }
-      kingGeom.setAttribute("position", new Float32BufferAttribute(kPos, 3));
-      kingGeom.setAttribute("normal", new Float32BufferAttribute(kNorm, 3));
-      kingGeom.setAttribute("uv", new Float32BufferAttribute(kUv, 2));
-      kingGeom.setIndex(kIdx);
-      kingGeom.computeVertexNormals();
-      const kingRoadMesh = new Mesh(kingGeom, asphaltMat);
-      kingRoadMesh.receiveShadow = true;
-      roadGrp.add(kingRoadMesh);
-      {
-        const swWalkGeom = new BufferGeometry();
-        const swCurbGeom = new BufferGeometry();
-        const wPos = [], wNorm = [], wUv = [], wIdx = [];
-        const cPos = [], cNorm = [], cUv = [], cIdx = [];
-        const swSegs = 80;
-        for (let iz = 0; iz <= swSegs; iz++) {
-          const v = iz / swSegs;
-          const lz = kzStart + (kzEnd - kzStart) * v;
-          const curbX = getKingSWCurbX(lz);
-          const xOuter = curbX - 2.25;
-          wPos.push(xOuter, yGrade(xOuter, lz) + 0.085, lz);
-          wPos.push(curbX, yGrade(curbX, lz) + 0.085, lz);
-          wNorm.push(0, 1, 0, 0, 1, 0);
-          wUv.push(0, v * 20, 1, v * 20);
-          const isSwRampCut = Math.abs(lz - 23.2) < 1.35 || Math.abs(lz - 40.2) < 1.35;
-          const swCurbLift = isSwRampCut ? 0.088 : 0.125;
-          cPos.push(curbX - 0.16, yGrade(curbX - 0.16, lz) + swCurbLift, lz);
-          cPos.push(curbX + 0.04, yGrade(curbX + 0.04, lz) + swCurbLift, lz);
-          cNorm.push(0, 1, 0, 0, 1, 0);
-          cUv.push(0, v * 20, 1, v * 20);
-        }
-        for (let iz = 0; iz < swSegs; iz++) {
-          const a = iz * 2, b = a + 1, c = a + 2, d = a + 3;
-          wIdx.push(a, c, b, b, c, d);
-          cIdx.push(a, c, b, b, c, d);
-        }
-        swWalkGeom.setAttribute("position", new Float32BufferAttribute(wPos, 3));
-        swWalkGeom.setAttribute("normal", new Float32BufferAttribute(wNorm, 3));
-        swWalkGeom.setAttribute("uv", new Float32BufferAttribute(wUv, 2));
-        swWalkGeom.setIndex(wIdx);
-        swWalkGeom.computeVertexNormals();
-        const swWalkMesh = new Mesh(swWalkGeom, sidewalkConcreteMat);
-        swWalkMesh.receiveShadow = true;
-        roadGrp.add(swWalkMesh);
-        swCurbGeom.setAttribute("position", new Float32BufferAttribute(cPos, 3));
-        swCurbGeom.setAttribute("normal", new Float32BufferAttribute(cNorm, 3));
-        swCurbGeom.setAttribute("uv", new Float32BufferAttribute(cUv, 2));
-        swCurbGeom.setIndex(cIdx);
-        swCurbGeom.computeVertexNormals();
-        const swCurbMesh = new Mesh(swCurbGeom, curbWhiteMat);
-        swCurbMesh.receiveShadow = true;
-        roadGrp.add(swCurbMesh);
-        for (const rampZ of [23.2, 40.2]) {
-          const cX = getKingSWCurbX(rampZ);
-          const padX = cX - 0.56;
-          const padY = yGrade(padX, rampZ) + 0.092;
-          const rGrp = new Group();
-          rGrp.position.set(padX, padY, rampZ);
-          const throat = new Mesh(new BoxGeometry(0.95, 0.018, 2.1), curbWhiteMat);
-          throat.position.set(0.06, -2e-3, 0);
-          throat.rotation.z = -0.04;
-          throat.receiveShadow = true;
-          rGrp.add(throat);
-          const pad = new Mesh(new BoxGeometry(0.68, 0.024, 1.56), paintYellowMat);
-          pad.position.set(0.1, 8e-3, 0);
-          rGrp.add(pad);
-          const rows = 4, cols = 10;
-          for (let ix = 0; ix < rows; ix++) {
-            const dx = 0.1 - 0.22 + ix / (rows - 1) * 0.44;
-            for (let iz = 0; iz < cols; iz++) {
-              const dz = -0.64 + iz / (cols - 1) * 1.28;
-              const dome = new Mesh(new CylinderGeometry(0.022, 0.032, 0.014, 6), paintYellowMat);
-              dome.position.set(dx, 0.024, dz);
-              rGrp.add(dome);
-            }
-          }
-          roadGrp.add(rGrp);
-        }
-      }
-      for (const [neZ0, neZ1, neSteps, neX0, neW] of [
-        [-52, -20.735, 14, -62.88, 3.1],
-        [75, 175, 44, -61.43, 2.4]
-      ]) {
-        const neSidewalk = new Mesh(
-          buildGradedStripGeometry(neX0, neX0 + neW, neZ0, neZ1, 2, neSteps, yGrade, 0.085),
-          sidewalkConcreteMat
-        );
-        neSidewalk.receiveShadow = true;
-        roadGrp.add(neSidewalk);
-        const neCurb = new Mesh(
-          buildGradedStripGeometry(neX0 - 0.04, neX0 + 0.16, neZ0, neZ1, 1, neSteps, yGrade, 0.125),
-          curbWhiteMat
-        );
-        neCurb.receiveShadow = true;
-        roadGrp.add(neCurb);
-      }
-      for (let lz = -49; lz <= 16.5; lz += 7.4) {
-        const cx = getKingNECurbX(lz) - 6.9;
-        addGradedStripe(cx - 0.07, cx + 0.07, lz, lz + 2.85, paintYellowMat, 0.036, 1, 2);
-      }
-      for (let lz = 44.5; lz <= 167.5; lz += 7.5) {
-        const cx = getKingNECurbX(lz) - 6.9;
-        addGradedStripe(cx - 0.07, cx + 0.07, lz, lz + 2.95, paintYellowMat, 0.036, 1, 2);
-      }
-      addGradedStripe(-65.42, -65.3, -48, 18.5, paintWhiteMat, 0.036, 1, 22);
-      for (let tz = -48; tz <= 18.5; tz += 6.3) {
-        addGradedStripe(-65.42, -64.7, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
-      }
-      addGradedStripe(-64, -63.88, 44.5, 168, paintWhiteMat, 0.036, 1, 42);
-      for (let tz = 45; tz <= 168; tz += 6.15) {
-        addGradedStripe(-64, -63.28, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
-      }
-      addGradedStripe(-74.38, -74.26, -48, 18.5, paintWhiteMat, 0.036, 1, 22);
-      for (let tz = -48; tz <= 18.5; tz += 6.3) {
-        addGradedStripe(-75, -74.26, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
-      }
-      addGradedStripe(-72.96, -72.84, 44.5, 168, paintWhiteMat, 0.036, 1, 42);
-      for (let tz = 45; tz <= 168; tz += 6.15) {
-        addGradedStripe(-73.58, -72.84, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
-      }
-      addGradedStripe(-69.84, -65.42, 20.35, 20.75, paintWhiteMat, 0.038, 2, 1);
-      for (let s = 0; s < 5; s++) {
-        const sx = -73.88 + s * 2.02;
-        addTwinBarPair(sx, 23.2, 2.65, 0.22, Math.PI / 2);
-      }
-      addGradedStripe(-72.84, -68.43, 42.95, 43.35, paintWhiteMat, 0.038, 2, 1);
-      for (let s = 0; s < 5; s++) {
-        const sx = -72.74 + s * 2.02;
-        addTwinBarPair(sx, 40.2, 2.65, 0.22, Math.PI / 2);
-      }
-      addGradedStripe(-68.33, -63.9, 170.1, 170.5, paintWhiteMat, 0.038, 2, 1);
-      for (let s = 0; s < 5; s++) {
-        const sx = -72.37 + s * 2.02;
-        addTwinBarPair(sx, 172.8, 2.65, 0.22, Math.PI / 2);
-      }
-      {
-        const getServiceCenterZ = (lx) => {
-          if (lx <= 66) return 134.35;
-          if (lx >= 91.5) return 119.35;
-          const u = (lx - 66) / (91.5 - 66);
-          const s = 0.5 - 0.5 * Math.cos(Math.PI * u);
-          return MathUtils.lerp(134.35, 119.35, s);
-        };
-        const getServiceTangent = (lx) => {
-          const eps = 0.25;
-          const dz = getServiceCenterZ(lx + eps) - getServiceCenterZ(lx - eps);
-          const dx = 2 * eps;
-          const len = Math.hypot(dx, dz) || 1;
-          return [dx / len, dz / len];
-        };
-        const srvHalfW = 3.8;
-        const srvX0 = 38.4;
-        const srvX1 = 123.25;
-        const srvSegsX = 48;
-        const srvSegsZ = 6;
-        const srvGeom = new BufferGeometry();
-        const sPos = [], sNorm = [], sUv = [], sIdx = [];
-        for (let ix = 0; ix <= srvSegsX; ix++) {
-          const u = ix / srvSegsX;
-          const lx = srvX0 + (srvX1 - srvX0) * u;
-          const cz = getServiceCenterZ(lx);
-          const [tx, tz] = getServiceTangent(lx);
-          const nx = -tz, nz = tx;
-          for (let iz = 0; iz <= srvSegsZ; iz++) {
-            const v = iz / srvSegsZ;
-            const off = (v - 0.5) * 2 * srvHalfW;
-            const px2 = lx + nx * off;
-            const pz2 = cz + nz * off;
-            const py2 = yGrade(px2, pz2) + 0.0155;
-            sPos.push(px2, py2, pz2);
-            sNorm.push(0, 1, 0);
-            sUv.push(u * 6, v);
-          }
-        }
-        const sStride = srvSegsZ + 1;
-        for (let ix = 0; ix < srvSegsX; ix++) {
-          for (let iz = 0; iz < srvSegsZ; iz++) {
-            const a = ix * sStride + iz;
-            const b = a + 1;
-            const c = (ix + 1) * sStride + iz;
-            const d = c + 1;
-            sIdx.push(a, b, c, b, d, c);
-          }
-        }
-        srvGeom.setAttribute("position", new Float32BufferAttribute(sPos, 3));
-        srvGeom.setAttribute("normal", new Float32BufferAttribute(sNorm, 3));
-        srvGeom.setAttribute("uv", new Float32BufferAttribute(sUv, 2));
-        srvGeom.setIndex(sIdx);
-        srvGeom.computeVertexNormals();
-        const srvMesh = new Mesh(srvGeom, asphaltMat);
-        srvMesh.receiveShadow = true;
-        roadGrp.add(srvMesh);
-        for (const side of [-1, 1]) {
-          const cbGeom = new BufferGeometry();
-          const cPos = [], cNorm = [], cUv = [], cIdx = [];
-          for (let ix = 0; ix <= srvSegsX; ix++) {
-            const u = ix / srvSegsX;
-            const lx = 39 + (122.4 - 39) * u;
-            const cz = getServiceCenterZ(lx);
-            const [tx, tz] = getServiceTangent(lx);
-            const nx = -tz, nz = tx;
-            const offA = side * srvHalfW - 0.09;
-            const offB = side * srvHalfW + 0.09;
-            const xA = lx + nx * offA, zA = cz + nz * offA;
-            const xB = lx + nx * offB, zB = cz + nz * offB;
-            cPos.push(xA, yGrade(xA, zA) + 0.095, zA);
-            cPos.push(xB, yGrade(xB, zB) + 0.095, zB);
-            cNorm.push(0, 1, 0, 0, 1, 0);
-            cUv.push(u * 10, 0, u * 10, 1);
-          }
-          for (let ix = 0; ix < srvSegsX; ix++) {
-            const a = ix * 2, b = a + 1, c = a + 2, d = a + 3;
-            cIdx.push(a, b, d, a, d, c);
-          }
-          cbGeom.setAttribute("position", new Float32BufferAttribute(cPos, 3));
-          cbGeom.setAttribute("normal", new Float32BufferAttribute(cNorm, 3));
-          cbGeom.setAttribute("uv", new Float32BufferAttribute(cUv, 2));
-          cbGeom.setIndex(cIdx);
-          cbGeom.computeVertexNormals();
-          const cbMesh = new Mesh(cbGeom, curbWhiteMat);
-          cbMesh.receiveShadow = true;
-          roadGrp.add(cbMesh);
-        }
-        for (let lx = 43; lx <= 116.5; lx += 6.8) {
-          const x0 = lx, x1 = lx + 2.55;
-          const z0 = getServiceCenterZ(x0);
-          const z1 = getServiceCenterZ(x1);
-          addOrientedStripe(x0, z0, x1, z1, 0.065, paintYellowMat, 0.036, 4);
-        }
-        for (let s = 0; s < 3; s++) {
-          const off = -1.9 + s * 1.9;
-          addTwinBarPair(40.2, 134.35 + off, 2.35, 0.2, 0);
-          addTwinBarPair(121.4, 119.35 + off, 2.35, 0.2, 0);
-        }
-      }
-    }
-    arch.add(roadGrp);
   }
 
   // js/foundry/buildings/building401/Building401GroundsAndSidewalks.js
@@ -37792,18 +39221,147 @@
       group.position.set(cx, terrainY, cz);
       return group;
     }
+    _getContextScaleModelMaterial(kind = "residential", baseHex = "#d5d0c7", accentHex = "#e6e1d7") {
+      const key = `ctx_arch_${kind}_${baseHex}`;
+      if (this.materialCache.has(key)) {
+        return this.materialCache.get(key);
+      }
+      const size = 256;
+      const diffCanvas = document.createElement("canvas");
+      const bumpCanvas = document.createElement("canvas");
+      diffCanvas.width = bumpCanvas.width = size;
+      diffCanvas.height = bumpCanvas.height = size;
+      const dCtx = diffCanvas.getContext("2d");
+      const bCtx = bumpCanvas.getContext("2d");
+      dCtx.fillStyle = baseHex;
+      dCtx.fillRect(0, 0, size, size);
+      bCtx.fillStyle = "#888888";
+      bCtx.fillRect(0, 0, size, size);
+      const baseCol = new Color(baseHex);
+      const isCivic = kind === "civic";
+      const isCommercial = kind === "commercial";
+      const rows = isCivic ? 24 : isCommercial ? 18 : 28;
+      const rowH = size / rows;
+      for (let r = 0; r < rows; r++) {
+        const y = r * rowH;
+        const shade = (r % 3 - 1) * 0.015;
+        const rc = baseCol.clone().offsetHSL(0, 0, shade);
+        dCtx.fillStyle = `#${rc.getHexString()}`;
+        dCtx.fillRect(0, y, size, rowH - 1);
+        bCtx.fillStyle = "#929292";
+        bCtx.fillRect(0, y + 1, size, Math.max(1, rowH - 2));
+        bCtx.fillStyle = "#5c5c5c";
+        bCtx.fillRect(0, y, size, 1);
+      }
+      const spandrelH = isCivic ? 26 : 18;
+      dCtx.fillStyle = accentHex;
+      dCtx.fillRect(0, 0, size, spandrelH);
+      dCtx.fillRect(0, size - 10, size, 10);
+      bCtx.fillStyle = "#c8c8c8";
+      dCtx.strokeStyle = "rgba(60, 56, 50, 0.22)";
+      dCtx.lineWidth = 2;
+      dCtx.strokeRect(0, 0, size, spandrelH);
+      bCtx.fillRect(0, 0, size, spandrelH);
+      const bays = isCivic ? 5 : isCommercial ? 4 : 3;
+      const bayW = size / bays;
+      for (let i = 0; i < bays; i++) {
+        const cx = (i + 0.5) * bayW;
+        const wW = bayW * (isCivic ? 0.56 : isCommercial ? 0.58 : 0.4);
+        const wH = size * (isCivic ? 0.52 : isCommercial ? 0.48 : 0.38);
+        const wx = cx - wW * 0.5;
+        const wy = spandrelH + (size - spandrelH - 12 - wH) * 0.5;
+        dCtx.fillStyle = accentHex;
+        dCtx.fillRect(wx - 3, wy - 5, wW + 6, 5);
+        dCtx.fillRect(wx - 4, wy + wH, wW + 8, 6);
+        bCtx.fillStyle = "#dcdcdc";
+        bCtx.fillRect(wx - 4, wy + wH, wW + 8, 6);
+        dCtx.fillStyle = isCivic ? "#35495e" : isCommercial ? "#3d4f60" : "#4f5d6b";
+        dCtx.fillRect(wx, wy, wW, wH);
+        bCtx.fillStyle = "#303030";
+        bCtx.fillRect(wx, wy, wW, wH);
+        dCtx.strokeStyle = accentHex;
+        dCtx.lineWidth = 3;
+        dCtx.strokeRect(wx + 1, wy + 1, wW - 2, wH - 2);
+        dCtx.beginPath();
+        dCtx.moveTo(wx + wW * 0.5, wy);
+        dCtx.lineTo(wx + wW * 0.5, wy + wH);
+        dCtx.stroke();
+      }
+      const makeTex = (c, srgb) => {
+        const t = new CanvasTexture(c);
+        t.wrapS = RepeatWrapping;
+        t.wrapT = RepeatWrapping;
+        t.anisotropy = 8;
+        if (srgb) t.colorSpace = SRGBColorSpace;
+        return t;
+      };
+      const mat = new MeshStandardMaterial({
+        name: `ContextArch_${kind}`,
+        map: makeTex(diffCanvas, true),
+        bumpMap: makeTex(bumpCanvas, false),
+        bumpScale: 0.08,
+        roughness: 0.84,
+        metalness: 0.06
+      });
+      this.materialCache.set(key, mat);
+      return mat;
+    }
     buildContextBuildingsBatch(contextBuildings, getTerrainHeightFn = () => 0) {
       const group = new Group();
       group.name = "ContextBuildingsGroup";
+      const civicGeos = [];
       const commGeos = [];
       const resGeos = [];
+      const roofGeos = [];
+      const trimGeos = [];
+      const plinthGeos = [];
+      const stripNonPositionNormalUv = (geo) => {
+        let g = geo.index ? geo.toNonIndexed() : geo;
+        if (!g.attributes.normal) g.computeVertexNormals();
+        if (!g.attributes.uv) {
+          const count = g.attributes.position.count;
+          g.setAttribute("uv", new Float32BufferAttribute(new Float32Array(count * 2), 2));
+        }
+        for (const attrName of Object.keys(g.attributes)) {
+          if (attrName !== "position" && attrName !== "normal" && attrName !== "uv") {
+            g.deleteAttribute(attrName);
+          }
+        }
+        g.clearGroups();
+        return g;
+      };
+      const addPerimeterParapetRing = (pts, worldBaseY, parapetH = 0.38, parapetW = 0.34) => {
+        for (let i = 0; i < pts.length; i++) {
+          const [x0, z0] = pts[i];
+          const [x1, z1] = pts[(i + 1) % pts.length];
+          const segLen = Math.hypot(x1 - x0, z1 - z0);
+          if (segLen < 0.25) continue;
+          const mx = (x0 + x1) * 0.5;
+          const mz = (z0 + z1) * 0.5;
+          const ang = Math.atan2(x1 - x0, z1 - z0);
+          const beam = new BoxGeometry(parapetW, parapetH, segLen + parapetW * 0.85);
+          beam.rotateY(ang);
+          beam.translate(mx, worldBaseY + parapetH * 0.5, mz);
+          trimGeos.push(stripNonPositionNormalUv(beam));
+        }
+      };
       contextBuildings.forEach((building) => {
         const pts = building.footprint;
         if (!pts || pts.length < 3) return;
         const cx = building.center[0];
         const cz = building.center[1];
         const height = building.height || 6.5;
-        const ty = getTerrainHeightFn(cx, cz);
+        const floors = building.floors || Math.max(1, Math.round(height / 3.8));
+        let minCornerY = getTerrainHeightFn(cx, cz);
+        let maxCornerY = minCornerY;
+        for (const [px2, pz2] of pts) {
+          const py2 = getTerrainHeightFn(px2, pz2);
+          if (py2 < minCornerY) minCornerY = py2;
+          if (py2 > maxCornerY) maxCornerY = py2;
+        }
+        const ty = (minCornerY + maxCornerY) * 0.5;
+        const plinthTop = 0.38;
+        const plinthDepthBelow = Math.max(3.6, ty - minCornerY + 1.8);
         const shape = new Shape();
         pts.forEach((pt, idx) => {
           const lx = pt[0] - cx;
@@ -37812,32 +39370,109 @@
           else shape.lineTo(lx, ly);
         });
         shape.closePath();
-        const geo = new ExtrudeGeometry(shape, {
-          depth: height + 3,
+        const plinthGeo = new ExtrudeGeometry(shape, {
+          depth: plinthDepthBelow + plinthTop,
+          bevelEnabled: true,
+          bevelThickness: 0.06,
+          bevelSize: 0.12,
+          bevelSegments: 1
+        });
+        plinthGeo.rotateX(-Math.PI / 2);
+        plinthGeo.translate(cx, ty - plinthDepthBelow, cz);
+        plinthGeos.push(stripNonPositionNormalUv(plinthGeo));
+        const wallH = Math.max(2.2, height - plinthTop - 0.3);
+        const bodyGeo = new ExtrudeGeometry(shape, {
+          depth: wallH,
           bevelEnabled: false
         });
-        geo.rotateX(-Math.PI / 2);
-        geo.translate(cx, ty - 3, cz);
+        bodyGeo.rotateX(-Math.PI / 2);
+        this._applyArchitecturalUVs(bodyGeo, wallH, floors);
+        bodyGeo.translate(cx, ty + plinthTop, cz);
+        const isCivic = building.type === "civic" || building.id === "wenatchee-library" || building.id === "wsu-extension-north";
         const isCommercial = building.type === "commercial" || building.type === "retail";
-        if (isCommercial) commGeos.push(geo);
-        else resGeos.push(geo);
+        const cleanBody = stripNonPositionNormalUv(bodyGeo);
+        if (isCivic) civicGeos.push(cleanBody);
+        else if (isCommercial) commGeos.push(cleanBody);
+        else resGeos.push(cleanBody);
+        const roofDeckY = ty + plinthTop + wallH + 0.02;
+        const roofCapGeo = new ShapeGeometry(shape);
+        roofCapGeo.rotateX(-Math.PI / 2);
+        roofCapGeo.translate(cx, roofDeckY, cz);
+        roofGeos.push(stripNonPositionNormalUv(roofCapGeo));
+        addPerimeterParapetRing(pts, roofDeckY - 0.04, isCivic ? 0.52 : 0.38, isCivic ? 0.42 : 0.32);
+        if (floors >= 2 && (isCivic || isCommercial)) {
+          const beltY = ty + plinthTop + wallH / floors;
+          addPerimeterParapetRing(pts, beltY - 0.1, 0.2, 0.24);
+        }
+        if (isCivic) {
+          const isLibrary = building.id === "wenatchee-library";
+          const pentW = isLibrary ? 8.6 : 5.8;
+          const pentD = isLibrary ? 6.2 : 4.4;
+          const pentH = isLibrary ? 2.1 : 1.6;
+          const pentGeo = new BoxGeometry(pentW, pentH, pentD);
+          pentGeo.translate(cx, roofDeckY + pentH * 0.5, cz);
+          trimGeos.push(stripNonPositionNormalUv(pentGeo));
+          const pentCapGeo = new BoxGeometry(pentW + 0.36, 0.18, pentD + 0.36);
+          pentCapGeo.translate(cx, roofDeckY + pentH + 0.08, cz);
+          plinthGeos.push(stripNonPositionNormalUv(pentCapGeo));
+        }
       });
-      if (commGeos.length > 0) {
-        const commMesh = new Mesh(
-          mergeGeometries(commGeos, false),
-          new MeshLambertMaterial({ color: "#c8beb2" })
-        );
-        commMesh.receiveShadow = true;
-        group.add(commMesh);
-      }
-      if (resGeos.length > 0) {
-        const resMesh = new Mesh(
-          mergeGeometries(resGeos, false),
-          new MeshLambertMaterial({ color: "#d6d1c9" })
-        );
-        resMesh.receiveShadow = true;
-        group.add(resMesh);
-      }
+      const addBatchMesh = (geos, mat, name, castShadow = true) => {
+        if (geos.length === 0) return;
+        const merged = mergeGeometries(geos, false);
+        if (!merged) return;
+        const mesh = new Mesh(merged, mat);
+        mesh.name = name;
+        mesh.castShadow = castShadow;
+        mesh.receiveShadow = true;
+        group.add(mesh);
+      };
+      addBatchMesh(
+        civicGeos,
+        this._getContextScaleModelMaterial("civic", "#b56c52", "#e4dccf"),
+        "ContextCivicBuildings"
+      );
+      addBatchMesh(
+        commGeos,
+        this._getContextScaleModelMaterial("commercial", "#c6baa9", "#e3ddd2"),
+        "ContextCommercialBuildings"
+      );
+      addBatchMesh(
+        resGeos,
+        this._getContextScaleModelMaterial("residential", "#d6d1c8", "#eae6de"),
+        "ContextResidentialBuildings"
+      );
+      addBatchMesh(
+        roofGeos,
+        new MeshStandardMaterial({
+          name: "ContextMembraneRoof",
+          color: "#39404a",
+          roughness: 0.9,
+          metalness: 0.08
+        }),
+        "ContextRecessedRoofs",
+        false
+      );
+      addBatchMesh(
+        trimGeos,
+        new MeshStandardMaterial({
+          name: "ContextParapetCoping",
+          color: "#e5e0d6",
+          roughness: 0.76,
+          metalness: 0.05
+        }),
+        "ContextParapetCopings"
+      );
+      addBatchMesh(
+        plinthGeos,
+        new MeshStandardMaterial({
+          name: "ContextFoundationPlinth",
+          color: "#bcb6ac",
+          roughness: 0.86,
+          metalness: 0.04
+        }),
+        "ContextFoundationPlinths"
+      );
       return group;
     }
     _applyArchitecturalUVs(geometry, height, floors) {
@@ -38520,7 +40155,811 @@
       addGradedFoundationStrip(-59.65, 51.85, getFootZMin, getFootZMax, 42, 8, 0.06, 1.45, structuralFootingMat);
       parent.add(fnd401Group);
     }
+    {
+      const bCenter = [-73.89, -11.51];
+      const cosA = 0.80801;
+      const sinA = -0.58917;
+      const terrainY = groundFoundry.getTerrainHeight(bCenter[0], bCenter[1]);
+      const b400ParkingGroup = new Group();
+      b400ParkingGroup.name = "Building400ConcreteParkingGround";
+      b400ParkingGroup.position.set(bCenter[0], terrainY, bCenter[1]);
+      b400ParkingGroup.rotation.y = Math.atan2(sinA, cosA);
+      const parkingConcreteTex = getBrushedParkingConcreteTexture();
+      const parkingConcreteMat = new MeshStandardMaterial({
+        color: "#d4cfc5",
+        map: parkingConcreteTex,
+        roughness: 0.84,
+        metalness: 0.03,
+        side: DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2
+      });
+      const swConcreteMat = new MeshStandardMaterial({
+        color: "#e2dcd0",
+        roughness: 0.86,
+        metalness: 0.03,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2
+      });
+      const swJointMat = new MeshBasicMaterial({
+        color: "#9c9588",
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3
+      });
+      const yStreetGrade = (lx, lz) => {
+        const wx = bCenter[0] + lx * cosA + lz * sinA;
+        const wz = bCenter[1] - lx * sinA + lz * cosA;
+        return groundFoundry.getTerrainHeight(wx, wz) - terrainY;
+      };
+      const ySwTop = (lx) => yStreetGrade(lx, -23.5) + 0.09;
+      const zOuter411 = (lx) => 11.11 + 635e-5 * lx;
+      const yAlleyLot = (lx, lz) => {
+        const zOut = zOuter411(lx);
+        const tDoug = MathUtils.clamp((lx - 23.62) / (64.4 - 23.62), 0, 1);
+        const baseBias = MathUtils.lerp(0.12, 0.085, tDoug);
+        const rearWeldBias = MathUtils.lerp(
+          0.106,
+          0.085,
+          MathUtils.smoothstep(lx, 62.18, 64.4)
+        );
+        const hBias = MathUtils.lerp(
+          baseBias,
+          rearWeldBias,
+          MathUtils.smoothstep(lz, 6, zOut)
+        );
+        return yStreetGrade(lx, lz) + hBias;
+      };
+      const evalParkingUv = (px2, pz2) => {
+        const wx = bCenter[0] + px2 * cosA + pz2 * sinA;
+        const wz = bCenter[1] - px2 * sinA + pz2 * cosA;
+        const dx401 = wx - -4.22;
+        const dz401 = wz - -38.74;
+        const lx401 = dx401 * 0.80425 + dz401 * 0.59429;
+        const lz401 = -dx401 * 0.59429 + dz401 * 0.80425;
+        return [lx401 * 0.24, lz401 * 0.24];
+      };
+      const addGradedQuad = (p00, p10, p11, p01, mat, yBias = 0) => {
+        const geom = new BufferGeometry();
+        const crossY = (p10[2] - p00[2]) * (p11[0] - p00[0]) - (p10[0] - p00[0]) * (p11[2] - p00[2]);
+        const [a, b, c, d] = crossY >= 0 ? [p00, p10, p11, p01] : [p00, p01, p11, p10];
+        const verts = new Float32Array([
+          a[0],
+          a[1] + yBias,
+          a[2],
+          b[0],
+          b[1] + yBias,
+          b[2],
+          c[0],
+          c[1] + yBias,
+          c[2],
+          a[0],
+          a[1] + yBias,
+          a[2],
+          c[0],
+          c[1] + yBias,
+          c[2],
+          d[0],
+          d[1] + yBias,
+          d[2]
+        ]);
+        let uvs;
+        if (mat === parkingConcreteMat) {
+          const [ua, va] = evalParkingUv(a[0], a[2]);
+          const [ub, vb] = evalParkingUv(b[0], b[2]);
+          const [uc, vc] = evalParkingUv(c[0], c[2]);
+          const [ud, vd] = evalParkingUv(d[0], d[2]);
+          uvs = new Float32Array([ua, va, ub, vb, uc, vc, ua, va, uc, vc, ud, vd]);
+        } else {
+          uvs = new Float32Array([
+            a[0] * 0.25,
+            a[2] * 0.25,
+            b[0] * 0.25,
+            b[2] * 0.25,
+            c[0] * 0.25,
+            c[2] * 0.25,
+            a[0] * 0.25,
+            a[2] * 0.25,
+            c[0] * 0.25,
+            c[2] * 0.25,
+            d[0] * 0.25,
+            d[2] * 0.25
+          ]);
+        }
+        geom.setAttribute("position", new BufferAttribute(verts, 3));
+        geom.setAttribute("uv", new BufferAttribute(uvs, 2));
+        geom.computeVertexNormals();
+        const m = new Mesh(geom, mat);
+        m.receiveShadow = true;
+        b400ParkingGroup.add(m);
+        return m;
+      };
+      const addGradedSkirtSegment = (x0, z0, x1, z1, thick, yTopFn, wallMat) => {
+        const dx = x1 - x0;
+        const dz = z1 - z0;
+        const len = Math.hypot(dx, dz);
+        const steps = Math.max(1, Math.ceil(len / 1.4));
+        const angle = Math.atan2(dz, dx);
+        for (let i = 0; i < steps; i++) {
+          const t0 = i / steps;
+          const t1 = (i + 1) / steps;
+          const tm = 0.5 * (t0 + t1);
+          const xA = x0 + dx * t0, zA = z0 + dz * t0;
+          const xB = x0 + dx * t1, zB = z0 + dz * t1;
+          const mx = x0 + dx * tm, mz = z0 + dz * tm;
+          const segLen = len / steps + 0.02;
+          const topA = yTopFn(xA, zA);
+          const topB = yTopFn(xB, zB);
+          const yTop = 0.5 * (topA + topB);
+          const yBot = Math.min(ySwTop(mx) - 0.16, yStreetGrade(mx, mz) - 0.16, yTop - 0.36);
+          const bodyH = Math.max(0.2, yTop - yBot);
+          const slopeAlong = Math.atan2(topB - topA, len / steps);
+          const segGroup = new Group();
+          segGroup.position.set(mx, 0, mz);
+          segGroup.rotation.y = -angle;
+          const body = new Mesh(new BoxGeometry(segLen, bodyH, thick), wallMat);
+          body.position.set(0, yBot + bodyH * 0.5, 0);
+          body.rotation.z = slopeAlong;
+          body.castShadow = true;
+          body.receiveShadow = true;
+          segGroup.add(body);
+          b400ParkingGroup.add(segGroup);
+        }
+      };
+      const dougExtSpans = [
+        { xStart: 23.62, xEnd: 28.98, zInner: -2.26, xSteps: 5, mat: parkingConcreteMat },
+        { xStart: 28.98, xEnd: 47.48, zInner: -3.4, xSteps: 14, mat: parkingConcreteMat },
+        { xStart: 47.48, xEnd: 56.65, zInner: -4.52, xSteps: 7, mat: parkingConcreteMat },
+        { xStart: 56.65, xEnd: 62.34, zInner: -3.4, xSteps: 6, mat: parkingConcreteMat },
+        { xStart: 62.34, xEnd: 64.54, zInner: -3.4, xSteps: 3, mat: swConcreteMat }
+      ];
+      const dougZSteps = 22;
+      const b400WalkWidth = 1.5;
+      dougExtSpans.forEach(({ xStart, xEnd, zInner, xSteps, mat }) => {
+        for (let ix = 0; ix < xSteps; ix++) {
+          const x0 = xStart + (xEnd - xStart) * ix / xSteps;
+          const x1 = xStart + (xEnd - xStart) * (ix + 1) / xSteps;
+          const zOut0 = zOuter411(x0);
+          const zOut1 = zOuter411(x1);
+          for (let iz = 0; iz < dougZSteps; iz++) {
+            const t0 = iz / dougZSteps;
+            const t1 = (iz + 1) / dougZSteps;
+            const z00 = zInner + (zOut0 - zInner) * t0;
+            const z10 = zInner + (zOut1 - zInner) * t0;
+            const z11 = zInner + (zOut1 - zInner) * t1;
+            const z01 = zInner + (zOut0 - zInner) * t1;
+            addGradedQuad(
+              [x0, yAlleyLot(x0, z00), z00],
+              [x1, yAlleyLot(x1, z10), z10],
+              [x1, yAlleyLot(x1, z11), z11],
+              [x0, yAlleyLot(x0, z01), z01],
+              mat
+            );
+          }
+          if (mat !== swConcreteMat) {
+            const zWalk0 = zInner;
+            const zWalk1 = zInner + b400WalkWidth;
+            addGradedQuad(
+              [x0, yAlleyLot(x0, zWalk0), zWalk0],
+              [x1, yAlleyLot(x1, zWalk0), zWalk0],
+              [x1, yAlleyLot(x1, zWalk1), zWalk1],
+              [x0, yAlleyLot(x0, zWalk1), zWalk1],
+              swConcreteMat,
+              4e-3
+            );
+            addGradedQuad(
+              [x0, yAlleyLot(x0, zWalk1 - 0.015), zWalk1 - 0.015],
+              [x1, yAlleyLot(x1, zWalk1 - 0.015), zWalk1 - 0.015],
+              [x1, yAlleyLot(x1, zWalk1 + 0.015), zWalk1 + 0.015],
+              [x0, yAlleyLot(x0, zWalk1 + 0.015), zWalk1 + 0.015],
+              swJointMat,
+              8e-3
+            );
+            if (ix > 0) {
+              addGradedQuad(
+                [x0 - 0.014, yAlleyLot(x0 - 0.014, zWalk0 + 0.04), zWalk0 + 0.04],
+                [x0 + 0.014, yAlleyLot(x0 + 0.014, zWalk0 + 0.04), zWalk0 + 0.04],
+                [x0 + 0.014, yAlleyLot(x0 + 0.014, zWalk1 - 0.04), zWalk1 - 0.04],
+                [x0 - 0.014, yAlleyLot(x0 - 0.014, zWalk1 - 0.04), zWalk1 - 0.04],
+                swJointMat,
+                8e-3
+              );
+            }
+          }
+        }
+      });
+      for (let jz = -1.75; jz < 11.2; jz += 1.75) {
+        addGradedQuad(
+          [62.36, yAlleyLot(62.36, jz - 0.014), jz - 0.014],
+          [64.4, yAlleyLot(64.4, jz - 0.014), jz - 0.014],
+          [64.4, yAlleyLot(64.4, jz + 0.014), jz + 0.014],
+          [62.36, yAlleyLot(62.36, jz + 0.014), jz + 0.014],
+          swJointMat,
+          6e-3
+        );
+      }
+      const zOutDouglas = zOuter411(64.54);
+      for (let iz = 0; iz < 16; iz++) {
+        const sz0 = -3.4 + (zOutDouglas - -3.4) * iz / 16;
+        const sz1 = -3.4 + (zOutDouglas - -3.4) * (iz + 1) / 16;
+        addGradedSkirtSegment(64.54, sz0, 64.54, sz1, 0.18, (px2, pz2) => yAlleyLot(px2, pz2) - 0.015, swConcreteMat);
+      }
+      parent.add(b400ParkingGroup);
+    }
   }
+
+  // js/foundry/ground/CampusCartographyFoundry.js
+  var COS_401 = 0.80425;
+  var SIN_401 = 0.59429;
+  var CX_401 = -4.22;
+  var CZ_401 = -38.74;
+  function local401ToWorld(lx, lz) {
+    return [
+      CX_401 + lx * COS_401 - lz * SIN_401,
+      CZ_401 + lx * SIN_401 + lz * COS_401
+    ];
+  }
+  function worldTo401(wx, wz) {
+    const dx = wx - CX_401;
+    const dz = wz - CZ_401;
+    return [
+      dx * COS_401 + dz * SIN_401,
+      -dx * SIN_401 + dz * COS_401
+    ];
+  }
+  function isInsideCustomCampusCorridor(wx, wz) {
+    const [lx, lz] = worldTo401(wx, wz);
+    if (lx >= -64.5 && lx <= 125.5 && lz >= 19.2 && lz <= 43.6) return true;
+    if (lx >= 21.6 && lx <= 41.4 && lz >= 38 && lz <= 174.5) return true;
+    if (lx >= 120.8 && lx <= 144.4 && lz >= -61.8 && lz <= 174.5) return true;
+    if (lx >= -78.2 && lx <= -58.8 && lz >= -51.8 && lz <= 174.5) return true;
+    const okDx = lx - 141.4;
+    const okDz = lz - -25.95;
+    const okS = okDx * 0.59429 + okDz * 0.80425;
+    const okOff = -okDx * 0.80425 + okDz * 0.59429;
+    if (okS >= -3.5 && okS <= 91 && Math.abs(okOff) <= 11.2) return true;
+    if (lx >= 38 && lx <= 123.5 && lz >= 114 && lz <= 152.5) return true;
+    if (lx >= 77 && lx <= 84.8 && lz >= 128 && lz <= 174.8) return true;
+    if (lx >= -63 && lx <= 124.5 && lz >= -22.5 && lz <= 25) return true;
+    if (lx >= -62 && lx <= 124 && lz >= 38 && lz <= 115.5) return true;
+    if (lx >= -22.5 && lx <= -16 && lz >= 97 && lz <= 153) return true;
+    if (Math.hypot(wx - -11.65, wz - 154.47) < 13.5) return true;
+    return false;
+  }
+  var CampusCartographyFoundry = class {
+    constructor(groundFoundry) {
+      this.groundFoundry = groundFoundry;
+      this.rootGroup = null;
+      this.streetTypographyGroup = null;
+      this.parcelGroup = null;
+      this.contourGroup = null;
+      this.minorContourMat = null;
+      this.majorContourMat = null;
+      this.parcelLineMat = null;
+      this._cachedTextures = /* @__PURE__ */ new Map();
+    }
+    _makeTextDecalTexture(text, {
+      width = 1024,
+      height = 160,
+      fontSize = 66,
+      textColor = "#f8fafc",
+      haloColor = "rgba(15, 23, 42, 0.94)",
+      bgPillColor = null,
+      borderColor = null
+    } = {}) {
+      const cacheKey = `txt_${text}_${width}_${height}_${fontSize}_${textColor}_${bgPillColor || "none"}`;
+      if (this._cachedTextures.has(cacheKey)) return this._cachedTextures.get(cacheKey);
+      if (typeof document === "undefined") return null;
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, width, height);
+      if (bgPillColor) {
+        const padX = 24;
+        const padY = 18;
+        const r = (height - padY * 2) * 0.45;
+        const w = width - padX * 2;
+        const h = height - padY * 2;
+        ctx.fillStyle = bgPillColor;
+        ctx.beginPath();
+        ctx.roundRect(padX, padY, w, h, r);
+        ctx.fill();
+        if (borderColor) {
+          ctx.strokeStyle = borderColor;
+          ctx.lineWidth = 4;
+          ctx.stroke();
+        }
+      }
+      ctx.font = `700 ${fontSize}px "Segoe UI", system-ui, -apple-system, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      if ("letterSpacing" in ctx) {
+        ctx.letterSpacing = "6px";
+      }
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.strokeStyle = haloColor;
+      ctx.lineWidth = bgPillColor ? 6 : 13;
+      ctx.strokeText(text, width * 0.5, height * 0.52);
+      ctx.fillStyle = textColor;
+      ctx.fillText(text, width * 0.5, height * 0.52);
+      const tex = new CanvasTexture(canvas);
+      tex.colorSpace = SRGBColorSpace;
+      tex.anisotropy = 16;
+      tex.needsUpdate = true;
+      this._cachedTextures.set(cacheKey, tex);
+      return tex;
+    }
+    _attachFogIfAvailable(mat) {
+      if (this.groundFoundry && typeof this.groundFoundry._attachOuterTileBoundaryFogShader === "function") {
+        this.groundFoundry._attachOuterTileBoundaryFogShader(mat);
+      }
+      return mat;
+    }
+    buildAll(parentGroup, campusData) {
+      this.campusData = campusData;
+      if (this.rootGroup && this.rootGroup.parent) {
+        this.rootGroup.parent.remove(this.rootGroup);
+      }
+      const root = new Group();
+      root.name = "CampusCartographyAndInfrastructure";
+      this.rootGroup = root;
+      this.streetTypographyGroup = this._buildRoadAlignedTypography();
+      root.add(this.streetTypographyGroup);
+      this.parcelGroup = this._buildParcelBoundaries(campusData.campusBuildings || []);
+      this.parcelGroup.visible = false;
+      root.add(this.parcelGroup);
+      this.contourGroup = this._buildHighPrecisionContours();
+      this.contourGroup.visible = false;
+      root.add(this.contourGroup);
+      parentGroup.add(root);
+      return root;
+    }
+    rebuildTerrainDependentLayers() {
+      if (!this.rootGroup || !this.campusData) return;
+      const parcelsVis = this.parcelGroup ? this.parcelGroup.visible : false;
+      const contoursVis = this.contourGroup ? this.contourGroup.visible : false;
+      const typoVis = this.streetTypographyGroup ? this.streetTypographyGroup.visible : true;
+      const parent = this.rootGroup.parent;
+      if (!parent) return;
+      this.buildAll(parent, this.campusData);
+      if (this.parcelGroup) this.parcelGroup.visible = parcelsVis;
+      if (this.contourGroup) this.contourGroup.visible = contoursVis;
+      if (this.streetTypographyGroup) this.streetTypographyGroup.visible = typoVis;
+    }
+    updateTheme({ topoActive = false, mapDarkness = 0 } = {}) {
+      const darkMode = topoActive || mapDarkness > 0.35;
+      if (this.majorContourMat) {
+        this.majorContourMat.color.set(darkMode ? "#fbbf24" : "#b45309");
+        this.majorContourMat.opacity = darkMode ? 0.92 : 0.64;
+        this.majorContourMat.needsUpdate = true;
+      }
+      if (this.minorContourMat) {
+        this.minorContourMat.color.set(darkMode ? "#fcd34d" : "#d97706");
+        this.minorContourMat.opacity = darkMode ? 0.38 : 0.25;
+        this.minorContourMat.needsUpdate = true;
+      }
+      if (this.parcelLineMat) {
+        this.parcelLineMat.color.set(darkMode ? "#38bdf8" : "#0284c7");
+        this.parcelLineMat.opacity = darkMode ? 0.88 : 0.72;
+        this.parcelLineMat.needsUpdate = true;
+      }
+    }
+    // =========================================================================
+    // 1. CAMPUS-ONLY ROAD-ALIGNED 3D GROUND STREET TYPOGRAPHY
+    // =========================================================================
+    _buildRoadAlignedTypography() {
+      const grp = new Group();
+      grp.name = "RoadAlignedStreetTypography3D";
+      const getH = (x, z) => this.groundFoundry.getTerrainHeight(x, z);
+      const okPt = (s) => local401ToWorld(141.4 + 0.59429 * s, -25.95 + 0.80425 * s);
+      const [okX0, okZ0] = okPt(30);
+      const [okX1, okZ1] = okPt(74);
+      const campusCorridorLabels = [
+        // Washington St (SW segment between King St & Douglas St, and NE segment between Douglas St & Orondo Ave)
+        { label: "WASHINGTON ST", p0: local401ToWorld(-36, 31.72), p1: local401ToWorld(-2, 31.72), width: 2.55 },
+        { label: "WASHINGTON ST", p0: local401ToWorld(64, 31.72), p1: local401ToWorld(98, 31.72), width: 2.55 },
+        // Orondo Ave (SE frontage by Courthouse 350 & NW frontage by Building 300 / 428 Orondo)
+        { label: "ORONDO AVE", p0: local401ToWorld(132.35, -38), p1: local401ToWorld(132.35, -4), width: 2.75 },
+        { label: "ORONDO AVE", p0: local401ToWorld(132.35, 68), p1: local401ToWorld(132.35, 106), width: 2.75 },
+        // Douglas St (between Building 400 & Building 316)
+        { label: "DOUGLAS ST", p0: local401ToWorld(31.54, 56), p1: local401ToWorld(31.54, 92), width: 2.35 },
+        // King St (along West Wing & Building 411/412)
+        { label: "KING ST", p0: local401ToWorld(-68.33, -18), p1: local401ToWorld(-68.33, 14), width: 2.35 },
+        // S. Okanogan Ave (campus approach throat off Orondo Ave)
+        { label: "S. OKANOGAN AVE", p0: [okX0, okZ0], p1: [okX1, okZ1], width: 2.45 }
+      ];
+      for (const item of campusCorridorLabels) {
+        let [x0, z0] = item.p0;
+        let [x1, z1] = item.p1;
+        const dx = x1 - x0;
+        const dz = z1 - z0;
+        if (dx < -4 || Math.abs(dx) <= 4 && dz < 0) {
+          [x0, x1] = [x1, x0];
+          [z0, z1] = [z1, z0];
+        }
+        const totalSpan = Math.hypot(x1 - x0, z1 - z0);
+        const decalLen = Math.min(totalSpan, Math.max(13.5, item.label.length * 1.42));
+        const midX = (x0 + x1) * 0.5;
+        const midZ = (z0 + z1) * 0.5;
+        const ux = (x1 - x0) / (totalSpan || 1);
+        const uz = (z1 - z0) / (totalSpan || 1);
+        const nx = -uz;
+        const nz = ux;
+        const sx0 = midX - ux * decalLen * 0.5;
+        const sz0 = midZ - uz * decalLen * 0.5;
+        const sx1 = midX + ux * decalLen * 0.5;
+        const sz1 = midZ + uz * decalLen * 0.5;
+        const halfH = item.width * 0.5;
+        const segs = 8;
+        const pos = [], norm = [], uv = [], idx = [];
+        for (let i = 0; i <= segs; i++) {
+          const u = i / segs;
+          const cx = sx0 + (sx1 - sx0) * u;
+          const cz = sz0 + (sz1 - sz0) * u;
+          const txA = cx - nx * halfH, tzA = cz - nz * halfH;
+          const bxA = cx + nx * halfH, bzA = cz + nz * halfH;
+          pos.push(
+            txA,
+            getH(txA, tzA) + 0.085,
+            tzA,
+            bxA,
+            getH(bxA, bzA) + 0.085,
+            bzA
+          );
+          norm.push(0, 1, 0, 0, 1, 0);
+          uv.push(u, 1, u, 0);
+        }
+        for (let i = 0; i < segs; i++) {
+          const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+          idx.push(a, b, d, a, d, c);
+        }
+        const geo = new BufferGeometry();
+        geo.setAttribute("position", new Float32BufferAttribute(pos, 3));
+        geo.setAttribute("normal", new Float32BufferAttribute(norm, 3));
+        geo.setAttribute("uv", new Float32BufferAttribute(uv, 2));
+        geo.setIndex(idx);
+        const tex = this._makeTextDecalTexture(item.label, {
+          width: 1024,
+          height: 160,
+          fontSize: 62,
+          textColor: "#f8fafc",
+          haloColor: "rgba(15, 23, 42, 0.95)",
+          bgPillColor: "rgba(34, 39, 48, 0.86)"
+        });
+        const mat = this._attachFogIfAvailable(new MeshBasicMaterial({
+          map: tex,
+          transparent: true,
+          opacity: 0.92,
+          side: DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -7,
+          polygonOffsetUnits: -7
+        }));
+        const mesh = new Mesh(geo, mat);
+        mesh.renderOrder = 4;
+        grp.add(mesh);
+      }
+      return grp;
+    }
+    // =========================================================================
+    // 2. CAMPUS PARCEL & RIGHT-OF-WAY SURVEY BOUNDARY LAYER (#toggle-parcels)
+    // =========================================================================
+    _buildParcelBoundaries(campusBuildings) {
+      const grp = new Group();
+      grp.name = "CampusParcelSurveyBoundaries";
+      const getH = (x, z) => this.groundFoundry.getTerrainHeight(x, z);
+      const linePositions = [];
+      const setbackPositions = [];
+      const monumentPos = [], monumentNorm = [], monumentIdx = [];
+      const addSurveyPolygon = (polyPts, isPrimaryCampus = true, insetMeters = 0) => {
+        if (!polyPts || polyPts.length < 3) return;
+        const n = polyPts.length;
+        let cx = 0, cz = 0;
+        for (const [px2, pz2] of polyPts) {
+          cx += px2;
+          cz += pz2;
+        }
+        cx /= n;
+        cz /= n;
+        const offsetPoly = polyPts.map(([px2, pz2]) => {
+          const dx = px2 - cx;
+          const dz = pz2 - cz;
+          const len = Math.hypot(dx, dz) || 1;
+          return [px2 + dx / len * insetMeters, pz2 + dz / len * insetMeters];
+        });
+        for (let i = 0; i < n; i++) {
+          const [ax, az] = offsetPoly[i];
+          const [bx, bz] = offsetPoly[(i + 1) % n];
+          const segLen = Math.hypot(bx - ax, bz - az);
+          const steps = Math.max(1, Math.ceil(segLen / 3));
+          for (let s = 0; s < steps; s++) {
+            const t0 = s / steps;
+            const t1 = (s + 1) / steps;
+            const x0 = ax + (bx - ax) * t0;
+            const z0 = az + (bz - az) * t0;
+            const x1 = ax + (bx - ax) * t1;
+            const z1 = az + (bz - az) * t1;
+            if (isPrimaryCampus) {
+              linePositions.push(
+                x0,
+                getH(x0, z0) + 0.08,
+                z0,
+                x1,
+                getH(x1, z1) + 0.08,
+                z1
+              );
+            } else if (s % 2 === 0) {
+              setbackPositions.push(
+                x0,
+                getH(x0, z0) + 0.075,
+                z0,
+                x1,
+                getH(x1, z1) + 0.075,
+                z1
+              );
+            }
+          }
+          if (isPrimaryCampus) {
+            const r = 0.32;
+            const my = getH(ax, az) + 0.09;
+            const base = monumentPos.length / 3;
+            monumentPos.push(
+              ax,
+              my,
+              az - r,
+              ax + r,
+              my,
+              az,
+              ax,
+              my,
+              az + r,
+              ax - r,
+              my,
+              az
+            );
+            monumentNorm.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
+            monumentIdx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+          }
+        }
+      };
+      const toW = local401ToWorld;
+      const campusRowBlocks = [
+        // Historic Courthouse 350 Parcel (Washington St, Orondo Ave, Courthouse South Lawn, 401 lot line)
+        { name: "PARCEL 350 \u2022 COURTHOUSE BLOCK", pts: [toW(66.5, -22.5), toW(122.8, -22.5), toW(122.8, 24.4), toW(66.5, 24.4)] },
+        // Law & Justice 401 Parcel
+        { name: "PARCEL 401 \u2022 LAW & JUSTICE", pts: [toW(-12.5, -21.5), toW(66.5, -21.5), toW(66.5, 24.4), toW(-12.5, 24.4)] },
+        // Regional Justice West Wing Parcel (King St to 401)
+        { name: "PARCEL 413\u2013415 \u2022 WEST WING", pts: [toW(-62.6, -21.5), toW(-12.5, -21.5), toW(-12.5, 24.4), toW(-62.6, 24.4)] },
+        // County Administration 400 Douglas Parcel
+        { name: "PARCEL 400 \u2022 ADMINISTRATION", pts: [toW(-18, 38.8), toW(24.4, 38.8), toW(24.4, 87.5), toW(-18, 87.5)] },
+        // Natural Resources & WSU Extension 410/411/412 Parcel
+        { name: "PARCEL 411/412 \u2022 NATURAL RESOURCES", pts: [toW(-61.3, 38.8), toW(-18, 38.8), toW(-18, 75.5), toW(-61.3, 75.5)] },
+        // Community Development 316 & Juvenile Justice 300 Parcel
+        { name: "PARCEL 300/316 \u2022 CIVIC & JUVENILE", pts: [toW(38.6, 38.8), toW(123, 38.8), toW(123, 115.6), toW(38.6, 115.6)] },
+        // 428 Orondo Ave Campus Annex Parcel (strictly hugging the 428 Annex lot on Orondo Ave)
+        { name: "PARCEL 428 \u2022 CAMPUS ANNEX", pts: [toW(95.5, 144), toW(123, 144), toW(123, 173), toW(95.5, 173)] }
+      ];
+      for (const blk of campusRowBlocks) {
+        addSurveyPolygon(blk.pts, true, 0);
+      }
+      for (const bldg of campusBuildings) {
+        addSurveyPolygon(bldg.footprint, false, 1.8);
+      }
+      if (linePositions.length > 0) {
+        const lineGeo = new BufferGeometry();
+        lineGeo.setAttribute("position", new Float32BufferAttribute(linePositions, 3));
+        this.parcelLineMat = new LineBasicMaterial({
+          color: "#0284c7",
+          transparent: true,
+          opacity: 0.78,
+          depthTest: true
+        });
+        const lines = new LineSegments(lineGeo, this.parcelLineMat);
+        lines.renderOrder = 4;
+        grp.add(lines);
+      }
+      if (setbackPositions.length > 0) {
+        const sbGeo = new BufferGeometry();
+        sbGeo.setAttribute("position", new Float32BufferAttribute(setbackPositions, 3));
+        const sbMat = new LineBasicMaterial({
+          color: "#38bdf8",
+          transparent: true,
+          opacity: 0.48,
+          depthTest: true
+        });
+        const sbLines = new LineSegments(sbGeo, sbMat);
+        sbLines.renderOrder = 4;
+        grp.add(sbLines);
+      }
+      if (monumentPos.length > 0) {
+        const monGeo = new BufferGeometry();
+        monGeo.setAttribute("position", new Float32BufferAttribute(monumentPos, 3));
+        monGeo.setAttribute("normal", new Float32BufferAttribute(monumentNorm, 3));
+        monGeo.setIndex(monumentIdx);
+        const monMat = new MeshBasicMaterial({
+          color: "#f59e0b",
+          side: DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -5,
+          polygonOffsetUnits: -5
+        });
+        const monMesh = new Mesh(monGeo, monMat);
+        monMesh.renderOrder = 5;
+        grp.add(monMesh);
+      }
+      return grp;
+    }
+    // =========================================================================
+    // 3. HIGH-PRECISION MAJOR & MINOR TOPOGRAPHIC CONTOURS (#toggle-contours)
+    // =========================================================================
+    _buildHighPrecisionContours() {
+      const grp = new Group();
+      grp.name = "HighPrecisionTopographicContours";
+      const range = 186;
+      const step = 2;
+      const cols = Math.floor(range * 2 / step) + 1;
+      const heights = new Float32Array(cols * cols);
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (let iz = 0; iz < cols; iz++) {
+        const z = -range + iz * step;
+        const rowOff = iz * cols;
+        for (let ix = 0; ix < cols; ix++) {
+          const x = -range + ix * step;
+          const h = this.groundFoundry.getTerrainHeight(x, z);
+          heights[rowOff + ix] = h;
+          if (h < minY) minY = h;
+          if (h > maxY) maxY = h;
+        }
+      }
+      const exag = this.groundFoundry.exaggeration || 1;
+      const datumASL = this.groundFoundry.terrainData?.datum || 223.51;
+      const minorInterval = 0.5 * exag;
+      const majorEvery = 5;
+      const minorPositions = [];
+      const majorPositions = [];
+      const calloutCandidates = /* @__PURE__ */ new Map();
+      const startIdx = Math.ceil(minY / minorInterval);
+      const endIdx = Math.floor(maxY / minorInterval);
+      for (let k = startIdx; k <= endIdx; k++) {
+        const targetY = k * minorInterval;
+        const isMajor = k % majorEvery === 0;
+        const outArr = isMajor ? majorPositions : minorPositions;
+        const yLift = isMajor ? 0.048 : 0.036;
+        for (let iz = 0; iz < cols - 1; iz++) {
+          const z0 = -range + iz * step;
+          const z1 = z0 + step;
+          const r0 = iz * cols;
+          const r1 = (iz + 1) * cols;
+          for (let ix = 0; ix < cols - 1; ix++) {
+            const y00 = heights[r0 + ix];
+            const y10 = heights[r0 + ix + 1];
+            const y01 = heights[r1 + ix];
+            const y11 = heights[r1 + ix + 1];
+            const cMin = Math.min(y00, y10, y01, y11);
+            const cMax = Math.max(y00, y10, y01, y11);
+            if (targetY < cMin || targetY > cMax || cMax - cMin < 1e-4) continue;
+            if (cMax - cMin > 2.4 * exag) continue;
+            const x0 = -range + ix * step;
+            const x1 = x0 + step;
+            const pts = [];
+            if ((y00 - targetY) * (y10 - targetY) <= 0 && y00 !== y10) {
+              const t = (targetY - y00) / (y10 - y00);
+              if (t >= 0 && t <= 1) pts.push([x0 + t * step, targetY + yLift, z0]);
+            }
+            if ((y10 - targetY) * (y11 - targetY) <= 0 && y10 !== y11) {
+              const t = (targetY - y10) / (y11 - y10);
+              if (t >= 0 && t <= 1) pts.push([x1, targetY + yLift, z0 + t * step]);
+            }
+            if ((y01 - targetY) * (y11 - targetY) <= 0 && y01 !== y11) {
+              const t = (targetY - y01) / (y11 - y01);
+              if (t >= 0 && t <= 1) pts.push([x0 + t * step, targetY + yLift, z1]);
+            }
+            if ((y00 - targetY) * (y01 - targetY) <= 0 && y00 !== y01) {
+              const t = (targetY - y00) / (y01 - y00);
+              if (t >= 0 && t <= 1) pts.push([x0, targetY + yLift, z0 + t * step]);
+            }
+            if (pts.length >= 2) {
+              outArr.push(
+                pts[0][0],
+                pts[0][1],
+                pts[0][2],
+                pts[1][0],
+                pts[1][1],
+                pts[1][2]
+              );
+              if (isMajor && !calloutCandidates.has(k)) {
+                const mx = (pts[0][0] + pts[1][0]) * 0.5;
+                const mz = (pts[0][2] + pts[1][2]) * 0.5;
+                const rad = Math.hypot(mx, mz - 20);
+                if (rad > 68 && rad < 155 && !isInsideCustomCampusCorridor(mx, mz)) {
+                  const segDx = pts[1][0] - pts[0][0];
+                  const segDz = pts[1][2] - pts[0][2];
+                  if (Math.hypot(segDx, segDz) > 0.8) {
+                    calloutCandidates.set(k, {
+                      x: mx,
+                      y: targetY + 0.08,
+                      z: mz,
+                      dx: segDx,
+                      dz: segDz,
+                      unscaledElev: k * 0.5
+                    });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      if (minorPositions.length > 0) {
+        const minorGeo = new BufferGeometry();
+        minorGeo.setAttribute("position", new Float32BufferAttribute(minorPositions, 3));
+        this.minorContourMat = new LineBasicMaterial({
+          color: "#d97706",
+          transparent: true,
+          opacity: 0.25
+        });
+        const minorLines = new LineSegments(minorGeo, this.minorContourMat);
+        minorLines.name = "MinorTopoContours_0_5m";
+        grp.add(minorLines);
+      }
+      if (majorPositions.length > 0) {
+        const majorGeo = new BufferGeometry();
+        majorGeo.setAttribute("position", new Float32BufferAttribute(majorPositions, 3));
+        this.majorContourMat = new LineBasicMaterial({
+          color: "#b45309",
+          transparent: true,
+          opacity: 0.64
+        });
+        const majorLines = new LineSegments(majorGeo, this.majorContourMat);
+        majorLines.name = "MajorIndexContours_2_5m";
+        grp.add(majorLines);
+      }
+      for (const cand of calloutCandidates.values()) {
+        const aslMeters = datumASL + cand.unscaledElev;
+        const aslFeet = Math.round(aslMeters * 3.28084);
+        const labelText = `${aslFeet} FT (${aslMeters.toFixed(1)}m)`;
+        const tex = this._makeTextDecalTexture(labelText, {
+          width: 512,
+          height: 112,
+          fontSize: 44,
+          textColor: "#fef3c7",
+          haloColor: "rgba(15, 23, 42, 0.95)",
+          bgPillColor: "rgba(15, 23, 42, 0.84)",
+          borderColor: "rgba(251, 191, 36, 0.78)"
+        });
+        const mat = new MeshBasicMaterial({
+          map: tex,
+          transparent: true,
+          side: DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -7,
+          polygonOffsetUnits: -7
+        });
+        let dx = cand.dx;
+        let dz = cand.dz;
+        if (dx < 0) {
+          dx = -dx;
+          dz = -dz;
+        }
+        const angle = Math.atan2(dz, dx);
+        const plaque = new Mesh(new PlaneGeometry(8.2, 1.8), mat);
+        plaque.rotation.order = "YXZ";
+        plaque.rotation.x = -Math.PI / 2;
+        plaque.rotation.y = -angle;
+        plaque.position.set(cand.x, cand.y, cand.z);
+        plaque.renderOrder = 6;
+        grp.add(plaque);
+      }
+      return grp;
+    }
+  };
 
   // js/foundry/CampusGroundFoundry.js
   var CampusGroundFoundry = class {
@@ -38564,8 +41003,8 @@
         [29.2, 115.22],
         [24.34, 115.33],
         [11.58, 100.16],
-        [2.75, 111.82],
-        [-24.48, 91.72],
+        [3.94, 110.22],
+        [-23.29, 90.11],
         [-3.05, 62.76],
         [-5.12, 59.41],
         [-7.66, 62.82],
@@ -38668,52 +41107,221 @@
         const steps = (s00 * (1 - sx) + s10 * sx) * (1 - sz) + (s01 * (1 - sx) + s11 * sx) * sz;
         return baseY - steps * 0.3048 * this.exaggeration;
       };
+      const dx401 = x - -4.22;
+      const dz401 = z - -38.74;
+      const lx401 = dx401 * 0.80425 + dz401 * 0.59429;
+      const lz401 = -dx401 * 0.59429 + dz401 * 0.80425;
+      const rawAt401 = (px2, pz2) => {
+        const wx = -4.22 + px2 * 0.80425 - pz2 * 0.59429;
+        const wz = -38.74 + px2 * 0.59429 + pz2 * 0.80425;
+        return this.getRawTerrainHeight(wx, wz);
+      };
       {
-        const dx = x - -36.91;
-        const dz = z - 5.92;
-        const lx = dx * 0.5842 - dz * 0.8116;
-        const lz = dx * 0.8116 + dz * 0.5842;
-        if (lx > -34 && lx < 22.5 && lz > -28 && lz < 31.5) {
-          const lotLevelY = this.getRawTerrainHeight(-22, 10);
-          let padW = MathUtils.smoothstep(lx, -32, -20) * (1 - MathUtils.smoothstep(lx, 18, 22)) * MathUtils.smoothstep(lz, -28, -16.8) * (1 - MathUtils.smoothstep(lz, 24.8, 31));
-          const uphillBlend = (1 - MathUtils.smoothstep(lx, -8.5, -0.5)) * MathUtils.smoothstep(lz, -16, 21.5);
-          const targetPadY = MathUtils.lerp(
+        const lotLevelY = this.getRawTerrainHeight(-22, 10);
+        const lowerBayY = lotLevelY + 1.42 * this.exaggeration;
+        const upperBayY = Math.max(
+          lowerBayY + 1.05 * this.exaggeration,
+          rawAt401(24.62, 90.7) - 0.08 * this.exaggeration
+        );
+        const dougCurbY = (pz2) => {
+          if (pz2 <= 59.5) return lotLevelY;
+          if (pz2 >= 70.5) return rawAt401(24.62, pz2);
+          return MathUtils.lerp(
             lotLevelY,
-            Math.min(Math.max(lotLevelY, rawY), lotLevelY + 0.28),
-            uphillBlend * 0.65
+            rawAt401(24.62, pz2),
+            MathUtils.smoothstep(pz2, 59.5, 70.5)
           );
-          return applyBulldoze(MathUtils.lerp(rawY, targetPadY, padW));
+        };
+        if (lx401 > 24.62 && lx401 < 33.5 && lz401 >= 34 && lz401 < 74) {
+          const wZ = MathUtils.smoothstep(lz401, 34, 41.5) * (1 - MathUtils.smoothstep(lz401, 70.5, 74));
+          const uRoad = MathUtils.smoothstep(lx401, 24.62, 33.5);
+          const crownY = MathUtils.lerp(dougCurbY(lz401), rawY, uRoad);
+          return applyBulldoze(MathUtils.lerp(rawY, crownY, wZ));
+        }
+        if (lz401 >= 59.5 && lz401 <= 153.5 && lx401 >= -27.75 && lx401 <= 24.62) {
+          const sidewalkPin = Math.max(
+            MathUtils.smoothstep(lz401, 79.6, 80.5) * (1 - MathUtils.smoothstep(lz401, 86.9, 87.9)),
+            MathUtils.smoothstep(lz401, 93.5, 94.4)
+          );
+          const xBlendStart = MathUtils.lerp(19.8, 20, sidewalkPin);
+          const xBlendEnd = MathUtils.lerp(24.62, 22.35, sidewalkPin);
+          if (lz401 < 74.4) {
+            const zRampStart = MathUtils.lerp(
+              61.1,
+              59.5,
+              MathUtils.smoothstep(lx401, 16, 21.8)
+            );
+            const tRamp = MathUtils.smoothstep(lz401, zRampStart, 74.4);
+            const rampLotY = MathUtils.lerp(lotLevelY, lowerBayY, tRamp);
+            if (lx401 >= -16.85) {
+              const uDoug = MathUtils.smoothstep(lx401, 19.8, 24.62);
+              return applyBulldoze(MathUtils.lerp(rampLotY, dougCurbY(lz401), uDoug));
+            }
+            const lot411Y = this.getRawTerrainHeight(-73.89, -11.51);
+            const tAlleyRamp = MathUtils.smoothstep(lz401, 61.1, 74.4);
+            const xRampBlend0 = MathUtils.lerp(-24.1, -23.85, tAlleyRamp);
+            const xRampBlend1 = MathUtils.lerp(-16.85, -21.35, tAlleyRamp);
+            const uToRamp = MathUtils.smoothstep(lx401, xRampBlend0, xRampBlend1);
+            const alleyGradedY = MathUtils.lerp(lot411Y, rampLotY, uToRamp);
+            const wFrom411 = MathUtils.smoothstep(lx401, -27.75, -25);
+            return applyBulldoze(MathUtils.lerp(lot411Y, alleyGradedY, wFrom411));
+          }
+          if (lx401 >= -16.85 && lz401 <= 82.4) {
+            const uDoug = MathUtils.smoothstep(lx401, xBlendStart, xBlendEnd);
+            return applyBulldoze(MathUtils.lerp(lowerBayY, dougCurbY(lz401), uDoug));
+          }
+          if (lx401 >= -16.85 && lz401 > 82.4 && lz401 <= 97.25) {
+            const uDoug = MathUtils.smoothstep(lx401, xBlendStart, xBlendEnd);
+            return applyBulldoze(MathUtils.lerp(upperBayY, dougCurbY(lz401), uDoug));
+          }
+          if (lx401 >= -16.85 && lz401 > 97.25 && lz401 <= 105.5) {
+            const embBoost = 0.72 * this.exaggeration * (1 - MathUtils.smoothstep(lz401, 100.8, 105.5)) * (1 - MathUtils.smoothstep(lx401, 20.4, 22.35));
+            const baseEmbY = MathUtils.lerp(
+              Math.max(rawY, upperBayY + embBoost),
+              rawY,
+              MathUtils.smoothstep(lx401, 20.4, 22.35)
+            );
+            return applyBulldoze(baseEmbY);
+          }
+          if (lx401 >= -24.1 && lx401 < -15.85) {
+            let alleyCenterY;
+            if (lz401 <= 82.4) {
+              alleyCenterY = lowerBayY;
+            } else if (lz401 <= 86.2) {
+              alleyCenterY = MathUtils.lerp(
+                lowerBayY,
+                upperBayY,
+                MathUtils.smoothstep(lz401, 82.4, 86.2)
+              );
+            } else if (lz401 <= 97.25) {
+              alleyCenterY = upperBayY;
+            } else {
+              alleyCenterY = MathUtils.lerp(
+                upperBayY,
+                rawAt401(-19.1, lz401),
+                MathUtils.smoothstep(lz401, 97.25, 103.5)
+              );
+            }
+            const lot411Y = this.getRawTerrainHeight(-73.89, -11.51);
+            const zFade411 = 1 - MathUtils.smoothstep(lz401, 74.4, 76.8);
+            const swBaseY = MathUtils.lerp(rawY, lot411Y, zFade411);
+            const xSouthStart = MathUtils.lerp(-22.15, -23.85, zFade411);
+            const wSouth = MathUtils.smoothstep(lx401, xSouthStart, -21.35);
+            const wNorth = lz401 <= 97.25 ? 1 : 1 - MathUtils.smoothstep(lx401, -16.85, -15.85);
+            const wEnd = 1 - MathUtils.smoothstep(lz401, 151.5, 153.5);
+            return applyBulldoze(MathUtils.lerp(swBaseY, alleyCenterY, wSouth * wNorth * wEnd));
+          }
+        }
+        if (lz401 < 59.5 && lx401 >= -27.75 && lx401 <= 24.62) {
+          const dx = x - -36.91;
+          const dz = z - 5.92;
+          const lx = dx * 0.5842 - dz * 0.8116;
+          if (lx < 22.5) {
+            const wWash = 1 - MathUtils.smoothstep(lx, 18, 22);
+            const wSW = MathUtils.smoothstep(lx401, -24.1, -16.85);
+            const lot411Y = this.getRawTerrainHeight(-73.89, -11.51);
+            const zTo411 = MathUtils.smoothstep(lz401, 48, 59.5);
+            const xIn411 = MathUtils.smoothstep(lx401, -27.75, -25) * (1 - MathUtils.smoothstep(lx401, -24.1, -16.85));
+            const swSideY = MathUtils.lerp(rawY, lot411Y, zTo411 * xIn411);
+            return applyBulldoze(MathUtils.lerp(swSideY, lotLevelY, wWash * wSW));
+          }
         }
       }
-      if (this._connected316_300ApronPts) {
-        const dx = x - 18;
-        const dz = z - 68;
-        if (dx * dx + dz * dz < 6400) {
-          const dist = this._distToPolygon2D(x, z, this._connected316_300ApronPts);
-          if (dist < 6.5) {
-            let padW = 1 - MathUtils.smoothstep(dist, 0.4, 6.5);
-            const dx316 = x - -5.08;
-            const dz316 = z - 48.18;
-            const lx316 = dx316 * -0.80283 - dz316 * 0.59621;
-            const lz316 = dx316 * 0.59621 + dz316 * -0.80283;
-            if (lx316 > 4.5 && lz316 < 27.5) {
-              const inFireExitWell = (1 - MathUtils.smoothstep(lx316, 7.6, 9.2)) * MathUtils.smoothstep(lz316, -11.2, -10) * (1 - MathUtils.smoothstep(lz316, -5.8, -4.5));
-              const dougContourRelease = MathUtils.smoothstep(lx316, 4.5, 7.9) * MathUtils.smoothstep(27.5 - lz316, 0, 21.5) * (1 - inFireExitWell);
-              padW *= 1 - dougContourRelease;
+      {
+        const washGradeY = this.getBuildingRoadHeight("building-316");
+        const zWall2 = 115.45 + 0.47 * MathUtils.clamp((lx401 - 63.8) / (116.5 - 63.8), 0, 1);
+        const evalUpperSlantY = (px2, pz2) => {
+          const dougY = rawAt401(38.46, pz2);
+          const oronY = rawAt401(123.2, pz2);
+          const uX = MathUtils.clamp((px2 - 38.46) / (123.2 - 38.46), 0, 1);
+          const planeY = MathUtils.lerp(dougY, oronY, uX);
+          const lot426Cut = 0.52 * MathUtils.smoothstep(px2, 83.15, 83.85) * (1 - MathUtils.smoothstep(px2, 98, 116.5)) * MathUtils.smoothstep(pz2, 126.5, 129.8) * (1 - MathUtils.smoothstep(pz2, 148.5, 151.2));
+          return planeY - lot426Cut;
+        };
+        if (lx401 >= 59.5 && lx401 < 63.8 && lz401 >= 113.95 && lz401 <= 118.65) {
+          const uRamp = MathUtils.smoothstep(lz401, 113.95, 118.65);
+          const topY = evalUpperSlantY(lx401, 118.65);
+          return applyBulldoze(MathUtils.lerp(washGradeY, topY, uRamp));
+        }
+        const inOuterDougBank = lx401 >= 37.5 && lx401 < 51 && lz401 >= 106.2 && lz401 < 113.95;
+        const inUpperWest = lx401 >= 37.5 && lx401 < 63.8 && lz401 >= 113.95 && lz401 <= 175;
+        const inUpperEast = lx401 >= 63.8 && lx401 <= 124.2 && lz401 >= zWall2 && lz401 <= 175;
+        if (inOuterDougBank || inUpperWest || inUpperEast) {
+          const slantY = evalUpperSlantY(lx401, lz401);
+          let wSlant = MathUtils.smoothstep(lx401, 37.5, 38.5) * (1 - MathUtils.smoothstep(lx401, 123, 124.2)) * (1 - MathUtils.smoothstep(lz401, 167, 175));
+          if (inOuterDougBank) {
+            wSlant *= MathUtils.smoothstep(lz401, 106.2, 111.5);
+          }
+          if (lz401 > 133.35 && lx401 < 78.4) {
+            const casaRel = MathUtils.smoothstep(lz401, 133.35, 135.2) * (1 - MathUtils.smoothstep(lx401, 76.6, 78.4));
+            wSlant *= 1 - casaRel;
+          }
+          if (lz401 > 150.4 && lx401 > 84.2) {
+            const b428Rel = MathUtils.smoothstep(lz401, 150.4, 152.1) * MathUtils.smoothstep(lx401, 84.2, 86.2);
+            wSlant *= 1 - b428Rel;
+          }
+          const blendedY = MathUtils.lerp(rawY, slantY, wSlant);
+          if (lz401 <= 150.5 || lx401 <= 85) {
+            return applyBulldoze(blendedY);
+          }
+        }
+        if (lx401 >= 38.46 && lx401 <= 64.35 && lz401 >= 83.5 && lz401 < 113.95 && !(lx401 < 51 && lz401 >= 106.2)) {
+          const dougY = rawAt401(38.46, lz401);
+          const uDoug = 1 - MathUtils.smoothstep(lx401, 38.46, 53.2);
+          const targetLotY = MathUtils.lerp(washGradeY, dougY, uDoug);
+          const wSouth = MathUtils.smoothstep(lz401, 83.5, 88.5);
+          return applyBulldoze(MathUtils.lerp(rawY, targetLotY, wSouth));
+        }
+        if (lx401 >= 92.16 && lx401 <= 123.2 && lz401 >= 96 && lz401 < zWall2) {
+          const oronY = rawAt401(123.2, lz401);
+          const xToe = MathUtils.lerp(95.4, 92.5, MathUtils.smoothstep(lz401, 102, 106.5));
+          const uOron = MathUtils.smoothstep(lx401, xToe, 121.2);
+          const targetLawnY = MathUtils.lerp(washGradeY, oronY, uOron);
+          const wNorthBlend = MathUtils.smoothstep(lz401, 96, 103.5);
+          if (wNorthBlend > 0.999) {
+            return applyBulldoze(targetLawnY);
+          }
+          const dist300 = this._connected316_300ApronPts ? this._distToPolygon2D(x, z, this._connected316_300ApronPts) : 10;
+          const basePadW = 1 - MathUtils.smoothstep(dist300, 0.4, 6.5);
+          const dx300 = x - 23.97;
+          const dz300 = z - 79.18;
+          const lx300 = dx300 * -0.80282848 - dz300 * 0.59621006;
+          const lz300 = dx300 * 0.59621006 + dz300 * -0.80282848;
+          const orondoSideRel = MathUtils.smoothstep(-23.5 - lx300, 0, 4.2) * MathUtils.smoothstep(26.5 - lz300, 0, 8.5);
+          const bldgWallRel = 0.55 * MathUtils.smoothstep(-16 - lx300, 0, 8) * MathUtils.smoothstep(24 - lz300, 0, 10);
+          const northY = MathUtils.lerp(rawY, washGradeY, basePadW * (1 - Math.max(orondoSideRel, bldgWallRel)));
+          return applyBulldoze(MathUtils.lerp(northY, targetLawnY, wNorthBlend));
+        }
+        if (this._connected316_300ApronPts) {
+          const dx = x - 18;
+          const dz = z - 68;
+          if (dx * dx + dz * dz < 6400) {
+            const dist = this._distToPolygon2D(x, z, this._connected316_300ApronPts);
+            if (dist < 6.5) {
+              let padW = 1 - MathUtils.smoothstep(dist, 0.4, 6.5);
+              if (lz401 >= zWall2 - 0.15) padW = 0;
+              const dx316 = x - -5.08;
+              const dz316 = z - 48.18;
+              const lx316 = dx316 * -0.80283 - dz316 * 0.59621;
+              const lz316 = dx316 * 0.59621 + dz316 * -0.80283;
+              if (lx316 > 4.5 && lz316 < 27.5) {
+                const inFireExitWell = (1 - MathUtils.smoothstep(lx316, 7.6, 9.2)) * MathUtils.smoothstep(lz316, -11.2, -10) * (1 - MathUtils.smoothstep(lz316, -5.8, -4.5));
+                const dougContourRelease = MathUtils.smoothstep(lx316, 4.5, 7.9) * MathUtils.smoothstep(27.5 - lz316, 0, 21.5) * (1 - inFireExitWell);
+                padW *= 1 - dougContourRelease;
+              }
+              const dx300 = x - 23.97;
+              const dz300 = z - 79.18;
+              const lx300 = dx300 * -0.80282848 - dz300 * 0.59621006;
+              const lz300 = dx300 * 0.59621006 + dz300 * -0.80282848;
+              if (lz300 < 26.5) {
+                const orondoSideRel = MathUtils.smoothstep(-23.5 - lx300, 0, 4.2) * MathUtils.smoothstep(26.5 - lz300, 0, 8.5);
+                const swLawnRel = MathUtils.smoothstep(-25 - lz300, 0, 7) * MathUtils.smoothstep(-2 - lx300, 0, 8);
+                const bldgWallRel = 0.55 * MathUtils.smoothstep(-16 - lx300, 0, 8) * MathUtils.smoothstep(24 - lz300, 0, 10);
+                const orondoRelease = Math.max(orondoSideRel, swLawnRel, bldgWallRel);
+                padW *= 1 - orondoRelease;
+              }
+              return applyBulldoze(MathUtils.lerp(rawY, washGradeY, padW));
             }
-            const dx300 = x - 23.97;
-            const dz300 = z - 79.18;
-            const lx300 = dx300 * -0.80282848 - dz300 * 0.59621006;
-            const lz300 = dx300 * 0.59621006 + dz300 * -0.80282848;
-            if (lz300 < 26.5) {
-              const orondoSideRel = MathUtils.smoothstep(-23.5 - lx300, 0, 4.2) * MathUtils.smoothstep(26.5 - lz300, 0, 8.5);
-              const swLawnRel = MathUtils.smoothstep(-25 - lz300, 0, 7) * MathUtils.smoothstep(-2 - lx300, 0, 8);
-              const bldgWallRel = 0.55 * MathUtils.smoothstep(-16 - lx300, 0, 8) * MathUtils.smoothstep(24 - lz300, 0, 10);
-              const orondoRelease = Math.max(orondoSideRel, swLawnRel, bldgWallRel);
-              padW *= 1 - orondoRelease;
-            }
-            const washGradeY = this.getBuildingRoadHeight("building-316");
-            return applyBulldoze(MathUtils.lerp(rawY, washGradeY, padW));
           }
         }
       }
@@ -38741,21 +41349,21 @@
           return applyBulldoze(MathUtils.lerp(rawY, lot411Y, padW));
         }
       }
-      const getBldg401PlaneY = (lx401, lz401) => {
+      const getBldg401PlaneY = (lx4012, lz4012) => {
         const yKingNW = this.getRawTerrainHeight(-65.23, -56.77);
         const yKingSW = this.getRawTerrainHeight(-41.7, -88.48);
         const ySeamNW = this.getRawTerrainHeight(-28.05, -18.02);
         const ySeamSW = this.getRawTerrainHeight(-6, -40.07);
         const yEastNE = this.getRawTerrainHeight(25.71, 21.7);
         const yEastSE = this.getRawTerrainHeight(47.76, -21.59);
-        const v = MathUtils.clamp((lz401 - -17.5) / (20.5 - -17.5), 0, 1);
+        const v = MathUtils.clamp((lz4012 - -17.5) / (20.5 - -17.5), 0, 1);
         let yNorth, ySouth;
-        if (lx401 < -14.85) {
-          const uWest = MathUtils.clamp((lx401 - -59.78) / (-14.85 - -59.78), 0, 1);
+        if (lx4012 < -14.85) {
+          const uWest = MathUtils.clamp((lx4012 - -59.78) / (-14.85 - -59.78), 0, 1);
           yNorth = MathUtils.lerp(yKingNW, ySeamNW, uWest);
           ySouth = MathUtils.lerp(yKingSW, ySeamSW, uWest);
         } else {
-          const uEast = MathUtils.clamp((lx401 - -14.85) / (52 - -14.85), 0, 1);
+          const uEast = MathUtils.clamp((lx4012 - -14.85) / (52 - -14.85), 0, 1);
           yNorth = MathUtils.lerp(ySeamNW, yEastNE, uEast);
           ySouth = MathUtils.lerp(ySeamSW, yEastSE, uEast);
         }
@@ -38931,15 +41539,36 @@
       this._buildOuterFoothillsMesh(envGroup);
       this._buildInnerCampusTerrainMesh(envGroup);
       this._buildBuilding400FoundationPad(envGroup);
-      this.contourLinesMesh = this._buildTopographicContours(envGroup);
+      if (!this.cartographyFoundry) {
+        this.cartographyFoundry = new CampusCartographyFoundry(this);
+      }
+      this.cartographyFoundry.buildAll(envGroup, campusData);
+      this.contourLinesMesh = this.cartographyFoundry.contourGroup;
       this._buildOuterTileFogSkirt(envGroup);
       this.applyGroundTheme();
       scene.add(envGroup);
       return envGroup;
     }
+    setParcelBoundariesVisible(visible = false) {
+      if (this.cartographyFoundry?.parcelGroup) {
+        this.cartographyFoundry.parcelGroup.visible = Boolean(visible);
+      }
+    }
+    setStreetTypographyVisible(visible = true) {
+      if (this.cartographyFoundry?.streetTypographyGroup) {
+        this.cartographyFoundry.streetTypographyGroup.visible = Boolean(visible);
+      }
+    }
+    rebuildCartography() {
+      if (this.cartographyFoundry) {
+        this.cartographyFoundry.rebuildTerrainDependentLayers();
+        this.contourLinesMesh = this.cartographyFoundry.contourGroup;
+        this.applyGroundTheme();
+      }
+    }
     setOuterTileFogColor(colorHex) {
       if (!this.outerTileFogColorUniform) {
-        this.outerTileFogColorUniform = { value: new Color("#ffffff") };
+        this.outerTileFogColorUniform = { value: new Color("#c4c9d2") };
       }
       this.outerTileFogColorUniform.value.set(colorHex);
       if (this.outerFogSkirtMat && this.outerFogSkirtMat.uniforms?.uFogColor) {
@@ -38958,7 +41587,7 @@
     }
     _attachOuterTileBoundaryFogShader(mat) {
       if (!this.outerTileFogColorUniform) {
-        this.outerTileFogColorUniform = { value: new Color("#ffffff") };
+        this.outerTileFogColorUniform = { value: new Color("#c4c9d2") };
       }
       if (!this.outerTileFogEnabledUniform) {
         this.outerTileFogEnabledUniform = { value: 1 };
@@ -38979,18 +41608,20 @@ uniform vec3 uOuterTileFogColor;
 uniform float uOuterTileFogEnabled;
 ` + shader.fragmentShader.replace(
           "#include <fog_fragment>",
-          `// Feather white fog across a 500-foot (152.40m) perimeter band all around the 320m campus tile edge (167.60m .. 320.00m)
+          `// Feather silver fog across a 500-foot (152.40m) perimeter band all around the 320m campus tile edge (167.60m .. 320.00m)
+                    // Note: gl_FragColor is already in output sRGB space after <colorspace_fragment>, so convert linear uOuterTileFogColor to match <fog_fragment>
                     vec2 featherOver = max(abs(vTileWorldPos.xz) - vec2(167.60), 0.0);
                     float featherDist = length(featherOver);
                     float edgeBlanket = smoothstep(0.0, 152.40, featherDist) * uOuterTileFogEnabled;
-                    gl_FragColor.rgb = mix(gl_FragColor.rgb, uOuterTileFogColor, edgeBlanket);
+                    vec3 outerFogSrgb = linearToOutputTexel(vec4(uOuterTileFogColor, 1.0)).rgb;
+                    gl_FragColor.rgb = mix(gl_FragColor.rgb, outerFogSrgb, edgeBlanket);
                     #include <fog_fragment>`
         );
       };
     }
     _buildOuterTileFogSkirt(parent) {
       if (!this.outerTileFogColorUniform) {
-        this.outerTileFogColorUniform = { value: new Color("#ffffff") };
+        this.outerTileFogColorUniform = { value: new Color("#c4c9d2") };
       }
       const skirtGeo = new PlaneGeometry(4400, 4400, 1, 1);
       skirtGeo.rotateX(-Math.PI / 2);
@@ -39016,12 +41647,13 @@ uniform float uOuterTileFogEnabled;
                 uniform vec3 uFogColor;
 
                 void main() {
-                    // 500-foot (152.40m) smooth feather all around the 320m campus tile boundary (167.60m .. 320.00m)
+                    // 500-foot (152.40m) smooth silver feather all around the 320m campus tile boundary (167.60m .. 320.00m)
                     vec2 featherOver = max(abs(vWorldPos.xz) - vec2(167.60), 0.0);
                     float featherDist = length(featherOver);
                     float alpha = smoothstep(0.0, 152.40, featherDist);
                     if (alpha < 0.004) discard;
                     gl_FragColor = vec4(uFogColor, alpha);
+                    #include <colorspace_fragment>
                 }
             `
       });
@@ -39098,6 +41730,12 @@ uniform float uOuterTileFogEnabled;
           this.outerTerrainMat.roughness = MathUtils.lerp(0.92, 0.98, this.mapDarkness);
           this.outerTerrainMat.needsUpdate = true;
         }
+      }
+      if (this.cartographyFoundry) {
+        this.cartographyFoundry.updateTheme({
+          topoActive: this.topoDarkBgActive,
+          mapDarkness: this.mapDarkness
+        });
       }
       if (this.contourLinesMesh && this.contourLinesMesh.material) {
         const cMat = this.contourLinesMesh.material;
@@ -39253,6 +41891,70 @@ uniform float uOuterTileFogEnabled;
       if (lx401 > -4 && lx401 <= 26.2 && lz401 > -16.1 && lz401 < 17.5 || lx401 > 26.2 && lx401 < 53.2 && lz401 > -17.85 && lz401 < 17.5) {
         const bldgRoadY = this.getBuildingRoadHeight("regional-jail-east") ?? vy;
         return Math.min(vy, bldgRoadY - 1.65);
+      }
+      const zWall2 = 115.45 + 0.47 * MathUtils.clamp((lx401 - 63.8) / (116.5 - 63.8), 0, 1);
+      const nearWall1 = lx401 >= 49.9 && lx401 <= 51.1 && lz401 >= 106.1 && lz401 <= 115.05 || lx401 >= 49.9 && lx401 <= 59.55 && lz401 >= 113.85 && lz401 <= 115.05;
+      const nearWall2 = lx401 >= 63.75 && lx401 <= 116.55 && lz401 >= zWall2 - 0.15 && lz401 <= zWall2 + 1.05;
+      if (nearWall1 || nearWall2) {
+        const washGradeY = this.getBuildingRoadHeight("building-316") ?? -0.02;
+        if (nearWall1 || lx401 <= 92.6) {
+          return Math.min(vy, washGradeY - 0.12);
+        }
+        const wxLow = -4.22 + lx401 * 0.80425 - (zWall2 - 0.35) * 0.59429;
+        const wzLow = -38.74 + lx401 * 0.59429 + (zWall2 - 0.35) * 0.80425;
+        return Math.min(vy, this.getTerrainHeight(wxLow, wzLow) - 0.08);
+      }
+      if (lx401 >= 38.9 && lx401 <= 122.6 && lz401 >= 106.55 && lz401 <= 174.5) {
+        let zMinDep = Infinity;
+        if (lx401 >= 40.95 && lx401 < 50.8) zMinDep = 106.55;
+        else if (lx401 >= 50.8 && lx401 < 63.8) zMinDep = 114.15;
+        else if (lx401 >= 63.8 && lx401 <= 116.3) zMinDep = zWall2 + 0.2;
+        else if (lx401 > 116.3) zMinDep = 117.4;
+        if (lx401 < 40.95) zMinDep = 128.95;
+        let zMaxDep = -Infinity;
+        if (lx401 < 78.75) {
+          zMaxDep = 133.1 - (lx401 - 38.9) / 40.46 * 1.55;
+        } else if (lx401 <= 117.9) {
+          zMaxDep = 150.3;
+        } else {
+          zMaxDep = 121.65;
+        }
+        const inMainGymAccessZone = lz401 >= zMinDep && lz401 <= zMaxDep;
+        const inRearAlleyNorth = lx401 >= 78.95 && lx401 <= 83 && lz401 > 150.3 && lz401 <= 174.5;
+        if (inMainGymAccessZone || inRearAlleyNorth) {
+          return vy - 0.085;
+        }
+      }
+      if (lz401 >= 43.25 && lz401 <= 174.8) {
+        const inDougRoad = lx401 >= 24.6 && lx401 <= 38.45;
+        const inDougSwSidewalk = lx401 >= 22.4 && lx401 < 24.6 && lz401 >= 59.4;
+        const inDougNeSidewalk = lx401 > 38.45 && lx401 <= 40.66 && lz401 >= 106.25;
+        if (inDougRoad || inDougSwSidewalk || inDougNeSidewalk) {
+          return vy - 0.105;
+        }
+      }
+      if (lx401 >= -27.8 && lx401 <= 24.6 && lz401 >= 41.5 && lz401 <= 151.95) {
+        const lotLevelY = this.getRawTerrainHeight(-22, 10);
+        const lowerBayY = lotLevelY + 1.42 * this.exaggeration;
+        const wxDoug = -4.22 + 24.62 * 0.80425 - 90.7 * 0.59429;
+        const wzDoug = -38.74 + 24.62 * 0.59429 + 90.7 * 0.80425;
+        const upperBayY = Math.max(
+          lowerBayY + 1.05 * this.exaggeration,
+          this.getRawTerrainHeight(wxDoug, wzDoug) - 0.08 * this.exaggeration
+        );
+        if (lx401 >= -17 && lx401 <= 22.35 && lz401 >= 82.1 && lz401 <= 83.4) {
+          return Math.min(vy, lowerBayY - 0.14);
+        }
+        if (lx401 >= -17 && lx401 <= 22.35 && lz401 >= 96.95 && lz401 <= 98.25) {
+          return Math.min(vy, upperBayY - 0.14);
+        }
+        const in411Alley = lx401 >= -27.8 && lx401 < -16.2 && lz401 >= 41.5 && lz401 <= 74.45;
+        const inBehind400Plaza = lx401 >= -16.95 && lx401 <= 24.6 && lz401 >= 59.45 && lz401 < 74.4;
+        const inParkingPads = lx401 >= -16.95 && lx401 <= 24.6 && lz401 >= 74.4 && lz401 <= 97.2;
+        const inRearAlley = lx401 >= -21.35 && lx401 <= -16.8 && lz401 >= 74.35 && lz401 <= 151.95;
+        if (in411Alley || inBehind400Plaza || inParkingPads || inRearAlley) {
+          return vy - 0.105;
+        }
       }
       return vy;
     }

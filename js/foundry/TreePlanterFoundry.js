@@ -4,11 +4,13 @@ import * as THREE from 'three';
  * TreePlanterFoundry — Interactive 3D Tree & Bush Planter & Detailed Species Generator
  * Uses multi-level recursive branching (`EZ-Tree` algorithm) + downloaded 1K PBR bark textures
  * (`assets/textures/trees/bark/*`) and high-resolution alpha-cutout foliage leaf textures
- * (`assets/textures/trees/leaves/*`) across all 16 species:
- *  1. Birch        2. Oak          3. Willow       4. Pine
- *  5. Palm         6. Maple        7. Cedar        8. Sycamore
- *  9. Spruce      10. Baobab      11. Elm         12. Fir
- * 13. Bush        14. Red Bush    15. Gold Bush   16. Juniper Bush
+ * (`assets/textures/trees/leaves/*`) across all 22 campus tree & shrub species:
+ *  1. Birch            2. Oak              3. Willow           4. Pine
+ *  5. Palm             6. Maple            7. Cedar            8. Sycamore
+ *  9. Spruce          10. Baobab          11. Elm             12. Fir
+ * 13. Ash             14. Columnar Poplar 15. Street Sapling  16. Arborvitae
+ * 17. Multi Arborvitae 18. Conical Shrub  19. Bush            20. Red Bush
+ * 21. Gold Bush       22. Juniper Bush
  *
  * Supports interactive click-to-plant on terrain, Shift+Click to remove nearest tree,
  * live 3D ghost preview, automatic localStorage persistence, and JSON file export/import
@@ -27,6 +29,12 @@ export const TREE_SPECIES_CATALOG = [
     { id: 'baobab', name: 'Baobab', color: '#647e36', trunkColor: '#8c725c', defaultHeight: 9.2 },
     { id: 'elm', name: 'Elm', color: '#4c7028', trunkColor: '#544232', defaultHeight: 10.0 },
     { id: 'fir', name: 'Fir', color: '#264b22', trunkColor: '#4a3728', defaultHeight: 11.0 },
+    { id: 'ash', name: 'Ash', color: '#588534', trunkColor: '#6b6054', defaultHeight: 10.0 },
+    { id: 'columnar_poplar', name: 'Columnar Poplar', color: '#678c3a', trunkColor: '#d2cdc1', defaultHeight: 11.4 },
+    { id: 'street_sapling', name: 'Street Sapling', color: '#8f823a', trunkColor: '#ccc7bc', defaultHeight: 6.8 },
+    { id: 'arborvitae', name: 'Arborvitae', color: '#4a7c32', trunkColor: '#5c4330', defaultHeight: 6.2 },
+    { id: 'arborvitae_clump', name: 'Multi Arborvitae', color: '#3b692b', trunkColor: '#6e5641', defaultHeight: 5.8 },
+    { id: 'cone_bush', name: 'Conical Shrub', color: '#477a33', trunkColor: '#574230', defaultHeight: 1.95 },
     { id: 'bush', name: 'Bush', color: '#437530', trunkColor: '#4a382b', defaultHeight: 1.65 },
     { id: 'red_bush', name: 'Red Bush', color: '#c43b30', trunkColor: '#4a382b', defaultHeight: 1.55 },
     { id: 'gold_bush', name: 'Gold Bush', color: '#cf962a', trunkColor: '#544232', defaultHeight: 1.55 },
@@ -213,6 +221,9 @@ export class TreePlanterFoundry {
         return {
             // High-res 1K PBR Bark Materials
             birchBark: makeBarkMat('birch', '#f5f3ec', 0.78),
+            poplarBark: makeBarkMat('birch', '#ddd8cc', 0.80),
+            ashBark: makeBarkMat('willow', '#a99f93', 0.87),
+            clumpBark: makeBarkMat('willow', '#9e8973', 0.86),
             oakBark: makeBarkMat('oak', '#c9b8a4', 0.88),
             bushBark: makeBarkMat('oak', '#c9b8a4', 0.88, true),
             willowBark: makeBarkMat('willow', '#b8a995', 0.86),
@@ -235,8 +246,15 @@ export class TreePlanterFoundry {
             baobabLeaf: makeLeafMat('ash', '#7a9c44', 0.40),
             elmLeaf: makeLeafMat('ash', '#68943c', 0.40),
             firLeaf: makeLeafMat('pine', '#3e6e38', 0.32),
+            ashLeaf: makeLeafMat('ash', '#6fa142', 0.38),
+            poplarLeaf: makeLeafMat('aspen', '#7da148', 0.40),
+            saplingOliveLeaf: makeLeafMat('ash', '#83963f', 0.38),
+            saplingBronzeLeaf: makeLeafMat('aspen', '#c9783e', 0.40),
+            arborvitaeLeaf: makeLeafMat('pine', '#5b943c', 0.30),
+            arborvitaeClumpLeaf: makeLeafMat('pine', '#4a8032', 0.30),
 
             // Detailed Bush / Shrub Foliage Materials
+            conicalShrubLeaf: makeLeafMat('pine', '#568e3a', 0.32, true),
             bushGreenLeaf: makeLeafMat('ash', '#5d9642', 0.40, true),
             bushRedLeaf: makeLeafMat('aspen', '#e0483b', 0.40, true),
             bushGoldLeaf: makeLeafMat('aspen', '#f2b035', 0.40, true),
@@ -244,6 +262,10 @@ export class TreePlanterFoundry {
 
             // Rich Volumetric Core Foliage Backing Materials (for dense interior crown shadows)
             coreGreen: makeCoreMat('#355923', 0.88, true),
+            coreConicalShrub: makeCoreMat('#366125', 0.88, true),
+            corePoplar: makeCoreMat('#4e6b2b', 0.86, false),
+            coreArborvitae: makeCoreMat('#366024', 0.88, false),
+            coreArborvitaeDark: makeCoreMat('#2a4e1d', 0.88, false),
             coreBirch: makeCoreMat('#6b8c35', 0.85, false),
             coreMaple: makeCoreMat('#b83818', 0.84, false),
             coreRedBush: makeCoreMat('#8f261e', 0.88, true),
@@ -260,17 +282,19 @@ export class TreePlanterFoundry {
         const rng = new SeededRNG(spec.seed || 12345);
         const isEvergreen = spec.treeType === 'evergreen';
         const levels = spec.levels ?? 3;
+        const hasTipLeaves = Boolean(spec.tipLeafMat);
 
         const branches = { verts: [], normals: [], uvs: [], indices: [] };
         const leaves = { verts: [], normals: [], uvs: [], indices: [] };
+        const tipLeaves = { verts: [], normals: [], uvs: [], indices: [] };
+        const deferredCrosses = hasTipLeaves ? [] : null;
         const branchQueue = [];
 
-        const pushLeafCross = (origin, orientation, baseSize, sizeVar) => {
-            const leafSize = baseSize * (1 + rng.random(sizeVar, -sizeVar));
+        const emitLeafCrossToBucket = (bucket, origin, orientation, leafSize) => {
             const W = leafSize;
             const L = leafSize;
             [0, Math.PI * 0.5].forEach((rotY) => {
-                const idx = leaves.verts.length / 3;
+                const idx = bucket.verts.length / 3;
                 const quad = [
                     new THREE.Vector3(-W * 0.5, L, 0),
                     new THREE.Vector3(-W * 0.5, 0, 0),
@@ -282,12 +306,25 @@ export class TreePlanterFoundry {
                         .applyEuler(orientation)
                         .add(origin)
                 );
-                quad.forEach((v) => leaves.verts.push(v.x, v.y, v.z));
+                quad.forEach((v) => bucket.verts.push(v.x, v.y, v.z));
                 const n = new THREE.Vector3(0, 0.35, 0.94).applyEuler(orientation).normalize();
-                for (let k = 0; k < 4; k++) leaves.normals.push(n.x, n.y, n.z);
-                leaves.uvs.push(0, 1, 0, 0, 1, 0, 1, 1);
-                leaves.indices.push(idx, idx + 1, idx + 2, idx, idx + 2, idx + 3);
+                for (let k = 0; k < 4; k++) bucket.normals.push(n.x, n.y, n.z);
+                bucket.uvs.push(0, 1, 0, 0, 1, 0, 1, 1);
+                bucket.indices.push(idx, idx + 1, idx + 2, idx, idx + 2, idx + 3);
             });
+        };
+
+        const pushLeafCross = (origin, orientation, baseSize, sizeVar) => {
+            const leafSize = baseSize * (1 + rng.random(sizeVar, -sizeVar));
+            if (deferredCrosses) {
+                deferredCrosses.push({
+                    origin: origin.clone(),
+                    orientation: orientation.clone(),
+                    leafSize
+                });
+            } else {
+                emitLeafCrossToBucket(leaves, origin, orientation, leafSize);
+            }
         };
 
         branchQueue.push({
@@ -465,6 +502,28 @@ export class TreePlanterFoundry {
             }
         }
 
+        if (deferredCrosses && deferredCrosses.length > 0) {
+            let minLy = Infinity;
+            let maxLy = -Infinity;
+            for (let i = 0; i < deferredCrosses.length; i++) {
+                const cy = deferredCrosses[i].origin.y;
+                if (cy < minLy) minLy = cy;
+                if (cy > maxLy) maxLy = cy;
+            }
+            const spanY = Math.max(0.01, maxLy - minLy);
+            const tipStartFrac = spec.tipLeafMinYFrac ?? 0.42;
+            for (let i = 0; i < deferredCrosses.length; i++) {
+                const item = deferredCrosses[i];
+                const hFrac = (item.origin.y - minLy) / spanY;
+                const radialDist = Math.hypot(item.origin.x, item.origin.z);
+                const hash = Math.abs(Math.sin(i * 12.9898 + item.origin.x * 4.13 + item.origin.z * 7.71)) % 1.0;
+                const tipScore = THREE.MathUtils.clamp((hFrac - tipStartFrac) / (1.0 - tipStartFrac), 0, 1) * 0.78
+                    + (radialDist > spanY * 0.22 ? 0.22 : 0.0);
+                const useTip = hFrac >= tipStartFrac && hash < tipScore;
+                emitLeafCrossToBucket(useTip ? tipLeaves : leaves, item.origin, item.orientation, item.leafSize);
+            }
+        }
+
         const branchGeo = new THREE.BufferGeometry();
         branchGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(branches.verts), 3));
         branchGeo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(branches.normals), 3));
@@ -477,18 +536,33 @@ export class TreePlanterFoundry {
         leafGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(leaves.uvs), 2));
         leafGeo.setIndex(new THREE.BufferAttribute(new Uint32Array(leaves.indices), 1));
 
+        let tipLeafGeo = null;
+        if (hasTipLeaves && tipLeaves.verts.length > 0) {
+            tipLeafGeo = new THREE.BufferGeometry();
+            tipLeafGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(tipLeaves.verts), 3));
+            tipLeafGeo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(tipLeaves.normals), 3));
+            tipLeafGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(tipLeaves.uvs), 2));
+            tipLeafGeo.setIndex(new THREE.BufferAttribute(new Uint32Array(tipLeaves.indices), 1));
+        }
+
         // Normalize geometry to `spec.targetHeight` so all existing planted trees & scales remain 100% accurate
         branchGeo.computeBoundingBox();
         leafGeo.computeBoundingBox();
+        if (tipLeafGeo) tipLeafGeo.computeBoundingBox();
         const maxY = Math.max(
             branchGeo.boundingBox ? branchGeo.boundingBox.max.y : 1,
             leafGeo.boundingBox ? leafGeo.boundingBox.max.y : 1,
+            tipLeafGeo && tipLeafGeo.boundingBox ? tipLeafGeo.boundingBox.max.y : 0,
             0.1
         );
         const normScale = (spec.targetHeight || 9.0) / maxY;
         const xzScale = normScale * (spec.widthScale || 1.0);
         branchGeo.scale(xzScale, normScale, xzScale);
         leafGeo.scale(xzScale, normScale, xzScale);
+        if (tipLeafGeo) {
+            tipLeafGeo.scale(xzScale, normScale, xzScale);
+            tipLeafGeo.computeBoundingSphere();
+        }
         branchGeo.computeVertexNormals();
         branchGeo.computeBoundingSphere();
         leafGeo.computeBoundingSphere();
@@ -504,7 +578,240 @@ export class TreePlanterFoundry {
         leafMesh.receiveShadow = true;
         root.add(leafMesh);
 
+        if (tipLeafGeo) {
+            const tipMesh = new THREE.Mesh(tipLeafGeo, spec.tipLeafMat);
+            tipMesh.castShadow = true;
+            tipMesh.receiveShadow = true;
+            root.add(tipMesh);
+        }
+
         return root;
+    }
+
+    /**
+     * Builds single-spire or multi-stem sculpted evergreen trees & sheared conical shrubs
+     * (Emerald Green Arborvitae, Multi-Stem Arborvitae Clump, Conical Foundation Shrub)
+     * merged cleanly into root-space bark, volumetric core, and alpha-cutout foliage BufferGeometries.
+     */
+    _buildSculptedEvergreenSpire({
+        seed = 61001,
+        spires = [],
+        barkMat,
+        coreMat,
+        leafMat,
+        tuftPitchDeg = 32,
+        tuftSize = 0.56,
+        tuftSizeVar = 0.24,
+        profileShape = 'arborvitae' // 'arborvitae' | 'teardrop_cone'
+    }) {
+        const rng = new SeededRNG(seed);
+        const barkAcc = { verts: [], normals: [], uvs: [], indices: [] };
+        const coreAcc = { verts: [], normals: [], uvs: [], indices: [] };
+        const leafAcc = { verts: [], normals: [], uvs: [], indices: [] };
+
+        const appendBufferGeo = (acc, geo) => {
+            const pos = geo.getAttribute('position');
+            const norm = geo.getAttribute('normal');
+            const uv = geo.getAttribute('uv');
+            const idx = geo.getIndex();
+            const baseV = acc.verts.length / 3;
+            for (let i = 0; i < pos.count; i++) {
+                acc.verts.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+                acc.normals.push(norm ? norm.getX(i) : 0, norm ? norm.getY(i) : 1, norm ? norm.getZ(i) : 0);
+                acc.uvs.push(uv ? uv.getX(i) : 0, uv ? uv.getY(i) : 0);
+            }
+            if (idx) {
+                for (let i = 0; i < idx.count; i++) {
+                    acc.indices.push(baseV + idx.getX(i));
+                }
+            } else {
+                for (let i = 0; i < pos.count; i++) {
+                    acc.indices.push(baseV + i);
+                }
+            }
+            geo.dispose();
+        };
+
+        const evalCrownRadius = (u, maxRadius) => {
+            const t = THREE.MathUtils.clamp(u, 0, 1);
+            if (profileShape === 'teardrop_cone') {
+                // Sheared plump Courthouse foundation shrub: rounded bottom skirt + full lower belly + smooth conical taper
+                if (t < 0.16) {
+                    const s = t / 0.16;
+                    return maxRadius * (0.42 + 0.58 * Math.sin(s * Math.PI * 0.5));
+                }
+                const k = (t - 0.16) / 0.84;
+                return maxRadius * Math.pow(Math.max(0, 1.0 - k), 0.88) + 0.015 * (1.0 - k);
+            }
+            // Classic Thuja 'Smaragd' / Arborvitae spire: tucked mulch skirt -> full cylindrical-conical body -> pointed spire apex
+            if (t < 0.09) {
+                const s = t / 0.09;
+                return maxRadius * (0.46 + 0.54 * Math.sin(s * Math.PI * 0.5));
+            }
+            const k = (t - 0.09) / 0.91;
+            return maxRadius * Math.pow(Math.max(0, 1.0 - k), 0.78) * (1.0 - 0.14 * k * k) + 0.012 * (1.0 - k);
+        };
+
+        const upVec = new THREE.Vector3(0, 1, 0);
+        const segDir = new THREE.Vector3();
+        const segMid = new THREE.Vector3();
+        const segQuat = new THREE.Quaternion();
+        const segScale = new THREE.Vector3(1, 1, 1);
+        const segMat4 = new THREE.Matrix4();
+
+        for (let s = 0; s < spires.length; s++) {
+            const sp = spires[s];
+            const basePos = new THREE.Vector3(sp.baseX || 0, 0, sp.baseZ || 0);
+            const collarPos = new THREE.Vector3(
+                sp.crownX ?? sp.baseX ?? 0,
+                sp.foliageBaseY ?? 0.12,
+                sp.crownZ ?? sp.baseZ ?? 0
+            );
+            const topPos = new THREE.Vector3(
+                (sp.crownX ?? sp.baseX ?? 0) + (sp.topLeanX || 0),
+                sp.height || 6.0,
+                (sp.crownZ ?? sp.baseZ ?? 0) + (sp.topLeanZ || 0)
+            );
+            const trunkTopY = THREE.MathUtils.lerp(collarPos.y, topPos.y, 0.78);
+            const trunkTopPos = new THREE.Vector3(
+                THREE.MathUtils.lerp(collarPos.x, topPos.x, 0.78),
+                trunkTopY,
+                THREE.MathUtils.lerp(collarPos.z, topPos.z, 0.78)
+            );
+
+            // 1. Lower bare stem (from ground y=0 to foliage collar) + inner upper leader
+            const rGround = sp.trunkRadiusBot ?? 0.085;
+            const rCollar = sp.trunkRadiusCollar ?? (rGround * 0.78);
+            const rTip = 0.016;
+
+            const addTrunkSegment = (pA, pB, rA, rB, radSegs = 7) => {
+                segDir.subVectors(pB, pA);
+                const len = segDir.length();
+                if (len < 0.02) return;
+                segMid.addVectors(pA, pB).multiplyScalar(0.5);
+                segQuat.setFromUnitVectors(upVec, segDir.clone().normalize());
+                segMat4.compose(segMid, segQuat, segScale);
+                const cyl = new THREE.CylinderGeometry(rB, rA, len, radSegs, 2);
+                cyl.applyMatrix4(segMat4);
+                appendBufferGeo(barkAcc, cyl);
+            };
+
+            if (collarPos.y > 0.06) {
+                // Slight natural bow in bare multi-stem trunks
+                const midStem = new THREE.Vector3().lerpVectors(basePos, collarPos, 0.52);
+                midStem.x += (collarPos.x - basePos.x) * 0.14;
+                midStem.z += (collarPos.z - basePos.z) * 0.14;
+                const rMid = THREE.MathUtils.lerp(rGround, rCollar, 0.52);
+                addTrunkSegment(basePos, midStem, rGround, rMid, 8);
+                addTrunkSegment(midStem, collarPos, rMid, rCollar, 8);
+            }
+            addTrunkSegment(collarPos, trunkTopPos, rCollar, rTip, 6);
+
+            if (sp.collarBranches) {
+                for (let cb = 0; cb < sp.collarBranches; cb++) {
+                    const ang = (cb / sp.collarBranches) * Math.PI * 2 + s * 0.7;
+                    const pStart = new THREE.Vector3().lerpVectors(basePos, collarPos, 0.45);
+                    const pEnd = new THREE.Vector3(
+                        collarPos.x + Math.cos(ang) * (sp.maxRadius * 0.42),
+                        collarPos.y + 0.14,
+                        collarPos.z + Math.sin(ang) * (sp.maxRadius * 0.42)
+                    );
+                    addTrunkSegment(pStart, pEnd, rCollar * 0.52, rCollar * 0.24, 5);
+                }
+            }
+
+            // 2. Sculpted inner volumetric core along the spire axis
+            const crownH = Math.max(0.35, topPos.y - collarPos.y);
+            const latheSteps = 14;
+            const lathePts = [];
+            for (let i = 0; i <= latheSteps; i++) {
+                const u = i / latheSteps;
+                const rCore = i === 0 || i === latheSteps
+                    ? 0.001
+                    : evalCrownRadius(u, sp.maxRadius) * 0.74;
+                lathePts.push(new THREE.Vector2(rCore, u * crownH * 0.96));
+            }
+            const coreGeo = new THREE.LatheGeometry(lathePts, 10);
+            segDir.subVectors(topPos, collarPos);
+            segQuat.setFromUnitVectors(upVec, segDir.clone().normalize());
+            segMat4.compose(collarPos, segQuat, segScale);
+            coreGeo.applyMatrix4(segMat4);
+            appendBufferGeo(coreAcc, coreGeo);
+
+            // 3. Dense spiral-phyllotaxis upward-cupped evergreen scale/needle foliage sprays
+            const tuftCount = sp.tuftCount || 220;
+            const goldenAngle = 2.39996323;
+            for (let t = 0; t < tuftCount; t++) {
+                const u = Math.pow((t + 0.5) / tuftCount, 0.92);
+                const axisPt = new THREE.Vector3().lerpVectors(collarPos, topPos, u);
+                const baseR = evalCrownRadius(u, sp.maxRadius);
+                const theta = t * goldenAngle + s * 1.37 + rng.random(0.16, -0.16);
+                const rJitter = baseR * rng.random(1.04, 0.78);
+
+                const tuftOrigin = new THREE.Vector3(
+                    axisPt.x + Math.cos(theta) * rJitter * 0.72,
+                    axisPt.y - 0.05,
+                    axisPt.z + Math.sin(theta) * rJitter * 0.72
+                );
+
+                // Taper tuft size smoothly toward the pointed apex
+                const apexScale = THREE.MathUtils.lerp(1.06, 0.42, Math.pow(u, 1.25));
+                const sz = tuftSize * apexScale * (1.0 + rng.random(tuftSizeVar, -tuftSizeVar));
+                const pitchRad = THREE.MathUtils.degToRad(
+                    THREE.MathUtils.lerp(tuftPitchDeg + 10, Math.max(14, tuftPitchDeg - 14), u) + rng.random(7, -7)
+                );
+
+                const qYaw = new THREE.Quaternion().setFromAxisAngle(upVec, -theta + Math.PI * 0.5);
+                const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitchRad);
+                const tuftOrient = new THREE.Euler().setFromQuaternion(qYaw.multiply(qPitch));
+
+                [0, Math.PI * 0.5].forEach((rotY) => {
+                    const idx = leafAcc.verts.length / 3;
+                    const W = sz * 0.92;
+                    const L = sz * 1.12;
+                    const quad = [
+                        new THREE.Vector3(-W * 0.5, L, 0),
+                        new THREE.Vector3(-W * 0.5, 0, 0),
+                        new THREE.Vector3(W * 0.5, 0, 0),
+                        new THREE.Vector3(W * 0.5, L, 0)
+                    ].map((v) =>
+                        v
+                            .applyEuler(new THREE.Euler(0, rotY, 0))
+                            .applyEuler(tuftOrient)
+                            .add(tuftOrigin)
+                    );
+                    quad.forEach((v) => leafAcc.verts.push(v.x, v.y, v.z));
+                    const n = new THREE.Vector3(Math.cos(theta) * 0.68, 0.52, Math.sin(theta) * 0.68).normalize();
+                    for (let k = 0; k < 4; k++) leafAcc.normals.push(n.x, n.y, n.z);
+                    leafAcc.uvs.push(0, 1, 0, 0, 1, 0, 1, 1);
+                    leafAcc.indices.push(idx, idx + 1, idx + 2, idx, idx + 2, idx + 3);
+                });
+            }
+        }
+
+        const buildMesh = (acc, mat) => {
+            if (!mat || acc.verts.length === 0) return null;
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(acc.verts), 3));
+            geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(acc.normals), 3));
+            geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(acc.uvs), 2));
+            geo.setIndex(new THREE.BufferAttribute(new Uint32Array(acc.indices), 1));
+            geo.computeBoundingBox();
+            geo.computeBoundingSphere();
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            return mesh;
+        };
+
+        const group = new THREE.Group();
+        const barkMesh = buildMesh(barkAcc, barkMat);
+        const coreMesh = buildMesh(coreAcc, coreMat);
+        const leafMesh = buildMesh(leafAcc, leafMat);
+        if (barkMesh) group.add(barkMesh);
+        if (coreMesh) group.add(coreMesh);
+        if (leafMesh) group.add(leafMesh);
+        return group;
     }
 
     /**
@@ -704,7 +1011,18 @@ export class TreePlanterFoundry {
 
     _rebuildPreviewGhost() {
         while (this.previewGroup.children.length > 0) {
-            this.previewGroup.remove(this.previewGroup.children[0]);
+            const oldChild = this.previewGroup.children[0];
+            this.previewGroup.remove(oldChild);
+            oldChild.traverse((node) => {
+                if (node.isMesh) {
+                    if (node.userData?.isPreviewRing && node.geometry) {
+                        node.geometry.dispose();
+                    }
+                    if (node.material && typeof node.material.dispose === 'function') {
+                        node.material.dispose();
+                    }
+                }
+            });
         }
         const mesh = this.createTreeMeshByType(this.selectedType);
         mesh.traverse((child) => {
@@ -720,11 +1038,12 @@ export class TreePlanterFoundry {
             }
         });
 
-        const isBush = this.selectedType.includes('bush');
+        const isBush = this.selectedType.includes('bush') || this.selectedType.includes('shrub');
         const ring = new THREE.Mesh(
             new THREE.RingGeometry(isBush ? 0.65 : 1.1, isBush ? 0.85 : 1.35, 24),
             new THREE.MeshBasicMaterial({ color: '#4ade80', side: THREE.DoubleSide })
         );
+        ring.userData.isPreviewRing = true;
         ring.rotation.x = -Math.PI * 0.5;
         ring.position.y = 0.06;
         this.previewGroup.add(ring);
@@ -742,7 +1061,7 @@ export class TreePlanterFoundry {
     }
 
     /**
-     * Returns a high-detail 3D tree or bush mesh for any of the 16 species (cached & cloned for fast instancing)
+     * Returns a high-detail 3D tree or bush mesh for any of the 22 species (cached & cloned for fast instancing)
      */
     createTreeMeshByType(type) {
         if (this.prototypeCache.has(type)) {
@@ -1095,6 +1414,248 @@ export class TreePlanterFoundry {
                     leafSize: 5.2,
                     leafSizeVar: 0.45,
                     leafAngle: 48
+                });
+            }
+
+            case 'ash': {
+                // Green / White Ash (Fraxinus): furrowed gray-brown trunk, opposite ascending limbs & compound pinnate ash crown
+                return this._generateDetailedBranchAndLeafTree({
+                    seed: 39214,
+                    treeType: 'deciduous',
+                    targetHeight: 10.0,
+                    widthScale: 1.04,
+                    barkMat: m.ashBark,
+                    leafMat: m.ashLeaf,
+                    levels: 3,
+                    length: [34, 15, 10, 5.4],
+                    radius: [1.42, 0.72, 0.68, 0.72],
+                    sections: [9, 7, 5, 3],
+                    segments: [8, 6, 4, 3],
+                    children: [7, 4, 3],
+                    angle: [0, 42, 46, 36],
+                    start: [0, 0.38, 0.20, 0.12],
+                    taper: [0.70, 0.60, 0.68, 0.72],
+                    gnarliness: [0.03, 0.08, 0.10, 0.06],
+                    forceDir: [0, 1, 0],
+                    forceStrength: 0.008,
+                    leafCount: 18,
+                    leafStart: 0.08,
+                    leafSize: 5.0,
+                    leafSizeVar: 0.42,
+                    leafAngle: 38
+                });
+            }
+
+            case 'columnar_poplar': {
+                // Tall Fastigiate Columnar Poplar / Swedish Aspen: pale smooth silvery-gray lower trunk & narrow vertical leafy column
+                const poplarGroup = this._generateDetailedBranchAndLeafTree({
+                    seed: 58412,
+                    treeType: 'deciduous',
+                    targetHeight: 11.4,
+                    widthScale: 0.36,
+                    barkMat: m.poplarBark,
+                    leafMat: m.poplarLeaf,
+                    levels: 3,
+                    length: [42, 22, 13, 7.0],
+                    radius: [1.18, 0.56, 0.55, 0.60],
+                    sections: [11, 8, 6, 4],
+                    segments: [8, 5, 4, 3],
+                    children: [11, 4, 3],
+                    angle: [0, 23, 18, 15],
+                    start: [0, 0.13, 0.14, 0.10],
+                    taper: [0.74, 0.65, 0.70, 0.74],
+                    gnarliness: [0.02, 0.05, 0.06, 0.05],
+                    forceDir: [0, 1, 0],
+                    forceStrength: 0.032,
+                    leafCount: 20,
+                    leafStart: 0.04,
+                    leafSize: 4.9,
+                    leafSizeVar: 0.38,
+                    leafAngle: 26
+                });
+
+                // Slim interior vertical crown shadow core starting well above the clear pale lower stem
+                const colCoreGeo = new THREE.CylinderGeometry(0.14, 0.38, 7.6, 8, 4);
+                colCoreGeo.translate(0, 5.55, 0);
+                const colCoreMesh = new THREE.Mesh(colCoreGeo, m.corePoplar);
+                colCoreMesh.castShadow = true;
+                colCoreMesh.receiveShadow = true;
+                poplarGroup.add(colCoreMesh);
+
+                return poplarGroup;
+            }
+
+            case 'street_sapling': {
+                // Young Upright Courthouse Sidewalk Tree: slender pale-gray trunk + upright oval two-tone olive & russet-bronze crown
+                return this._generateDetailedBranchAndLeafTree({
+                    seed: 64109,
+                    treeType: 'deciduous',
+                    targetHeight: 6.8,
+                    widthScale: 0.58,
+                    barkMat: m.poplarBark,
+                    leafMat: m.saplingOliveLeaf,
+                    tipLeafMat: m.saplingBronzeLeaf,
+                    tipLeafMinYFrac: 0.40,
+                    levels: 3,
+                    length: [34, 15, 9.5, 5.2],
+                    radius: [0.96, 0.62, 0.58, 0.62],
+                    sections: [10, 7, 5, 3],
+                    segments: [8, 5, 4, 3],
+                    children: [8, 4, 3],
+                    angle: [0, 34, 28, 24],
+                    start: [0, 0.30, 0.18, 0.12],
+                    taper: [0.72, 0.62, 0.68, 0.72],
+                    gnarliness: [0.02, 0.06, 0.08, 0.05],
+                    forceDir: [0, 1, 0],
+                    forceStrength: 0.020,
+                    leafCount: 18,
+                    leafStart: 0.06,
+                    leafSize: 4.6,
+                    leafSizeVar: 0.40,
+                    leafAngle: 32
+                });
+            }
+
+            case 'arborvitae': {
+                // Single-Spire Emerald Green Arborvitae (Thuja 'Smaragd'): dense emerald foliage all the way to ground tapering to a crisp spire
+                return this._buildSculptedEvergreenSpire({
+                    seed: 71204,
+                    barkMat: m.pineBark,
+                    coreMat: m.coreArborvitae,
+                    leafMat: m.arborvitaeLeaf,
+                    tuftPitchDeg: 32,
+                    tuftSize: 0.62,
+                    tuftSizeVar: 0.22,
+                    profileShape: 'arborvitae',
+                    spires: [
+                        {
+                            baseX: 0,
+                            baseZ: 0,
+                            crownX: 0,
+                            crownZ: 0,
+                            foliageBaseY: 0.08,
+                            height: 6.2,
+                            maxRadius: 0.78,
+                            trunkRadiusBot: 0.105,
+                            trunkRadiusCollar: 0.095,
+                            tuftCount: 280
+                        }
+                    ]
+                });
+            }
+
+            case 'arborvitae_clump': {
+                // Multi-Stem Clustered Arborvitae: 5 bare splayed woody lower trunks (0..0.84m) rising into 5 tightly grouped conical spires
+                return this._buildSculptedEvergreenSpire({
+                    seed: 78519,
+                    barkMat: m.clumpBark,
+                    coreMat: m.coreArborvitaeDark,
+                    leafMat: m.arborvitaeClumpLeaf,
+                    tuftPitchDeg: 30,
+                    tuftSize: 0.50,
+                    tuftSizeVar: 0.22,
+                    profileShape: 'arborvitae',
+                    spires: [
+                        {
+                            baseX: 0.02,
+                            baseZ: 0.03,
+                            crownX: 0.04,
+                            crownZ: 0.06,
+                            topLeanX: 0.02,
+                            topLeanZ: 0.03,
+                            foliageBaseY: 0.82,
+                            height: 5.80,
+                            maxRadius: 0.48,
+                            trunkRadiusBot: 0.068,
+                            trunkRadiusCollar: 0.054,
+                            tuftCount: 155
+                        },
+                        {
+                            baseX: -0.11,
+                            baseZ: 0.07,
+                            crownX: -0.34,
+                            crownZ: 0.20,
+                            topLeanX: -0.06,
+                            topLeanZ: 0.04,
+                            foliageBaseY: 0.84,
+                            height: 5.52,
+                            maxRadius: 0.45,
+                            trunkRadiusBot: 0.062,
+                            trunkRadiusCollar: 0.050,
+                            tuftCount: 145
+                        },
+                        {
+                            baseX: 0.12,
+                            baseZ: 0.06,
+                            crownX: 0.35,
+                            crownZ: 0.17,
+                            topLeanX: 0.06,
+                            topLeanZ: 0.04,
+                            foliageBaseY: 0.85,
+                            height: 5.36,
+                            maxRadius: 0.44,
+                            trunkRadiusBot: 0.060,
+                            trunkRadiusCollar: 0.048,
+                            tuftCount: 140
+                        },
+                        {
+                            baseX: -0.08,
+                            baseZ: -0.10,
+                            crownX: -0.24,
+                            crownZ: -0.30,
+                            topLeanX: -0.05,
+                            topLeanZ: -0.05,
+                            foliageBaseY: 0.83,
+                            height: 5.24,
+                            maxRadius: 0.43,
+                            trunkRadiusBot: 0.058,
+                            trunkRadiusCollar: 0.046,
+                            tuftCount: 135
+                        },
+                        {
+                            baseX: 0.09,
+                            baseZ: -0.10,
+                            crownX: 0.27,
+                            crownZ: -0.28,
+                            topLeanX: 0.05,
+                            topLeanZ: -0.05,
+                            foliageBaseY: 0.86,
+                            height: 5.08,
+                            maxRadius: 0.42,
+                            trunkRadiusBot: 0.056,
+                            trunkRadiusCollar: 0.045,
+                            tuftCount: 130
+                        }
+                    ]
+                });
+            }
+
+            case 'cone_bush': {
+                // Sheared Conical Foundation Shrub / Dwarf Alberta Spruce (along Courthouse 350 granite foundation wall)
+                return this._buildSculptedEvergreenSpire({
+                    seed: 83417,
+                    barkMat: m.bushBark,
+                    coreMat: m.coreConicalShrub,
+                    leafMat: m.conicalShrubLeaf,
+                    tuftPitchDeg: 38,
+                    tuftSize: 0.36,
+                    tuftSizeVar: 0.20,
+                    profileShape: 'teardrop_cone',
+                    spires: [
+                        {
+                            baseX: 0,
+                            baseZ: 0,
+                            crownX: 0,
+                            crownZ: 0,
+                            foliageBaseY: 0.20,
+                            height: 1.95,
+                            maxRadius: 0.64,
+                            trunkRadiusBot: 0.068,
+                            trunkRadiusCollar: 0.052,
+                            collarBranches: 4,
+                            tuftCount: 175
+                        }
+                    ]
                 });
             }
 

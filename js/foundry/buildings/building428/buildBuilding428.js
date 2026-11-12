@@ -277,8 +277,19 @@ export function buildPhotoRealisticBuilding428(foundry, group, building, shape, 
         buildGableWallMin = true,
         buildGableWallMax = true,
         gableVentMax = false,
-        gableVentMin = false
+        gableVentMin = false,
+        hideOnCutaway = false
     }) => {
+        const targetGrp = hideOnCutaway ? new THREE.Group() : arch;
+        if (hideOnCutaway) {
+            targetGrp.userData.hideOnCutaway = true;
+            arch.add(targetGrp);
+        }
+        const addRoofBox = (w, h, d, mat, lx, y, lz, cast = true) => {
+            const m = addBox(w, h, d, mat, lx, y, lz, cast);
+            if (hideOnCutaway) targetGrp.add(m);
+            return m;
+        };
         const spanCenter = (spanMin + spanMax) * 0.5;
         const halfWallSpan = (spanMax - spanMin) * 0.5;
         const halfEaveSpan = halfWallSpan + eaveOverhang;
@@ -314,7 +325,7 @@ export function buildPhotoRealisticBuilding428(foundry, group, building, shape, 
             triMesh.castShadow = true;
             triMesh.receiveShadow = true;
             triMesh.userData = { isSelectableBuilding: true, building };
-            arch.add(triMesh);
+            targetGrp.add(triMesh);
         };
 
         if (buildGableWallMin) buildTriangularWall(lenMin, false);
@@ -335,10 +346,10 @@ export function buildPhotoRealisticBuilding428(foundry, group, building, shape, 
                 slopeMesh.castShadow = true;
                 slopeMesh.receiveShadow = true;
                 slopeMesh.userData = { isSelectableBuilding: true, building };
-                arch.add(slopeMesh);
+                targetGrp.add(slopeMesh);
 
                 // White horizontal eave fascia board along the outer eave edge
-                addBox(0.08, 0.18, roofLength, whiteTrimMat, spanCenter + side * halfEaveSpan, eaveDropY + 0.04, lenCenter);
+                addRoofBox(0.08, 0.18, roofLength, whiteTrimMat, spanCenter + side * halfEaveSpan, eaveDropY + 0.04, lenCenter);
             } else {
                 const slopeMesh = new THREE.Mesh(
                     new THREE.BoxGeometry(roofLength, deckThick, slopeLen),
@@ -349,10 +360,10 @@ export function buildPhotoRealisticBuilding428(foundry, group, building, shape, 
                 slopeMesh.castShadow = true;
                 slopeMesh.receiveShadow = true;
                 slopeMesh.userData = { isSelectableBuilding: true, building };
-                arch.add(slopeMesh);
+                targetGrp.add(slopeMesh);
 
                 // White horizontal eave fascia board along the outer eave edge
-                addBox(roofLength, 0.18, 0.08, whiteTrimMat, lenCenter, eaveDropY + 0.04, spanCenter + side * halfEaveSpan);
+                addRoofBox(roofLength, 0.18, 0.08, whiteTrimMat, lenCenter, eaveDropY + 0.04, spanCenter + side * halfEaveSpan);
             }
 
             // Crisp White Rake Fascia Boards on Front & Rear Gable Overhangs
@@ -365,7 +376,7 @@ export function buildPhotoRealisticBuilding428(foundry, group, building, shape, 
                     rake.position.set(spanCenter + midOffset, midY + 0.01, endZ);
                     rake.rotation.z = -side * slopeAngle;
                     rake.castShadow = true;
-                    arch.add(rake);
+                    targetGrp.add(rake);
                 } else {
                     const rake = new THREE.Mesh(
                         new THREE.BoxGeometry(0.12, 0.18, slopeLen + 0.06),
@@ -374,27 +385,27 @@ export function buildPhotoRealisticBuilding428(foundry, group, building, shape, 
                     rake.position.set(endZ, midY + 0.01, spanCenter + midOffset);
                     rake.rotation.x = side * slopeAngle;
                     rake.castShadow = true;
-                    arch.add(rake);
+                    targetGrp.add(rake);
                 }
             }
         }
 
         // Ridge Cap Shingle Strip
         if (axis === 'Z') {
-            addBox(0.28, 0.10, roofLength, shingleRoofMat, spanCenter, peakY + 0.10, lenCenter);
+            addRoofBox(0.28, 0.10, roofLength, shingleRoofMat, spanCenter, peakY + 0.10, lenCenter);
         } else {
-            addBox(roofLength, 0.10, 0.28, shingleRoofMat, lenCenter, peakY + 0.10, spanCenter);
+            addRoofBox(roofLength, 0.10, 0.28, shingleRoofMat, lenCenter, peakY + 0.10, spanCenter);
         }
 
         // Rectangular Louvered Gable Attic Vent below the peak (visible in photo!)
         const addGableVent = (posAlongRidge, normalSign) => {
             const ventY = baseY + ridgeRise * 0.62;
             if (axis === 'Z') {
-                addBox(0.38, 0.52, 0.06, whiteTrimMat, spanCenter, ventY, posAlongRidge + normalSign * 0.03);
-                addBox(0.28, 0.42, 0.07, darkMetalMat, spanCenter, ventY, posAlongRidge + normalSign * 0.04);
+                addRoofBox(0.38, 0.52, 0.06, whiteTrimMat, spanCenter, ventY, posAlongRidge + normalSign * 0.03);
+                addRoofBox(0.28, 0.42, 0.07, darkMetalMat, spanCenter, ventY, posAlongRidge + normalSign * 0.04);
             } else {
-                addBox(0.06, 0.52, 0.38, whiteTrimMat, posAlongRidge + normalSign * 0.03, ventY, spanCenter);
-                addBox(0.07, 0.42, 0.28, darkMetalMat, posAlongRidge + normalSign * 0.04, ventY, spanCenter);
+                addRoofBox(0.06, 0.52, 0.38, whiteTrimMat, posAlongRidge + normalSign * 0.03, ventY, spanCenter);
+                addRoofBox(0.07, 0.42, 0.28, darkMetalMat, posAlongRidge + normalSign * 0.04, ventY, spanCenter);
             }
         };
         if (gableVentMax) addGableVent(lenMax, +1);
@@ -449,10 +460,12 @@ export function buildPhotoRealisticBuilding428(foundry, group, building, shape, 
         buildGableWallMin: false,
         buildGableWallMax: true,
         gableVentMax: false,
-        gableVentMin: false
+        gableVentMin: false,
+        hideOnCutaway: true
     });
     // White porch support post at the outer right corner of the nested entry gable (lx = +2.38m, lz = +4.65m)
-    addBox(0.14, eaveY - 0.42, 0.14, whiteTrimMat, 2.38, 0.42 + (eaveY - 0.42) * 0.5, 4.65);
+    const porchPost428 = addBox(0.14, eaveY - 0.42, 0.14, whiteTrimMat, 2.38, 0.42 + (eaveY - 0.42) * 0.5, 4.65);
+    porchPost428.userData.hideOnCutaway = true;
 
     // =========================================================================
     // 4. WINDOWS & RECESSED WHITE 6-LITE FRONT ENTRY DOOR (Photo-Matched)
@@ -465,6 +478,7 @@ export function buildPhotoRealisticBuilding428(foundry, group, building, shape, 
         glassMat = darkWindowGlassMat
     }) => {
         const grp = new THREE.Group();
+        grp.userData.hideOnCutaway = true;
         grp.position.set(x, y, z);
         if (wallNormal === 'Z-') grp.rotation.y = Math.PI;
         else if (wallNormal === 'X+') grp.rotation.y = Math.PI * 0.5;
@@ -531,7 +545,7 @@ export function buildPhotoRealisticBuilding428(foundry, group, building, shape, 
             for (let col = 0; col < 2; col++) {
                 const gx = doorX + (col === 0 ? -0.18 : 0.18);
                 const gy = doorY + 0.22 + row * 0.25;
-                addBox(0.24, 0.19, 0.03, darkWindowGlassMat, gx, gy, doorZ + 0.075, false);
+                addBox(0.24, 0.19, 0.03, darkWindowGlassMat, gx, gy, doorZ + 0.075, false).userData.hideOnCutaway = true;
             }
         }
         // Brass/dark door handle + dark wall-mounted mailbox to the left of the door

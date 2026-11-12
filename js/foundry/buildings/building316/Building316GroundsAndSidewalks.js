@@ -918,8 +918,10 @@ export function buildBuilding316GroundsAndSidewalks(ctx) {
                 { xStart: -13.35, xEnd: -11.07, zStart: -10.30, zEnd: -2.12, xSteps: 2, zSteps: 6 },
                 // 3. Bay directly behind Building 316 East Rear Wing (lx = -11.07m .. -3.66m, lz = -10.30m .. -6.05m)
                 { xStart: -11.07, xEnd: -3.66, zStart: -10.30, zEnd: -6.05, xSteps: 6, zSteps: 4 },
-                // 4. Main Parking Lot in front of the Gym & Sallyport, behind Building 316 out to Douglas St (lx = -13.35m .. +12.50m, lz = -43.51m .. -10.30m)
-                { xStart: -13.35, xEnd: 12.50, zStart: -43.51, zEnd: -10.30, xSteps: 18, zSteps: 22 }
+                // 4A. Main Service Lot behind Building 316 out to Douglas St (lx = -13.35m .. +12.50m, lz = -35.78m .. -10.30m)
+                { xStart: -13.35, xEnd: 12.50, zStart: -35.78, zEnd: -10.30, xSteps: 18, zSteps: 18 },
+                // 4B. Lower Gym Pocket inside Red L-Shaped Retaining Wall #1 (lx = -13.35m .. -0.05m, lz = -43.51m .. -35.78m)
+                { xStart: -13.35, xEnd: -0.05, zStart: -43.51, zEnd: -35.78, xSteps: 10, zSteps: 6 }
             ];
 
             gymParkingSpans.forEach(({ xStart, xEnd, zStart, zEnd, xSteps, zSteps }) => {
@@ -940,8 +942,99 @@ export function buildBuilding316GroundsAndSidewalks(ctx) {
                 }
             });
 
-            // Perimeter concrete edge skirts along the SW service road edge (lz = -43.51m) and Douglas St edge (lx = +12.50m)
-            addGradedWallSegment(-13.35, -43.51, 12.50, -43.51, 0.18, (px, pz) => yGymParkingLot(px, pz), concreteMat);
-            addGradedWallSegment(12.50, -43.51, 12.50, -10.30, 0.18, (px, pz) => yGymParkingLot(px, pz), concreteMat);
+            // Perimeter concrete edge skirts along the SW edge (lz = -43.51m), L-wall step (lz = -35.78m), and Douglas St edge (lx = +12.50m)
+            addGradedWallSegment(-13.35, -43.51, -0.05, -43.51, 0.18, (px, pz) => yGymParkingLot(px, pz), concreteMat);
+            addGradedWallSegment(-0.05, -43.51, -0.05, -35.78, 0.18, (px, pz) => yGymParkingLot(px, pz), concreteMat);
+            addGradedWallSegment(-0.05, -35.78, 12.50, -35.78, 0.18, (px, pz) => yGymParkingLot(px, pz), concreteMat);
+            addGradedWallSegment(12.50, -35.78, 12.50, -10.30, 0.18, (px, pz) => yGymParkingLot(px, pz), concreteMat);
+
+            // Lower Gym Service Lot Details: Stall Striping, Precast Wheel Stops & Fenced Refuse/Service Enclosure
+            const lotStripeMat = new THREE.MeshStandardMaterial({
+                color: '#f1f5f9',
+                roughness: 0.72,
+                metalness: 0.02,
+                polygonOffset: true,
+                polygonOffsetFactor: -3,
+                polygonOffsetUnits: -3
+            });
+            const wheelStopMat = new THREE.MeshStandardMaterial({ color: '#d6d2c8', roughness: 0.85, metalness: 0.03 });
+            const enclosureSlatsMat = new THREE.MeshStandardMaterial({ color: '#5c554c', roughness: 0.78, metalness: 0.15 });
+            const dumpsterBlueMat = new THREE.MeshStandardMaterial({ color: '#1e3a5f', roughness: 0.62, metalness: 0.25 });
+            const dumpsterLidMat = new THREE.MeshStandardMaterial({ color: '#1f2428', roughness: 0.75, metalness: 0.10 });
+            const safetyBollardMat = new THREE.MeshStandardMaterial({ color: '#e5b524', roughness: 0.48, metalness: 0.18 });
+
+            // 3 Perpendicular Staff/County Fleet Stalls tucked inside the L-Retaining-Wall Pocket (lx = -5.2m .. -0.3m, lz = -43.2m .. -35.4m)
+            for (let s = 0; s <= 3; s++) {
+                const sz = -43.10 + s * 2.65;
+                const xA = -5.15, xB = -0.35;
+                addGradedQuad(
+                    [xA, yGymParkingLot(xA, sz - 0.055), sz - 0.055],
+                    [xB, yGymParkingLot(xB, sz - 0.055), sz - 0.055],
+                    [xB, yGymParkingLot(xB, sz + 0.055), sz + 0.055],
+                    [xA, yGymParkingLot(xA, sz + 0.055), sz + 0.055],
+                    lotStripeMat,
+                    0.012
+                );
+                if (s < 3) {
+                    const midZ = sz + 1.325;
+                    const ws = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.13, 1.82), wheelStopMat);
+                    ws.position.set(-0.78, yGymParkingLot(-0.78, midZ) + 0.065, midZ);
+                    ws.castShadow = true;
+                    ws.receiveShadow = true;
+                    arch.add(ws);
+                }
+            }
+
+            // 4 Angled/Perpendicular Service Stalls along the Building 316 Rear Bay (lx = -9.8m .. +1.2m, lz = -15.4m .. -10.5m)
+            for (let s = 0; s <= 4; s++) {
+                const sx = -9.60 + s * 2.70;
+                const zA = -15.35, zB = -10.55;
+                addGradedQuad(
+                    [sx - 0.055, yGymParkingLot(sx - 0.055, zA), zA],
+                    [sx + 0.055, yGymParkingLot(sx + 0.055, zA), zA],
+                    [sx + 0.055, yGymParkingLot(sx + 0.055, zB), zB],
+                    [sx - 0.055, yGymParkingLot(sx - 0.055, zB), zB],
+                    lotStripeMat,
+                    0.012
+                );
+                if (s < 4) {
+                    const midX = sx + 1.35;
+                    const ws = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.13, 0.18), wheelStopMat);
+                    ws.position.set(midX, yGymParkingLot(midX, -11.05) + 0.065, -11.05);
+                    ws.castShadow = true;
+                    ws.receiveShadow = true;
+                    arch.add(ws);
+                }
+            }
+
+            // Fenced Twin-Dumpster Service Enclosure + Safety Bollards in the Rear Courtyard Pocket (lx = -10.6m .. -6.8m, lz = -9.9m .. -6.5m)
+            {
+                const encCx = -8.70, encCz = -8.10;
+                const encBaseY = yGymParkingLot(encCx, encCz);
+                const wallRear = new THREE.Mesh(new THREE.BoxGeometry(3.70, 1.75, 0.10), enclosureSlatsMat);
+                wallRear.position.set(encCx, encBaseY + 0.875, -6.55);
+                wallRear.castShadow = true;
+                arch.add(wallRear);
+                [-10.50, -6.90].forEach((wx) => {
+                    const sideW = new THREE.Mesh(new THREE.BoxGeometry(0.10, 1.75, 3.00), enclosureSlatsMat);
+                    sideW.position.set(wx, encBaseY + 0.875, -8.00);
+                    sideW.castShadow = true;
+                    arch.add(sideW);
+                    const bol = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.02, 10), safetyBollardMat);
+                    bol.position.set(wx + (wx < encCx ? -0.22 : 0.22), encBaseY + 0.51, -9.55);
+                    bol.castShadow = true;
+                    arch.add(bol);
+                });
+                [-9.55, -7.85].forEach((dx) => {
+                    const bin = new THREE.Mesh(new THREE.BoxGeometry(1.38, 1.18, 1.55), dumpsterBlueMat);
+                    bin.position.set(dx, encBaseY + 0.59, -7.85);
+                    bin.castShadow = true;
+                    arch.add(bin);
+                    const lid = new THREE.Mesh(new THREE.BoxGeometry(1.44, 0.10, 1.60), dumpsterLidMat);
+                    lid.position.set(dx, encBaseY + 1.22, -7.85);
+                    lid.rotation.x = 0.08;
+                    arch.add(lid);
+                });
+            }
         }
 }

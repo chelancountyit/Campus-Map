@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getBrushedParkingConcreteTexture } from '../building401/WashingtonStreetCorridor.js';
 
 /**
  * Photo-realistic 3D reconstruction of Building 411/412 (410 / 411 / 412 Washington St —
@@ -138,6 +139,18 @@ export function buildPhotoRealisticBuilding411_412(
         color: '#e2dcd0',
         roughness: 0.86,
         metalness: 0.03,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2
+    });
+
+    // C2. Brushed Concrete Parking Surface Material (unified 1:1 with newly added B400ConcreteParking bays)
+    const parkingConcreteMat = new THREE.MeshStandardMaterial({
+        color: '#d4cfc5',
+        map: getBrushedParkingConcreteTexture(),
+        roughness: 0.84,
+        metalness: 0.03,
+        side: THREE.DoubleSide,
         polygonOffset: true,
         polygonOffsetFactor: -2,
         polygonOffsetUnits: -2
@@ -341,6 +354,7 @@ export function buildPhotoRealisticBuilding411_412(
     // Helper: Add 2-Lite Horizontal Sliding Window with White Outer Frame & Dark Bronze Sash
     const addSlidingWindow = (lx, y, lz, w, h, facing, hasBlinds = true) => {
         const g = new THREE.Group();
+        g.userData.hideOnCutaway = true;
         g.position.set(lx, y, lz);
         if (facing === '+X') g.rotation.y = Math.PI * 0.5;
         else if (facing === '-X') g.rotation.y = -Math.PI * 0.5;
@@ -557,9 +571,9 @@ export function buildPhotoRealisticBuilding411_412(
 
     // Full-Width 6-Post Covered Walkway Porch Canopy on 412 Wing (lx = -20.30m..-3.65m, lz = +2.15m..+4.45m, Photo 8 & Top Views)
     // Lower step-down dark slate-gray canopy roof (y = 2.68m..2.86m) below the 412 front parapet wall where the 2 wall-pack lights are mounted
-    addBox(16.75, 0.16, 2.38, darkSashMat, -11.975, 2.76, 3.30);
-    addBox(16.65, 0.05, 2.30, canopyRoofMat, -11.975, 2.86, 3.30);
-    addBox(16.60, 0.04, 2.26, whiteTrimMat, -11.975, 2.67, 3.30);
+    addBox(16.75, 0.16, 2.38, darkSashMat, -11.975, 2.76, 3.30).userData.hideOnCutaway = true;
+    addBox(16.65, 0.05, 2.30, canopyRoofMat, -11.975, 2.86, 3.30).userData.hideOnCutaway = true;
+    addBox(16.60, 0.04, 2.26, whiteTrimMat, -11.975, 2.67, 3.30).userData.hideOnCutaway = true;
 
     // 6 Square Porch Support Posts along lz = +2.25m with concrete base collars & yellow "RESERVED PARKING" signs (Photo 8)
     const postXs412 = [-4.05, -7.25, -10.45, -13.65, -16.85, -20.00];
@@ -600,45 +614,11 @@ export function buildPhotoRealisticBuilding411_412(
     addBox(0.55, 0.42, 1.65, concreteMat, 16.00, 0.21, 9.65);
     addBox(0.52, 0.22, 0.75, basaltRockMat, 16.35, 0.11, 10.65);
 
-    // White 6-Panel Service Door (lz = +5.65m, lx = +15.73m, Photo 4)
+    // White 6-Panel Service Door (lz = +5.65m, lx = +15.73m, Photo 4 — stoop, transformer pad & poles seated on yAlleyLot below)
     addBox(0.08, 2.18, 1.12, whiteTrimMat, 15.75, 1.25, 5.65);
     addBox(0.10, 2.08, 0.98, new THREE.MeshStandardMaterial({ color: '#f5f4ee', roughness: 0.5 }), 15.77, 1.23, 5.65);
     addBox(0.04, 0.18, 0.26, whiteTrimMat, 15.83, 1.48, 5.65, false); // Door notice sign
     addBox(0.05, 0.05, 0.08, galvMetalMat, 15.83, 1.05, 6.02, false); // Door handle
-    addBox(0.85, 0.12, 1.35, concreteMat, 16.15, 0.06, 5.65);         // Concrete door stoop
-
-    // Pad-Mounted Green Utility Transformer Box on Concrete Slab (lx = +16.75m, lz = +3.15m, Photos 1 & 4)
-    addBox(1.18, 0.16, 1.45, concreteMat, 16.75, 0.08, 3.15);
-    addBox(1.04, 1.02, 1.32, transformerGreenMat, 16.75, 0.67, 3.15);
-    addBox(0.02, 0.08, 0.22, yellowGuyMat, 17.28, 1.08, 3.15, false); // Yellow caution decal
-
-    // 2 Tall Wood Utility Poles, Crossarms, Pole-Mounted Transformer & Yellow Guy-Wire Guard (Photos 1, 4, 7)
-    [10.85, 4.45].forEach((pz, pIdx) => {
-        const px = pIdx === 0 ? 16.85 : 16.65;
-        const poleH = 8.8;
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, poleH, 12), utilityWoodPoleMat);
-        pole.position.set(px, poleH * 0.5 - 0.2, pz);
-        pole.castShadow = true;
-        arch.add(pole);
-        // Wood crossarm at top
-        addBox(0.12, 0.14, 1.85, utilityWoodPoleMat, px, poleH - 0.65, pz);
-        if (pIdx === 1) {
-            // Vertical gray riser conduit alongside Pole 2 + yellow guy wire anchoring at lz = +1.55m (Photos 1 & 4)
-            const cond = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 7.8, 8), galvMetalMat);
-            cond.position.set(px + 0.18, 3.8, pz - 0.15);
-            arch.add(cond);
-            // Slanted yellow guy-wire guard from (px, 3.2, pz) down to ground anchor (16.80, 0.0, 1.45)
-            const guyGuard = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 3.1, 8), yellowGuyMat);
-            guyGuard.position.set(px + 0.08, 1.45, 2.55);
-            guyGuard.rotation.x = 0.68;
-            arch.add(guyGuard);
-        } else {
-            // Cylindrical gray pole-top transformer can (visible in Photo 7)
-            const transCan = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.92, 14), galvMetalMat);
-            transCan.position.set(px - 0.34, poleH - 1.35, pz);
-            arch.add(transCan);
-        }
-    });
 
     // --- B. NE INSIDE L-CORNER ENTRANCE (411 WASHINGTON — Photo 1: 3c9928f3.jpg) ---
     // 2-Step Concrete Porch Landing (lx = +11.68m..+15.65m, lz = -2.25m..+1.05m)
@@ -646,18 +626,18 @@ export function buildPhotoRealisticBuilding411_412(
     addBox(2.45, 0.17, 1.15, concreteMat, 13.15, 0.085, -1.78); // Lower wide step tread (y = 0.17m)
 
     // Projecting Flat-Roofed Corner Canopy on Square Post (lx = +11.68m..+14.55m, lz = -2.15m..+1.05m, Photo 1 & Top Views)
-    addBox(2.90, 0.22, 3.22, fasciaTrimMat, 13.12, 2.98, -0.55);
-    addBox(2.96, 0.05, 3.28, darkSashMat, 13.12, 3.10, -0.55);
-    addBox(2.84, 0.06, 3.16, roofMembraneMat, 13.12, 3.12, -0.55);
-    addBox(2.78, 0.04, 3.10, whiteTrimMat, 13.12, 2.86, -0.55);
+    addBox(2.90, 0.22, 3.22, fasciaTrimMat, 13.12, 2.98, -0.55).userData.hideOnCutaway = true;
+    addBox(2.96, 0.05, 3.28, darkSashMat, 13.12, 3.10, -0.55).userData.hideOnCutaway = true;
+    addBox(2.84, 0.06, 3.16, roofMembraneMat, 13.12, 3.12, -0.55).userData.hideOnCutaway = true;
+    addBox(2.78, 0.04, 3.10, whiteTrimMat, 13.12, 2.86, -0.55).userData.hideOnCutaway = true;
     addBox(0.12, 2.54, 0.12, whiteTrimMat, 14.38, 1.61, -1.96); // Square corner support post
 
     // Tall Storefront Door + Sidelight + 2-Pane Upper Transom on South-Facing Wall (lx = +14.85m, lz = +1.05m, Photo 1)
-    addBox(1.38, 2.86, 0.08, whiteTrimMat, 14.85, 1.77, 1.02);
-    addBox(0.84, 1.98, 0.10, puttyDoorMat, 15.08, 1.33, 1.00); // Putty-beige solid door leaf
-    addBox(0.40, 1.98, 0.10, windowGlassMat, 14.42, 1.33, 1.00); // Narrow dark glass sidelight
-    addBox(0.82, 0.72, 0.10, blindGlassMat, 15.08, 2.74, 1.00); // Upper transom pane 1 with blinds
-    addBox(0.40, 0.72, 0.10, blindGlassMat, 14.42, 2.74, 1.00); // Upper transom pane 2 with blinds
+    addBox(1.38, 2.86, 0.08, whiteTrimMat, 14.85, 1.77, 1.02).userData.hideOnCutaway = true;
+    addBox(0.84, 1.98, 0.10, puttyDoorMat, 15.08, 1.33, 1.00).userData.hideOnCutaway = true; // Putty-beige solid door leaf
+    addBox(0.40, 1.98, 0.10, windowGlassMat, 14.42, 1.33, 1.00).userData.hideOnCutaway = true; // Narrow dark glass sidelight
+    addBox(0.82, 0.72, 0.10, blindGlassMat, 15.08, 2.74, 1.00).userData.hideOnCutaway = true; // Upper transom pane 1 with blinds
+    addBox(0.40, 0.72, 0.10, blindGlassMat, 14.42, 2.74, 1.00).userData.hideOnCutaway = true; // Upper transom pane 2 with blinds
 
     // Square Window with Venetian Blinds next to storefront (lx = +13.48m, lz = +1.05m, Photo 1)
     addSlidingWindow(13.48, 2.02, 1.03, 1.15, 1.28, '-Z', true);
@@ -731,32 +711,91 @@ export function buildPhotoRealisticBuilding411_412(
         return Math.max(yLin, yStreetGrade(lx, lz) + 0.06);
     };
 
-    // 411 NE Alley & Building 400 SW Foundation Concrete Platform surface (lx = +11.68m .. +64.60m, lz = -22.03m .. +11.60m):
+    // Exact outer weld line in 411 local coords matching lz401 = 74.415m (overlaps B400ConcreteParking_LowerBay / B400ConcreteRearAlley at lz401 = 74.40m by 1.5cm)
+    const zOuter411 = (lx) => 11.11 + 0.00635 * lx;
+
+    // 411 NE Alley & Building 400 SW Foundation Concrete Platform surface (lx = +11.68m .. +64.60m, lz = -22.03m .. zOuter411(lx)):
     // Slopes both longitudinally (from y = +0.01m at the 411 rear entrance down to the Washington St sidewalk at lz = -22.03m)
-    // and laterally across the alley (from Building 411's wall at lx = +11.68m/+15.73m down to Building 400's concrete
-    // foundation plinth and rear wall at lx = +23.56m), and then continues from lx = +23.62m all the way to Douglas St
-    // (lx = +64.60m, lz400 = +24.37m) following Building 400's SW foundation contour.
+    // and laterally across the alley (from Building 411's wall at lx = +11.68m/+15.73m to Building 400's concrete
+    // foundation plinth and rear parking plaza at lx = +23.62m), and welds with 0.0000m step/gap along lx = 23.62m
+    // into Building400ConcreteParkingGround and along zOuter411(lx) into B400ConcreteRearAlley & B400ConcreteParking_LowerBay!
     const yAlleyLot = (lx, lz) => {
         if (lx >= 23.62) {
-            const tDoug = THREE.MathUtils.clamp((lx - 23.62) / (64.60 - 23.62), 0, 1);
-            const hBias = THREE.MathUtils.lerp(0.12, 0.10, tDoug);
+            const zOut = zOuter411(lx);
+            const tDoug = THREE.MathUtils.clamp((lx - 23.62) / (64.40 - 23.62), 0, 1);
+            const baseBias = THREE.MathUtils.lerp(0.12, 0.085, tDoug);
+            const rearWeldBias = THREE.MathUtils.lerp(
+                0.106,
+                0.085,
+                THREE.MathUtils.smoothstep(lx, 62.18, 64.40)
+            );
+            const hBias = THREE.MathUtils.lerp(
+                baseBias,
+                rearWeldBias,
+                THREE.MathUtils.smoothstep(lz, 6.00, zOut)
+            );
             return yStreetGrade(lx, lz) + hBias;
         }
+        const zOut = zOuter411(lx);
+        const zOut23 = zOuter411(23.62);
         const tZ = THREE.MathUtils.clamp((lz - (-22.03)) / (1.05 - (-22.03)), 0, 1);
         // Left edge elevation along Building 411's NE walls (lx = 11.68m for main wing, lx = 15.73m for rear wing)
         const yLeft = lz >= 1.05 ? 0.01 : THREE.MathUtils.lerp(ySwTop(11.68), 0.01, tZ);
-        // Right edge elevation along Building 400's Rear Wall & concrete foundation plinth (lx = 23.56m .. 23.62m)
-        const yFound400 = yStreetGrade(23.62, lz) + 0.12;
+        // Right edge elevation along Building 400's Rear Wall & concrete foundation plinth (lx = 23.62m — 100% identical to Building400ConcreteParkingGround)
+        const yFound400 =
+            yStreetGrade(23.62, lz) +
+            THREE.MathUtils.lerp(0.12, 0.106, THREE.MathUtils.smoothstep(lz, 6.00, zOut23));
         const zBlendFront = THREE.MathUtils.smoothstep(lz, -22.03, -19.50);
         const yRight = THREE.MathUtils.lerp(ySwTop(23.62), yFound400, zBlendFront);
-        // Lateral interpolation from Building 411's wall/steps (xAnchorLeft) to Building 400's foundation wall (x = 23.62m)
+        // Lateral interpolation from Building 411's wall/steps (xAnchorLeft) to Building 400's foundation/parking seam (x = 23.62m)
         const xAnchorLeft = THREE.MathUtils.lerp(11.68, 15.73, THREE.MathUtils.smoothstep(lz, 0.50, 2.50));
         const tX = THREE.MathUtils.clamp((lx - xAnchorLeft) / (23.62 - xAnchorLeft), 0, 1);
         const yCross = THREE.MathUtils.lerp(yLeft, yRight, tX);
+        // Smooth full-width ramp blend across the rear alley drive lane (lx = 15.85 .. 18.55, lz = 2.50 .. zOut)
+        // so the alley mouth lands flush on B400ConcreteRearAlley (+0.106m) with zero internal cliff
+        const rearAlleyWeld =
+            THREE.MathUtils.smoothstep(lx, 15.85, 18.55) *
+            THREE.MathUtils.smoothstep(lz, 2.50, zOut);
+        const yTargetRear =
+            yStreetGrade(lx, lz) +
+            THREE.MathUtils.lerp(0.12, 0.106, THREE.MathUtils.smoothstep(lz, 6.00, zOut));
+        const yWelded = THREE.MathUtils.lerp(yCross, yTargetRear, rearAlleyWeld);
         // At lz = -22.03m, match Washington St sidewalk ySwTop(lx) across the entire alley mouth
-        const ySurface = THREE.MathUtils.lerp(ySwTop(lx), yCross, zBlendFront);
-        return Math.max(ySurface, yStreetGrade(lx, lz) + 0.04);
+        return THREE.MathUtils.lerp(ySwTop(lx), yWelded, zBlendFront);
     };
+
+    // Seat the 411 service door stoop, transformer pad, and utility poles on the auto-graded alley concrete surface
+    {
+        const stoopY = yAlleyLot(16.15, 5.65);
+        addBox(0.85, 0.16, 1.35, concreteMat, 16.15, stoopY + 0.06, 5.65); // Concrete door stoop
+        const xfmrPadY = yAlleyLot(16.75, 3.15);
+        addBox(1.18, 0.18, 1.45, concreteMat, 16.75, xfmrPadY + 0.08, 3.15);
+        addBox(1.04, 1.02, 1.32, transformerGreenMat, 16.75, xfmrPadY + 0.67, 3.15);
+        addBox(0.02, 0.08, 0.22, yellowGuyMat, 17.28, xfmrPadY + 1.08, 3.15, false); // Yellow caution decal
+    }
+    [10.85, 4.45].forEach((pz, pIdx) => {
+        const px = pIdx === 0 ? 16.85 : 16.65;
+        const pGroundY = yAlleyLot(px, pz);
+        const poleH = 8.8;
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, poleH, 12), utilityWoodPoleMat);
+        pole.position.set(px, pGroundY + poleH * 0.5 - 0.2, pz);
+        pole.castShadow = true;
+        arch.add(pole);
+        addBox(0.12, 0.14, 1.85, utilityWoodPoleMat, px, pGroundY + poleH - 0.65, pz);
+        if (pIdx === 1) {
+            const cond = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 7.8, 8), galvMetalMat);
+            cond.position.set(px + 0.18, pGroundY + 3.8, pz - 0.15);
+            arch.add(cond);
+            const guyGuard = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 3.1, 8), yellowGuyMat);
+            guyGuard.position.set(px + 0.08, pGroundY + 1.45, 2.55);
+            guyGuard.rotation.x = 0.68;
+            arch.add(guyGuard);
+        } else {
+            const transCan = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.92, 14), galvMetalMat);
+            transCan.position.set(px - 0.34, pGroundY + poleH - 1.35, pz);
+            arch.add(transCan);
+        }
+    });
 
     // 1. Contour-Following 410 SW Concrete Walkway (lx = -1.68m..-0.32m, lz = -20.85m..-0.20m)
     // Stays flush with yWallTop(-1.68) across the gravel bed span (lz = -20.85m .. -19.15m) so the left return wall
@@ -904,19 +943,20 @@ export function buildPhotoRealisticBuilding411_412(
     addBox(0.10, 2.04, 0.92, puttyDoorMat, -1.71, 1.36, 1.45);
     // Sloped Black Awning Hood above 410 Entry Door (lx = -2.35m..-1.68m, lz = +0.75m..+2.15m, Photo 7)
     const awningSlope = addBox(0.76, 0.06, 1.44, darkAwningMat, -2.02, 2.62, 1.45);
+    awningSlope.userData.hideOnCutaway = true;
     awningSlope.rotation.z = 0.38;
     // Black iron triangular side brackets under awning
     [0.78, 2.12].forEach((az) => {
-        addBox(0.68, 0.03, 0.03, darkMetalMat, -2.02, 2.46, az);
+        addBox(0.68, 0.03, 0.03, darkMetalMat, -2.02, 2.46, az).userData.hideOnCutaway = true;
     });
 
     // Large Square Storefront Window with "OPEN" sign to the right of the 410 door (lx = -1.68m, lz = +2.98m, Photo 7)
-    addBox(0.08, 1.62, 1.46, whiteTrimMat, -1.69, 1.68, 2.98);
-    addBox(0.10, 1.48, 1.32, windowGlassMat, -1.71, 1.68, 2.98);
+    addBox(0.08, 1.62, 1.46, whiteTrimMat, -1.69, 1.68, 2.98).userData.hideOnCutaway = true;
+    addBox(0.10, 1.48, 1.32, windowGlassMat, -1.71, 1.68, 2.98).userData.hideOnCutaway = true;
     const openSignMat = createSignMat('#1e3a8a', '#93c5fd', [
         { text: 'OPEN', y: 64, color: '#ffffff', font: 'bold 42px Arial' }
     ], 160, 96);
-    addBox(0.02, 0.18, 0.32, openSignMat, -1.72, 1.68, 2.48, false);
+    addBox(0.02, 0.18, 0.32, openSignMat, -1.72, 1.68, 2.48, false).userData.hideOnCutaway = true;
 
     // Vertical "410" Numbers, Customer Parking Plaque, Yellow Notice, Blue ADA Sign & Dark Mailbox left of door (lz = -0.85m..+0.75m, Photo 7)
     const vert410Mat = createSignMat('#8e8f88', null, [
@@ -1015,7 +1055,16 @@ export function buildPhotoRealisticBuilding411_412(
         return { pitchX: -Math.atan2(dz, 1.0), rollZ: Math.atan2(dx, 1.0) };
     };
 
-    // Helper: builds a smooth terrain-conforming quad mesh with guaranteed +Y upward normal & world-scaled UVs
+    // Helper: builds a smooth terrain-conforming quad mesh with guaranteed +Y upward normal & world-locked 0.24 UVs
+    const evalParkingUv = (px, pz) => {
+        const wx = bCenter[0] + px * cosA + pz * sinA;
+        const wz = bCenter[1] - px * sinA + pz * cosA;
+        const dx401 = wx - (-4.22);
+        const dz401 = wz - (-38.74);
+        const lx401 = dx401 * 0.80425 + dz401 * 0.59429;
+        const lz401 = -dx401 * 0.59429 + dz401 * 0.80425;
+        return [lx401 * 0.24, lz401 * 0.24];
+    };
     const addGradedQuad = (p00, p10, p11, p01, mat, yBias = 0) => {
         const geom = new THREE.BufferGeometry();
         // Check 2D cross product in (X, Z): in Three.js, (+Z) x (+X) = +Y
@@ -1029,14 +1078,23 @@ export function buildPhotoRealisticBuilding411_412(
             c[0], c[1] + yBias, c[2],
             d[0], d[1] + yBias, d[2]
         ]);
-        const uvs = new Float32Array([
-            a[0] * 0.25, a[2] * 0.25,
-            b[0] * 0.25, b[2] * 0.25,
-            c[0] * 0.25, c[2] * 0.25,
-            a[0] * 0.25, a[2] * 0.25,
-            c[0] * 0.25, c[2] * 0.25,
-            d[0] * 0.25, d[2] * 0.25
-        ]);
+        let uvs;
+        if (mat === parkingConcreteMat) {
+            const [ua, va] = evalParkingUv(a[0], a[2]);
+            const [ub, vb] = evalParkingUv(b[0], b[2]);
+            const [uc, vc] = evalParkingUv(c[0], c[2]);
+            const [ud, vd] = evalParkingUv(d[0], d[2]);
+            uvs = new Float32Array([ua, va, ub, vb, uc, vc, ua, va, uc, vc, ud, vd]);
+        } else {
+            uvs = new Float32Array([
+                a[0] * 0.25, a[2] * 0.25,
+                b[0] * 0.25, b[2] * 0.25,
+                c[0] * 0.25, c[2] * 0.25,
+                a[0] * 0.25, a[2] * 0.25,
+                c[0] * 0.25, c[2] * 0.25,
+                d[0] * 0.25, d[2] * 0.25
+            ]);
+        }
         geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
         geom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
         geom.computeVertexNormals();
@@ -1084,11 +1142,69 @@ export function buildPhotoRealisticBuilding411_412(
         aBar.rotation.z = rollZ;
     }
 
-    // 5 Angled Yellow Parking Stall Lines along the NE 5-Window Ribbon Wall on the 2D-Sloped Alley Concrete Lot (lx = +11.80m..+16.20m, lz = -13.60m..-2.80m)
+    // 1.5m Concrete Pedestrian Walkway before the 5 Angled Yellow Parking Stall Markings along the NE 5-Window Ribbon Wall (lx = +11.68m..+13.18m, lz = -22.03m..-2.25m)
+    const swConcreteMat = new THREE.MeshStandardMaterial({
+        color: '#e2dcd0',
+        roughness: 0.86,
+        metalness: 0.03,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2
+    });
+    const swJointMat = new THREE.MeshBasicMaterial({
+        color: '#9c9588',
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3
+    });
+    const neWalkX0 = 11.68;
+    const neWalkX1 = 13.18; // 1.50m walkway width before the parking stall markings
+    const neWalkZ0 = -22.03;
+    const neWalkZ1 = -2.25;
+    const neWalkSegs = 14;
+    for (let iz = 0; iz < neWalkSegs; iz++) {
+        const z0 = neWalkZ0 + ((neWalkZ1 - neWalkZ0) * iz) / neWalkSegs;
+        const z1 = neWalkZ0 + ((neWalkZ1 - neWalkZ0) * (iz + 1)) / neWalkSegs;
+        addGradedQuad(
+            [neWalkX0, yAlleyLot(neWalkX0, z0), z0],
+            [neWalkX1, yAlleyLot(neWalkX1, z0), z0],
+            [neWalkX1, yAlleyLot(neWalkX1, z1), z1],
+            [neWalkX0, yAlleyLot(neWalkX0, z1), z1],
+            swConcreteMat,
+            0.008
+        );
+        // Transverse expansion score joint every ~1.41m across the 1.5m walkway
+        if (iz > 0) {
+            addGradedQuad(
+                [neWalkX0 + 0.04, yAlleyLot(neWalkX0 + 0.04, z0 - 0.014), z0 - 0.014],
+                [neWalkX1 - 0.04, yAlleyLot(neWalkX1 - 0.04, z0 - 0.014), z0 - 0.014],
+                [neWalkX1 - 0.04, yAlleyLot(neWalkX1 - 0.04, z0 + 0.014), z0 + 0.014],
+                [neWalkX0 + 0.04, yAlleyLot(neWalkX0 + 0.04, z0 + 0.014), z0 + 0.014],
+                swJointMat,
+                0.014
+            );
+        }
+    }
+    // Longitudinal score joint border separating the 1.5m concrete walkway from the angled parking stalls (lx = +13.18m)
+    for (let iz = 0; iz < neWalkSegs; iz++) {
+        const z0 = neWalkZ0 + ((neWalkZ1 - neWalkZ0) * iz) / neWalkSegs;
+        const z1 = neWalkZ0 + ((neWalkZ1 - neWalkZ0) * (iz + 1)) / neWalkSegs;
+        addGradedQuad(
+            [neWalkX1 - 0.02, yAlleyLot(neWalkX1 - 0.02, z0), z0],
+            [neWalkX1 + 0.02, yAlleyLot(neWalkX1 + 0.02, z0), z0],
+            [neWalkX1 + 0.02, yAlleyLot(neWalkX1 + 0.02, z1), z1],
+            [neWalkX1 - 0.02, yAlleyLot(neWalkX1 - 0.02, z1), z1],
+            swJointMat,
+            0.014
+        );
+    }
+
+    // 5 Angled Yellow Parking Stall Lines + Concrete Wheel Stops outside the 1.5m Walkway on the 2D-Sloped Alley Concrete Lot (lx = +13.20m..+17.30m, lz = -13.60m..-2.80m)
     const stallCos = Math.cos(0.36);
     const stallSin = Math.sin(0.36);
-    [-3.60, -6.10, -8.60, -11.10, -13.60].forEach((yz) => {
-        const cx = 13.85;
+    const stallNormalAngle = 0.36 + Math.PI * 0.5;
+    [-3.60, -6.10, -8.60, -11.10, -13.60].forEach((yz, sIdx) => {
+        const cx = 15.25;
         const hd = 0.05;
         for (let s = 0; s < 3; s++) {
             const u0 = -2.20 + (4.40 * s) / 3;
@@ -1105,6 +1221,16 @@ export function buildPhotoRealisticBuilding411_412(
                 yellowGuyMat,
                 0.015
             );
+        }
+        // Concrete wheel stop bumper at the front of each angled stall, protecting the 1.5m pedestrian walkway
+        if (sIdx < 4) {
+            const wsZ = yz - 1.25 + 1.85 * stallSin;
+            const wsX = cx - 1.85 * stallCos;
+            const { pitchX, rollZ } = getSurfaceAngles(yAlleyLot, wsX, wsZ);
+            const ws = addBox(1.65, 0.13, 0.20, concreteMat, wsX, yAlleyLot(wsX, wsZ) + 0.065, wsZ);
+            ws.rotation.y = stallNormalAngle;
+            ws.rotation.x = pitchX;
+            ws.rotation.z = rollZ;
         }
     });
 
@@ -1192,20 +1318,6 @@ export function buildPhotoRealisticBuilding411_412(
     const capStoneMat = new THREE.MeshStandardMaterial({ color: '#f2eee6', roughness: 0.75, metalness: 0.04, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const riverGravelMat = new THREE.MeshStandardMaterial({ color: '#78736a', roughness: 0.95, metalness: 0.02 });
     const mulchBedMat = new THREE.MeshStandardMaterial({ color: '#6b4f35', roughness: 0.95, metalness: 0.02 });
-    const swConcreteMat = new THREE.MeshStandardMaterial({
-        color: '#e2dcd0',
-        roughness: 0.86,
-        metalness: 0.03,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2
-    });
-    const swJointMat = new THREE.MeshBasicMaterial({
-        color: '#9c9588',
-        polygonOffset: true,
-        polygonOffsetFactor: -3,
-        polygonOffsetUnits: -3
-    });
     const curbYellowMat = new THREE.MeshStandardMaterial({ color: '#eab308', roughness: 0.62, metalness: 0.05 });
     const poleSilverMat = new THREE.MeshStandardMaterial({ color: '#b8c0c8', roughness: 0.38, metalness: 0.72 });
 
@@ -1315,7 +1427,7 @@ export function buildPhotoRealisticBuilding411_412(
     addBox(0.045, 1.42, 0.045, poleSilverMat, -16.65, yNoseGravel + 0.71, nosePivotZ);
     addBox(0.30, 0.38, 0.025, poleSilverMat, -16.65, yNoseGravel + 1.27, nosePivotZ);
 
-    // --- 5B. Terrain-Sloping CONCRETE 412 Parking Platform & King St Driveway Entrance (concreteMat, NOT asphalt!) ---
+    // --- 5B. Terrain-Sloping CONCRETE 412 Parking Platform & King St Driveway Entrance (parkingConcreteMat) ---
     // Main 412 Concrete Parking Platform (lx = -16.00m .. -1.68m, lz = -19.15m .. +2.15m): slopes smoothly with the terrain
     // from y = +0.01m at the 412 porch walkway (lz = +2.15m) down to the 1-foot retaining wall height at lz = -19.15m
     const lot412XSteps = 10;
@@ -1331,7 +1443,7 @@ export function buildPhotoRealisticBuilding411_412(
                 [x1, yLotSurface(x1, z0), z0],
                 [x1, yLotSurface(x1, z1), z1],
                 [x0, yLotSurface(x0, z1), z1],
-                concreteMat
+                parkingConcreteMat
             );
         }
     }
@@ -1349,11 +1461,11 @@ export function buildPhotoRealisticBuilding411_412(
             [-16.00, yInner0, z0],
             [-16.00, yInner1, z1],
             [-19.45, yOuter1, z1],
-            concreteMat
+            parkingConcreteMat
         );
     }
     // Solid perimeter edge curb along the west bay edge (lx = -19.45m, lz = -4.50m .. +2.15m)
-    addGradedWallSegment(-19.45, -4.50, -19.45, 2.15, 0.18, (px, pz) => yLotSurface(px, pz), concreteMat, 0);
+    addGradedWallSegment(-19.45, -4.50, -19.45, 2.15, 0.18, (px, pz) => yLotSurface(px, pz), parkingConcreteMat, 0);
 
     // --- 5C. Extended 410 Front Mulch/Rockery Slope & Terrain-Sloping Concrete 411 Alley Parking ---
     // 1. Terrain-conforming 10x10 mulch/soil rockery bed (lx = -0.32m .. +11.68m, lz = -22.03m .. -14.95m)
@@ -1389,70 +1501,61 @@ export function buildPhotoRealisticBuilding411_412(
     addBox(0.045, 1.85, 0.045, poleSilverMat, 6.25, signY410 + 0.92, -21.75);
     addBox(0.32, 0.46, 0.025, poleSilverMat, 6.25, signY410 + 1.62, -21.75);
 
-    // 2. Terrain-Sloping CONCRETE 411 Alley Parking Platform (lx = +11.68m .. +23.62m, lz = -22.03m .. +11.60m, concreteMat!)
-    // Extends across the entire alley width from Building 411 (+11.68m/+15.73m) all the way to Building 400's
-    // concrete foundation plinth and Rear Wall (lx = +23.56m), sloping both longitudinally toward Washington St
-    // and laterally down to connect seamlessly to Building 400's foundation all the way to the wall (2f9581e2.jpg).
+    // 2. Terrain-Sloping CONCRETE 411/400 Alley Parking Platform (lx = +11.68m .. +23.62m, lz = -22.03m .. zOuter411(x), parkingConcreteMat!)
+    //    Split at lz = -2.26m so the rear section (lz = -2.26m .. zOuter411(x), 22 Z-steps) shares the exact same vertices and heights
+    //    along lx = +23.62m with Building400ConcreteParkingGround (0.0000m step, 0.0000m gap, zero interior wall bars!).
     const alleyX0 = 11.68;
     const alleyX1 = 23.62;
     const alleyXSteps = 12;
-    const alleyZSteps = 20;
+    const alleyZMid = -2.26;
+    const alleyFrontZSteps = 14;
+    const alleyRearZSteps = 22;
     for (let ix = 0; ix < alleyXSteps; ix++) {
         const x0 = alleyX0 + ((alleyX1 - alleyX0) * ix) / alleyXSteps;
         const x1 = alleyX0 + ((alleyX1 - alleyX0) * (ix + 1)) / alleyXSteps;
-        for (let iz = 0; iz < alleyZSteps; iz++) {
-            const z0 = -22.03 + (33.63 * iz) / alleyZSteps;
-            const z1 = -22.03 + (33.63 * (iz + 1)) / alleyZSteps;
+        // Front alley section (lz = -22.03m .. -2.26m) along Building 400's SW wall
+        for (let iz = 0; iz < alleyFrontZSteps; iz++) {
+            const z0 = -22.03 + ((alleyZMid - (-22.03)) * iz) / alleyFrontZSteps;
+            const z1 = -22.03 + ((alleyZMid - (-22.03)) * (iz + 1)) / alleyFrontZSteps;
             addGradedQuad(
                 [x0, yAlleyLot(x0, z0), z0],
                 [x1, yAlleyLot(x1, z0), z0],
                 [x1, yAlleyLot(x1, z1), z1],
                 [x0, yAlleyLot(x0, z1), z1],
-                concreteMat
+                parkingConcreteMat
+            );
+        }
+        // Rear alley section (lz = -2.26m .. zOuter411(x), 22 Z-steps matching Building400ConcreteParkingGround at lx = 23.62m)
+        const zOut0 = zOuter411(x0);
+        const zOut1 = zOuter411(x1);
+        for (let iz = 0; iz < alleyRearZSteps; iz++) {
+            const t0 = iz / alleyRearZSteps;
+            const t1 = (iz + 1) / alleyRearZSteps;
+            const z00 = alleyZMid + (zOut0 - alleyZMid) * t0;
+            const z10 = alleyZMid + (zOut1 - alleyZMid) * t0;
+            const z11 = alleyZMid + (zOut1 - alleyZMid) * t1;
+            const z01 = alleyZMid + (zOut0 - alleyZMid) * t1;
+            addGradedQuad(
+                [x0, yAlleyLot(x0, z00), z00],
+                [x1, yAlleyLot(x1, z10), z10],
+                [x1, yAlleyLot(x1, z11), z11],
+                [x0, yAlleyLot(x0, z01), z01],
+                parkingConcreteMat
             );
         }
     }
-    // 3. Concrete Extension from the Alley (lx = +23.62m) All the Way to Douglas St (lx = +64.60m, lz400 = +24.37m)
-    //    Following Building 400's stepped SW foundation wall:
-    //    - Rear Box SW foundation (lx = 23.62m .. 28.98m): zInner = -2.26m (lx400 = -5.35m)
-    //    - SW Sunken Lightwell Retaining Wall (lx = 28.98m .. 47.48m): zInner = -3.40m (lx400 = -4.25m)
-    //    - SW Front Pavilion & Upper Terrace Foundation (lx = 47.48m .. 56.65m): zInner = -4.52m (lx400 = -3.24m)
-    //    - Left Lawn / Forecourt Plaza / Douglas St Sidewalk (lx = 56.65m .. 64.60m): zInner = -3.40m (lx400 = -4.40m)
-    const dougExtSpans = [
-        { xStart: 23.62, xEnd: 28.98, zInner: -2.26, xSteps: 4 },
-        { xStart: 28.98, xEnd: 47.48, zInner: -3.40, xSteps: 10 },
-        { xStart: 47.48, xEnd: 56.65, zInner: -4.52, xSteps: 5 },
-        { xStart: 56.65, xEnd: 64.60, zInner: -3.40, xSteps: 5 }
-    ];
-    const dougZOuter = 11.60;
-    const dougZSteps = 10;
-    dougExtSpans.forEach(({ xStart, xEnd, zInner, xSteps }) => {
-        for (let ix = 0; ix < xSteps; ix++) {
-            const x0 = xStart + ((xEnd - xStart) * ix) / xSteps;
-            const x1 = xStart + ((xEnd - xStart) * (ix + 1)) / xSteps;
-            for (let iz = 0; iz < dougZSteps; iz++) {
-                const z0 = zInner + ((dougZOuter - zInner) * iz) / dougZSteps;
-                const z1 = zInner + ((dougZOuter - zInner) * (iz + 1)) / dougZSteps;
-                addGradedQuad(
-                    [x0, yAlleyLot(x0, z0), z0],
-                    [x1, yAlleyLot(x1, z0), z0],
-                    [x1, yAlleyLot(x1, z1), z1],
-                    [x0, yAlleyLot(x0, z1), z1],
-                    concreteMat
-                );
-            }
-        }
-    });
-    // Concrete rear/outer edge skirt along lz = +11.60m (lx = +15.73m .. +64.60m) and along Douglas St (lx = +64.60m, lz = -3.40m .. +11.60m)
-    for (let ix = 0; ix < 24; ix++) {
-        const sx0 = 15.73 + ((64.60 - 15.73) * ix) / 24;
-        const sx1 = 15.73 + ((64.60 - 15.73) * (ix + 1)) / 24;
-        addGradedWallSegment(sx0, 11.60, sx1, 11.60, 0.16, (px, pz) => yAlleyLot(px, pz), concreteMat, 0);
+    // Outer perimeter skirts only on non-welded exterior edges:
+    // - Short rear skirt between Building 411's rear corner (lx = 15.73m) and the Rear Alley curb (lx = 18.45m)
+    // - Front right alley edge alongside Building 400's SW wall (lx = 23.62m, lz = -22.03m .. -2.26m), stopping before the open parking plaza seam!
+    for (let ix = 0; ix < 2; ix++) {
+        const sx0 = 15.73 + ((18.45 - 15.73) * ix) / 2;
+        const sx1 = 15.73 + ((18.45 - 15.73) * (ix + 1)) / 2;
+        addGradedWallSegment(sx0, zOuter411(sx0), sx1, zOuter411(sx1), 0.18, (px, pz) => yAlleyLot(px, pz) - 0.02, parkingConcreteMat, 0);
     }
-    for (let iz = 0; iz < 8; iz++) {
-        const sz0 = -3.40 + ((11.60 - (-3.40)) * iz) / 8;
-        const sz1 = -3.40 + ((11.60 - (-3.40)) * (iz + 1)) / 8;
-        addGradedWallSegment(64.60, sz0, 64.60, sz1, 0.16, (px, pz) => yAlleyLot(px, pz), concreteMat, 0);
+    for (let iz = 0; iz < 10; iz++) {
+        const sz0 = -22.03 + ((-2.26 - (-22.03)) * iz) / 10;
+        const sz1 = -22.03 + ((-2.26 - (-22.03)) * (iz + 1)) / 10;
+        addGradedWallSegment(23.62, sz0, 23.62, sz1, 0.18, (px, pz) => yAlleyLot(px, pz) - 0.02, parkingConcreteMat, 0);
     }
 
     // --- 5D. Continuous Washington Street Sidewalk (lz = -22.03m .. -24.98m, lx = -16.50m .. +19.85m) ---

@@ -2,10 +2,133 @@ import * as THREE from 'three';
 
 let _cachedAsphaltTex = null;
 let _cachedConcreteTableTex = null;
+let _cachedBrushedParkingConcreteTex = null;
 let _cachedAdaAsphaltStencilTex = null;
 let _cachedTurnArrowLeftTex = null;
 let _cachedTurnArrowRightTex = null;
 let _cachedBikeLaneStencilTex = null;
+let _cachedHazardBarricadeTex = null;
+const _cachedStencilTextures = new Map();
+
+export function getBrushedParkingConcreteTexture() {
+    if (_cachedBrushedParkingConcreteTex) return _cachedBrushedParkingConcreteTex;
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ccc7bd';
+    ctx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 4200; i++) {
+        const x = (i * 79) % 512;
+        const y = (i * 149) % 512;
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(72,68,62,0.065)';
+        ctx.fillRect(x, y, 6, 2);
+    }
+    ctx.strokeStyle = 'rgba(82, 78, 70, 0.36)';
+    ctx.lineWidth = 2;
+    for (let g = 128; g < 512; g += 128) {
+        ctx.beginPath();
+        ctx.moveTo(g, 0);
+        ctx.lineTo(g, 512);
+        ctx.moveTo(0, g);
+        ctx.lineTo(512, g);
+        ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    _cachedBrushedParkingConcreteTex = tex;
+    return tex;
+}
+
+function getRoadStencilTextTexture(label, color = '#f8fafc') {
+    const key = `st_${label}_${color}`;
+    if (_cachedStencilTextures.has(key)) return _cachedStencilTextures.get(key);
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 512, 128);
+    ctx.font = '800 62px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.strokeStyle = 'rgba(20, 24, 31, 0.65)';
+    ctx.lineWidth = 6;
+    ctx.strokeText(label, 256, 66);
+    ctx.fillStyle = color;
+    ctx.fillText(label, 256, 66);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    _cachedStencilTextures.set(key, tex);
+    return tex;
+}
+
+function getAccessRoadSignTexture(title = 'ACCESS ROAD', sub1 = 'AUTHORIZED', sub2 = 'VEHICLES ONLY', footer = 'NO PARKING') {
+    const key = `sign_${title}_${sub1}_${sub2}_${footer}`;
+    if (_cachedStencilTextures.has(key)) return _cachedStencilTextures.get(key);
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 320;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, 256, 320);
+    ctx.strokeStyle = '#b91c1c';
+    ctx.lineWidth = 10;
+    ctx.strokeRect(8, 8, 240, 304);
+    ctx.fillStyle = '#b91c1c';
+    ctx.fillRect(16, 16, 224, 72);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(title, 128, 62);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 24px Arial, sans-serif';
+    ctx.fillText(sub1, 128, 138);
+    ctx.fillText(sub2, 128, 172);
+    ctx.fillStyle = '#b91c1c';
+    ctx.font = 'bold 26px Arial, sans-serif';
+    ctx.fillText(footer, 128, 248);
+    ctx.font = 'bold 18px Arial, sans-serif';
+    ctx.fillText('TOW-AWAY ZONE', 128, 282);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    _cachedStencilTextures.set(key, tex);
+    return tex;
+}
+
+function getHazardBarricadeTexture() {
+    if (_cachedHazardBarricadeTex) return _cachedHazardBarricadeTex;
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.fillStyle = '#18181b';
+    for (let x = -128; x < 640; x += 72) {
+        ctx.beginPath();
+        ctx.moveTo(x, 128);
+        ctx.lineTo(x + 36, 128);
+        ctx.lineTo(x + 100, 0);
+        ctx.lineTo(x + 64, 0);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.strokeStyle = '#ca8a04';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, 506, 122);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    _cachedHazardBarricadeTex = tex;
+    return tex;
+}
 
 function getAsphaltTexture() {
     if (_cachedAsphaltTex) return _cachedAsphaltTex;
@@ -562,8 +685,8 @@ export function buildWashingtonStreetCorridor(arch, mats, yGrade) {
         };
         const dzStart = 43.20;
         const dzEnd = 175.0;
-        const dzSegs = 68;
-        const dxSegs = 6;
+        const dzSegs = 132;
+        const dxSegs = 10;
 
         const dougGeom = new THREE.BufferGeometry();
         const dPos = [];
@@ -605,25 +728,77 @@ export function buildWashingtonStreetCorridor(arch, mats, yGrade) {
         douglasRoadMesh.receiveShadow = true;
         roadGrp.add(douglasRoadMesh);
 
-        // Douglas Street SW Sidewalk & Curb past Building 400's rear parking lot (lz = 87.35m .. 175.0m, lx = 22.40m .. 24.62m)
-        const dougSWSidewalk = new THREE.Mesh(
-            buildGradedStripGeometry(22.40, 24.62, 87.35, 175.0, 2, 36, yGrade, 0.085),
-            sidewalkConcreteMat
-        );
-        dougSWSidewalk.receiveShadow = true;
-        roadGrp.add(dougSWSidewalk);
+        // Douglas Street SW Sidewalk, Continuous White Street Curb & Flush Concrete Driveway Aprons (#1 & #2)
+        // - Continuous Raised White Curb bridging Building 400's sidewalk (59.38m) seamlessly into Driveway Apron #1 (74.40m)
+        // - Flush Concrete Driveway Apron #1 into Lower Concrete Parking Bay (lz = 74.40m .. 79.80m, under DOUGLAS ST decal)
+        // - Sidewalk + Raised Curb Segment 1 (lz = 79.80m .. 87.80m, straddling Retaining Wall #1 at lz = 82.40m)
+        // - Flush Concrete Driveway Apron #2 into Upper Concrete Parking Bay (lz = 87.80m .. 93.60m, way-1227960085)
+        // - Sidewalk + Raised Curb Segment 2 (lz = 93.60m .. 175.00m)
+        {
+            const b400PlazaCurb = new THREE.Mesh(
+                buildGradedStripGeometry(24.44, 24.64, 59.38, 74.40, 1, 20, yGrade, 0.125),
+                curbWhiteMat
+            );
+            b400PlazaCurb.receiveShadow = true;
+            roadGrp.add(b400PlazaCurb);
+        }
+        for (const [swZ0, swZ1, swSteps] of [
+            [79.80, 87.80, 16],
+            [93.60, 175.00, 68]
+        ]) {
+            const dougSWSidewalk = new THREE.Mesh(
+                buildGradedStripGeometry(22.40, 24.62, swZ0, swZ1, 3, swSteps, yGrade, 0.085),
+                sidewalkConcreteMat
+            );
+            dougSWSidewalk.receiveShadow = true;
+            roadGrp.add(dougSWSidewalk);
 
-        const dougSWCurb = new THREE.Mesh(
-            buildGradedStripGeometry(24.44, 24.64, 87.35, 175.0, 1, 36, yGrade, 0.125),
-            curbWhiteMat
-        );
-        dougSWCurb.receiveShadow = true;
-        roadGrp.add(dougSWCurb);
+            const dougSWCurb = new THREE.Mesh(
+                buildGradedStripGeometry(24.44, 24.64, swZ0, swZ1, 1, swSteps, yGrade, 0.125),
+                curbWhiteMat
+            );
+            dougSWCurb.receiveShadow = true;
+            roadGrp.add(dougSWCurb);
+        }
+        for (const [apZ0, apZ1] of [
+            [74.40, 79.80],
+            [87.80, 93.60]
+        ]) {
+            const dougSWDriveApron = new THREE.Mesh(
+                buildGradedStripGeometry(
+                    22.40,
+                    24.62,
+                    apZ0,
+                    apZ1,
+                    4,
+                    10,
+                    (lx, lz) => {
+                        const uCurb = THREE.MathUtils.clamp((lx - 22.40) / (24.62 - 22.40), 0, 1);
+                        const innerExtra =
+                            apZ0 < 80
+                                ? THREE.MathUtils.lerp(0.084, 0.046, THREE.MathUtils.smoothstep(lz, 74.40, 75.85))
+                                : 0.046;
+                        return yGrade(lx, lz) + THREE.MathUtils.lerp(innerExtra, 0.0, uCurb);
+                    },
+                    0.022
+                ),
+                sidewalkConcreteMat
+            );
+            dougSWDriveApron.receiveShadow = true;
+            roadGrp.add(dougSWDriveApron);
 
-        // Douglas Street NE Sidewalk & Curb past Building 316's Gym lot (split around the Service Road throat at lz = 130.5m .. 138.2m)
+            const dougSWCurbCutLip = new THREE.Mesh(
+                buildGradedStripGeometry(24.46, 24.64, apZ0, apZ1, 1, 10, yGrade, 0.028),
+                curbWhiteMat
+            );
+            dougSWCurbCutLip.receiveShadow = true;
+            roadGrp.add(dougSWCurbCutLip);
+        }
+
+        // Douglas Street NE Sidewalk & Curb past Building 316's Gym lot (split around the single-lane Access Road throat at lz = 128.70m .. 133.40m)
         for (const [neZ0, neZ1, neSteps] of [
-            [113.95, 130.50, 8],
-            [138.20, 175.00, 16]
+            [106.20, 128.70, 10],
+            [133.40, 175.00, 18]
         ]) {
             const dougNESidewalk = new THREE.Mesh(
                 buildGradedStripGeometry(38.46, 40.68, neZ0, neZ1, 2, neSteps, yGrade, 0.085),
@@ -639,11 +814,20 @@ export function buildWashingtonStreetCorridor(arch, mats, yGrade) {
             dougNECurb.receiveShadow = true;
             roadGrp.add(dougNECurb);
         }
+        // Seamless flush concrete driveway apron across the Douglas St single-lane Access Road throat (lz = 128.70m .. 133.40m)
+        {
+            const dougAccessApron = new THREE.Mesh(
+                buildGradedStripGeometry(38.46, 40.68, 128.70, 133.40, 2, 4, yGrade, 0.024),
+                sidewalkConcreteMat
+            );
+            dougAccessApron.receiveShadow = true;
+            roadGrp.add(dougAccessApron);
+        }
 
         // Douglas Street Traffic Markings:
         // - Dashed Yellow Centerline (lx = 31.54m, lz = 45.5m .. 171.0m)
         for (let lz = 45.5; lz <= 171.0; lz += 7.5) {
-            if (lz > 128.5 && lz < 139.0) continue; // Gap across the curved Service Road throat
+            if (lz > 127.8 && lz < 134.2) continue; // Gap across the Access Road throat
             addGradedStripe(31.47, 31.61, lz, lz + 2.95, paintYellowMat, 0.036, 1, 2);
         }
 
@@ -653,9 +837,9 @@ export function buildWashingtonStreetCorridor(arch, mats, yGrade) {
             addGradedStripe(26.35, 27.11, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
         }
 
-        // - SW Parallel Parking Lane Line beyond Building 400's rear lot (lx = 27.05m, lz = 89.0m .. 168.0m continuous!)
-        addGradedStripe(26.99, 27.11, 89.0, 168.0, paintWhiteMat, 0.036, 1, 28);
-        for (let tz = 89.0; tz <= 168.0; tz += 6.08) {
+        // - SW Parallel Parking Lane Line beyond Building 400's rear concrete parking aprons (lx = 27.05m, lz = 95.0m .. 168.0m continuous!)
+        addGradedStripe(26.99, 27.11, 95.0, 168.0, paintWhiteMat, 0.036, 1, 26);
+        for (let tz = 95.0; tz <= 168.0; tz += 6.08) {
             addGradedStripe(26.35, 27.11, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
         }
 
@@ -665,9 +849,9 @@ export function buildWashingtonStreetCorridor(arch, mats, yGrade) {
             addGradedStripe(35.96, 36.68, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
         }
 
-        // - NE Parallel Parking Lane Line past the Service Road throat (lx = 36.02m, lz = 139.0m .. 168.0m)
-        addGradedStripe(35.96, 36.08, 139.0, 168.0, paintWhiteMat, 0.036, 1, 12);
-        for (let tz = 139.0; tz <= 168.0; tz += 5.8) {
+        // - NE Parallel Parking Lane Line past the Access Road throat (lx = 36.02m, lz = 135.8m .. 168.0m)
+        addGradedStripe(35.96, 36.08, 135.8, 168.0, paintWhiteMat, 0.036, 1, 13);
+        for (let tz = 135.8; tz <= 168.0; tz += 5.8) {
             addGradedStripe(35.96, 36.68, tz - 0.06, tz + 0.06, paintWhiteMat, 0.036, 1, 1);
         }
 
@@ -988,10 +1172,10 @@ export function buildWashingtonStreetCorridor(arch, mats, yGrade) {
         orondoAsphaltMesh.receiveShadow = true;
         roadGrp.add(orondoAsphaltMesh);
 
-        // Unnamed Service Road Throat Asphalt Stub off Orondo Ave between Building 300 & County Parking Lot (lz = 115.8m .. 123.0m, lx = 116.5m .. 123.25m)
+        // Single-lane Access Road Throat Asphalt Tie-in off Orondo Ave (lz = 117.15m .. 121.85m, lx = 119.8m .. 123.25m)
         {
             const serviceStub = new THREE.Mesh(
-                buildGradedStripGeometry(116.5, 123.25, 115.85, 122.95, 4, 4, yGrade, 0.015),
+                buildGradedStripGeometry(119.8, 123.25, 117.15, 121.85, 3, 3, yGrade, 0.017),
                 asphaltMat
             );
             serviceStub.receiveShadow = true;
@@ -1091,8 +1275,8 @@ export function buildWashingtonStreetCorridor(arch, mats, yGrade) {
             }
 
             // Solid White Bike Lane Lines along SW side (Building 300 -> 428 Orondo, lx = 124.85m) and NE side (lx = 139.65m, welding at lz = -3.95m!)
-            addGradedStripe(124.79, 124.91, 46.2, 115.2, paintWhiteMat, 0.036, 1, 24);
-            addGradedStripe(124.79, 124.91, 123.5, 174.0, paintWhiteMat, 0.036, 1, 18);
+            addGradedStripe(124.79, 124.91, 46.2, 116.8, paintWhiteMat, 0.036, 1, 24);
+            addGradedStripe(124.79, 124.91, 122.2, 174.0, paintWhiteMat, 0.036, 1, 18);
             addGradedStripe(139.59, 139.71, -3.95, 174.0, paintWhiteMat, 0.036, 1, 58);
 
             // Bike Lane Stencils along Orondo Ave (SW side traveling -lz, NE side traveling +lz)
@@ -1299,11 +1483,50 @@ export function buildWashingtonStreetCorridor(arch, mats, yGrade) {
             roadGrp.add(m);
         };
 
-        // West Acute Rounded Corner Sidewalk & Raised Curb (welds to Orondo NE sidewalk at z=+23.50m and S. Okanogan West sidewalk at s=18.60m)
-        buildCurvedCornerStrip(okHalfW, okHalfW + 2.25, 0.085, sidewalkConcreteMat, 24);
-        buildCurvedCornerStrip(okHalfW - 0.08, okHalfW + 0.10, 0.11, curbWhiteMat, 24);
+        // West Acute Rounded Corner Sidewalk & Raised Curb (welds to Orondo NE sidewalk at z=-3.95m and S. Okanogan West sidewalk at s=18.60m)
+        // Use an exact C1-collinear inner Bézier between the two inner sidewalk edges so the tight acute nose never folds into a cusp
+        {
+            const segsT = 28;
+            const wInnerX0 = okX0 + 2.25;
+            const wInnerZ0 = getStartZForOff(okHalfW);
+            const sInnerApex = (2.25 - nx * (okHalfW + 2.25)) / ux;
+            const [wInnerX1, wInnerZ1] = evalOkPt(sInnerApex, okHalfW + 2.25);
+            const [wInnerX2, wInnerZ2] = evalOkPt(sJoin, okHalfW + 2.25);
 
-        // East Sweeping Rounded Corner Sidewalk & Raised Curb (welds to Orondo NE sidewalk at z=-24.50m and S. Okanogan East sidewalk at s=18.60m)
+            const geom = new THREE.BufferGeometry();
+            const pos = [];
+            const norm = [];
+            const uv = [];
+            const idx = [];
+            for (let it = 0; it <= segsT; it++) {
+                const t = it / segsT;
+                const [x0, z0] = evalThroatPoint(t, okHalfW);
+                const [x1, z1] = evalQuadBezier2D(wInnerX0, wInnerZ0, wInnerX1, wInnerZ1, wInnerX2, wInnerZ2, t);
+                pos.push(x0, yGrade(x0, z0) + 0.085, z0);
+                pos.push(x1, yGrade(x1, z1) + 0.085, z1);
+                norm.push(0, 1, 0, 0, 1, 0);
+                uv.push(t, 0, t, 1);
+            }
+            for (let it = 0; it < segsT; it++) {
+                const a = it * 2;
+                const b = a + 1;
+                const c = a + 2;
+                const d = a + 3;
+                idx.push(a, b, d);
+                idx.push(a, d, c);
+            }
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            geom.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
+            geom.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+            geom.setIndex(idx);
+            geom.computeVertexNormals();
+            const wCornerSw = new THREE.Mesh(geom, sidewalkConcreteMat);
+            wCornerSw.receiveShadow = true;
+            roadGrp.add(wCornerSw);
+        }
+        buildCurvedCornerStrip(okHalfW - 0.08, okHalfW + 0.10, 0.11, curbWhiteMat, 28);
+
+        // East Sweeping Rounded Corner Sidewalk & Raised Curb (welds to Orondo NE sidewalk at z=-51.95m and S. Okanogan East sidewalk at s=18.60m)
         buildCurvedCornerStrip(-okHalfW - 2.25, -okHalfW, 0.085, sidewalkConcreteMat, 24);
         buildCurvedCornerStrip(-okHalfW - 0.10, -okHalfW + 0.08, 0.11, curbWhiteMat, 24);
 
@@ -1326,36 +1549,6 @@ export function buildWashingtonStreetCorridor(arch, mats, yGrade) {
             );
             cbMesh.receiveShadow = true;
             roadGrp.add(cbMesh);
-        }
-
-        // Landscaped Acute V-Corner Boulder & Shrub Bed tucked cleanly behind the West Rounded Corner Sidewalk (shifted another 30ft / -9.15m closer to S. Chelan Ave, a81b7dad.jpg bottom-center!)
-        {
-            const islandX = 148.2, islandZ = -4.65;
-            const islandY = yGrade(islandX, islandZ);
-            const mulchMat = new THREE.MeshStandardMaterial({ color: '#4a3b31', roughness: 0.92 });
-            const shrubMat = new THREE.MeshStandardMaterial({ color: '#3b622b', roughness: 0.88 });
-            const rockMat = new THREE.MeshStandardMaterial({ color: '#7a756c', roughness: 0.85 });
-
-            const mulchBed = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.7, 0.14, 18), mulchMat);
-            mulchBed.position.set(islandX, islandY + 0.08, islandZ);
-            roadGrp.add(mulchBed);
-
-            for (const [dx, dz, r] of [
-                [-0.7, -0.6, 0.48],
-                [0.6, -0.4, 0.42],
-                [0.1, 0.7, 0.52],
-                [-0.8, 0.6, 0.38]
-            ]) {
-                const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 1), shrubMat);
-                bush.scale.set(1.1, 0.72, 1.1);
-                bush.position.set(islandX + dx, islandY + 0.26, islandZ + dz);
-                bush.castShadow = true;
-                roadGrp.add(bush);
-            }
-            const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(0.42, 0), rockMat);
-            boulder.scale.set(1.2, 0.75, 0.95);
-            boulder.position.set(islandX - 0.2, islandY + 0.24, islandZ - 1.1);
-            roadGrp.add(boulder);
         }
 
         // 9D. C1-Tangent Curved White Bike-Lane & Channelizing Stripes following the West & East Rounded Corners
@@ -1701,118 +1894,1068 @@ export function buildWashingtonStreetCorridor(arch, mats, yGrade) {
             addTwinBarPair(sx, 172.80, 2.65, 0.22, Math.PI / 2);
         }
 
-        // 10C. S-Curved Campus Service Road Connecting Orondo Ave (lz = 115.6m..123.1m, lx = 123.2m)
-        //      Behind the Juvenile Detention Gym (lx = 89.2m) & Down Along the SW Side of the Gym Concrete Lot
-        //      Into Douglas Street (lz = 130.5m..138.2m, lx = 38.4m) — Matching 585872f1.jpg!
+        // 10C. Gym Area Access Road (Purple), Concrete Parking Lots #1 & #2 (Orange),
+        //      Retaining Walls #1–#4 (Red), Traffic Barricade (Yellow), Upper Landscaped Terrace & Service Ramp
+        //      Matched 1:1 to annotated aerial plan (af962e33.jpg / c9a86aad.jpg) & OSM ways 760596331/760596332!
         {
-            const getServiceCenterZ = (lx) => {
-                // Smooth C1 cosine S-curve from z = 134.35m (Douglas St throat at lx <= 66.0m, clearing the Gym concrete lot at lz <= 113.95m!)
-                // up to z = 119.35m (Orondo Ave throat at lx >= 91.5m, clearing the Gym rear wall at lx <= 89.2m!)
-                if (lx <= 66.0) return 134.35;
-                if (lx >= 91.5) return 119.35;
-                const u = (lx - 66.0) / (91.5 - 66.0);
-                const s = 0.5 - 0.5 * Math.cos(Math.PI * u);
-                return THREE.MathUtils.lerp(134.35, 119.35, s);
+            const parkingConcreteTex = getBrushedParkingConcreteTexture();
+            const parkingConcreteMat = new THREE.MeshStandardMaterial({
+                color: '#d4cfc5',
+                map: parkingConcreteTex,
+                roughness: 0.84,
+                metalness: 0.03,
+                side: THREE.DoubleSide,
+                polygonOffset: true,
+                polygonOffsetFactor: -2,
+                polygonOffsetUnits: -2
+            });
+            const retainingWallMat = new THREE.MeshStandardMaterial({
+                color: '#beb9ae',
+                roughness: 0.86,
+                metalness: 0.04
+            });
+            const retainingCapMat = new THREE.MeshStandardMaterial({
+                color: '#dedad0',
+                roughness: 0.76,
+                metalness: 0.04
+            });
+            const retainingJointMat = new THREE.MeshStandardMaterial({
+                color: '#78736a',
+                roughness: 0.92,
+                metalness: 0.02
+            });
+            const galvRailMat = new THREE.MeshStandardMaterial({
+                color: '#949ca4',
+                roughness: 0.38,
+                metalness: 0.72
+            });
+            const barricadeYellowMat = new THREE.MeshStandardMaterial({
+                color: '#eab308',
+                roughness: 0.42,
+                metalness: 0.22
+            });
+            const barricadeChevronMat = new THREE.MeshStandardMaterial({
+                map: getHazardBarricadeTexture(),
+                roughness: 0.45,
+                metalness: 0.12
+            });
+            const wheelStopConcreteMat = new THREE.MeshStandardMaterial({
+                color: '#e5e1d8',
+                roughness: 0.82,
+                metalness: 0.03
+            });
+            const paintBlueAdaMat = new THREE.MeshStandardMaterial({
+                color: '#2563eb',
+                roughness: 0.52,
+                metalness: 0.05,
+                side: THREE.DoubleSide,
+                polygonOffset: true,
+                polygonOffsetFactor: -4,
+                polygonOffsetUnits: -4
+            });
+            const darkBronzePoleMat = new THREE.MeshStandardMaterial({
+                color: '#272a2e',
+                roughness: 0.44,
+                metalness: 0.62
+            });
+            const upperTurfMat = new THREE.MeshStandardMaterial({
+                color: '#4a7c36',
+                roughness: 0.86,
+                metalness: 0.02,
+                polygonOffset: true,
+                polygonOffsetFactor: -1,
+                polygonOffsetUnits: -1,
+                userData: { isCampusGrass: true }
+            });
+
+            // Helper: Build a terrain-graded quad mesh between [xMin..xMax] with variable zMin(x)..zMax(x)
+            const buildVariableZGradedPatch = (xMin, xMax, zMinFn, zMaxFn, segsX, segsZ, yEvalFn, mat, uvScale = 0.22) => {
+                const geom = new THREE.BufferGeometry();
+                const pos = [], norm = [], uv = [], idx = [];
+                for (let ix = 0; ix <= segsX; ix++) {
+                    const u = ix / segsX;
+                    const lx = xMin + (xMax - xMin) * u;
+                    const z0 = zMinFn(lx);
+                    const z1 = zMaxFn(lx);
+                    for (let iz = 0; iz <= segsZ; iz++) {
+                        const v = iz / segsZ;
+                        const lz = z0 + (z1 - z0) * v;
+                        const ly = yEvalFn(lx, lz);
+                        pos.push(lx, ly, lz);
+                        norm.push(0, 1, 0);
+                        uv.push(lx * uvScale, lz * uvScale);
+                    }
+                }
+                const stride = segsZ + 1;
+                for (let ix = 0; ix < segsX; ix++) {
+                    for (let iz = 0; iz < segsZ; iz++) {
+                        const a = ix * stride + iz;
+                        const b = (ix + 1) * stride + iz;
+                        const c = (ix + 1) * stride + (iz + 1);
+                        const d = ix * stride + (iz + 1);
+                        idx.push(a, c, b, a, d, c);
+                    }
+                }
+                geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                geom.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
+                geom.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+                geom.setIndex(idx);
+                geom.computeVertexNormals();
+                const mesh = new THREE.Mesh(geom, mat);
+                mesh.receiveShadow = true;
+                roadGrp.add(mesh);
+                return mesh;
             };
-            const getServiceTangent = (lx) => {
-                const eps = 0.25;
-                const dz = getServiceCenterZ(lx + eps) - getServiceCenterZ(lx - eps);
-                const dx = 2 * eps;
-                const len = Math.hypot(dx, dz) || 1;
-                return [dx / len, dz / len];
+
+            // Helper: Build a curved road ribbon along a THREE.Curve3 in XZ with downward 3D side skirts
+            const buildSplineRoadRibbon = (curve, halfW, segsU, segsV, yOffFn, mat, skirtDepth = 0.24, uvWorldScale = 0) => {
+                const geom = new THREE.BufferGeometry();
+                const pos = [], norm = [], uv = [], idx = [];
+                const totalLen = curve.getLength();
+                const evalYOff = typeof yOffFn === 'function' ? yOffFn : () => yOffFn;
+                for (let iu = 0; iu <= segsU; iu++) {
+                    const u = iu / segsU;
+                    const pt = curve.getPointAt(u);
+                    const tan = curve.getTangentAt(u);
+                    const len = Math.hypot(tan.x, tan.z) || 1;
+                    const nx = -tan.z / len;
+                    const nz = tan.x / len;
+                    // Left downward skirt vertex (iv = 0)
+                    const lxL = pt.x - nx * halfW, lzL = pt.z - nz * halfW;
+                    pos.push(lxL, yGrade(lxL, lzL) + evalYOff(lxL, lzL, u) - skirtDepth, lzL);
+                    norm.push(-nx, 0, -nz);
+                    uv.push(uvWorldScale > 0 ? lxL * uvWorldScale : (u * totalLen) / 10.0, uvWorldScale > 0 ? lzL * uvWorldScale : -0.05);
+
+                    for (let iv = 0; iv <= segsV; iv++) {
+                        const v = iv / segsV;
+                        const off = (v * 2 - 1) * halfW;
+                        const px = pt.x + nx * off;
+                        const pz = pt.z + nz * off;
+                        pos.push(px, yGrade(px, pz) + evalYOff(px, pz, u), pz);
+                        norm.push(0, 1, 0);
+                        uv.push(uvWorldScale > 0 ? px * uvWorldScale : (u * totalLen) / 10.0, uvWorldScale > 0 ? pz * uvWorldScale : v);
+                    }
+
+                    // Right downward skirt vertex (iv = segsV + 2)
+                    const lxR = pt.x + nx * halfW, lzR = pt.z + nz * halfW;
+                    pos.push(lxR, yGrade(lxR, lzR) + evalYOff(lxR, lzR, u) - skirtDepth, lzR);
+                    norm.push(nx, 0, nz);
+                    uv.push(uvWorldScale > 0 ? lxR * uvWorldScale : (u * totalLen) / 10.0, uvWorldScale > 0 ? lzR * uvWorldScale : 1.05);
+                }
+                const cols = segsV + 3;
+                for (let iu = 0; iu < segsU; iu++) {
+                    for (let iv = 0; iv < cols - 1; iv++) {
+                        const a = iu * cols + iv;
+                        const b = (iu + 1) * cols + iv;
+                        const c = (iu + 1) * cols + (iv + 1);
+                        const d = iu * cols + (iv + 1);
+                        idx.push(a, b, c, a, c, d);
+                    }
+                }
+                geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                geom.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
+                geom.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+                geom.setIndex(idx);
+                geom.computeVertexNormals();
+                const mesh = new THREE.Mesh(geom, mat);
+                mesh.receiveShadow = true;
+                roadGrp.add(mesh);
+                return mesh;
             };
 
-            const srvHalfW = 3.80; // 7.60m total roadway width
-            const srvX0 = 38.40;
-            const srvX1 = 123.25;
-            const srvSegsX = 48;
-            const srvSegsZ = 6;
+            // Helper: Build a straight oriented road ribbon with downward 3D side skirts
+            const buildSkirtedOrientedRoadRibbon = (x0, z0, x1, z1, halfW, segsU, segsV, yOffFn, mat, skirtDepth = 0.24, uvWorldScale = 0) => {
+                const lineCurve = new THREE.LineCurve3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, 0, z1));
+                return buildSplineRoadRibbon(lineCurve, halfW, segsU, segsV, yOffFn, mat, skirtDepth, uvWorldScale);
+            };
 
-            const srvGeom = new THREE.BufferGeometry();
-            const sPos = [], sNorm = [], sUv = [], sIdx = [];
-            for (let ix = 0; ix <= srvSegsX; ix++) {
-                const u = ix / srvSegsX;
-                const lx = srvX0 + (srvX1 - srvX0) * u;
-                const cz = getServiceCenterZ(lx);
-                const [tx, tz] = getServiceTangent(lx);
-                const nx = -tz, nz = tx;
-                for (let iz = 0; iz <= srvSegsZ; iz++) {
-                    const v = iz / srvSegsZ;
-                    const off = (v - 0.5) * 2.0 * srvHalfW;
-                    const px = lx + nx * off;
-                    const pz = cz + nz * off;
-                    const py = yGrade(px, pz) + 0.0155;
-                    sPos.push(px, py, pz);
-                    sNorm.push(0, 1, 0);
-                    sUv.push(u * 6, v);
+            // Helper: Build a raised concrete curb along an XZ polyline / curve
+            const addCurbAlongPoints = (pts, halfThick, yOffTop, mat = curbWhiteMat) => {
+                if (pts.length < 2) return;
+                const geom = new THREE.BufferGeometry();
+                const pos = [], idx = [];
+                for (let i = 0; i < pts.length; i++) {
+                    const [cx, cz] = pts[i];
+                    const [prevX, prevZ] = pts[Math.max(0, i - 1)];
+                    const [nextX, nextZ] = pts[Math.min(pts.length - 1, i + 1)];
+                    const dx = nextX - prevX;
+                    const dz = nextZ - prevZ;
+                    const len = Math.hypot(dx, dz) || 1;
+                    const nx = -dz / len;
+                    const nz = dx / len;
+                    const xL = cx - nx * halfThick, zL = cz - nz * halfThick;
+                    const xR = cx + nx * halfThick, zR = cz + nz * halfThick;
+                    const yTopL = yGrade(xL, zL) + yOffTop;
+                    const yTopR = yGrade(xR, zR) + yOffTop;
+                    const yBot = Math.min(yTopL, yTopR) - 0.24;
+                    // 4 vertices per cross-section: [botL, topL, topR, botR]
+                    pos.push(
+                        xL, yBot, zL,
+                        xL, yTopL, zL,
+                        xR, yTopR, zR,
+                        xR, yBot, zR
+                    );
+                }
+                for (let i = 0; i < pts.length - 1; i++) {
+                    const b0 = i * 4;
+                    const b1 = (i + 1) * 4;
+                    // Left side
+                    idx.push(b0 + 0, b1 + 0, b1 + 1, b0 + 0, b1 + 1, b0 + 1);
+                    // Top cap
+                    idx.push(b0 + 1, b1 + 1, b1 + 2, b0 + 1, b1 + 2, b0 + 2);
+                    // Right side
+                    idx.push(b0 + 2, b1 + 2, b1 + 3, b0 + 2, b1 + 3, b0 + 3);
+                }
+                geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                geom.setIndex(idx);
+                geom.computeVertexNormals();
+                const m = new THREE.Mesh(geom, mat);
+                m.castShadow = true;
+                m.receiveShadow = true;
+                roadGrp.add(m);
+            };
+
+            // Helper: Paint a terrain-conforming pavement stencil decal (e.g. "ACCESS ROAD" / "NO PARKING")
+            const addRoadTextStencil = (cx, cz, travelAngle, label, lenAlong = 5.4, widAcross = 1.35, color = '#f8fafc') => {
+                const tex = getRoadStencilTextTexture(label, color);
+                if (!tex) return;
+                const dMat = new THREE.MeshStandardMaterial({
+                    map: tex,
+                    transparent: true,
+                    alphaTest: 0.08,
+                    roughness: 0.62,
+                    metalness: 0.04,
+                    depthWrite: false,
+                    polygonOffset: true,
+                    polygonOffsetFactor: -5,
+                    polygonOffsetUnits: -5
+                });
+                const geom = new THREE.BufferGeometry();
+                const segsU = 6, segsV = 2;
+                const ux = Math.cos(travelAngle), uz = Math.sin(travelAngle);
+                const nx = -uz, nz = ux;
+                const pos = [], norm = [], uv = [], idx = [];
+                for (let iu = 0; iu <= segsU; iu++) {
+                    const u = iu / segsU;
+                    const s = (u - 0.5) * lenAlong;
+                    for (let iv = 0; iv <= segsV; iv++) {
+                        const v = iv / segsV;
+                        const t = (v - 0.5) * widAcross;
+                        const px = cx + ux * s + nx * t;
+                        const pz = cz + uz * s + nz * t;
+                        pos.push(px, yGrade(px, pz) + 0.039, pz);
+                        norm.push(0, 1, 0);
+                        uv.push(u, 1 - v);
+                    }
+                }
+                const stride = segsV + 1;
+                for (let iu = 0; iu < segsU; iu++) {
+                    for (let iv = 0; iv < segsV; iv++) {
+                        const a = iu * stride + iv;
+                        const b = (iu + 1) * stride + iv;
+                        const c = (iu + 1) * stride + (iv + 1);
+                        const d = iu * stride + (iv + 1);
+                        idx.push(a, c, b, a, d, c);
+                    }
+                }
+                geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                geom.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
+                geom.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+                geom.setIndex(idx);
+                geom.computeVertexNormals();
+                const m = new THREE.Mesh(geom, dMat);
+                m.receiveShadow = true;
+                roadGrp.add(m);
+            };
+
+            // Helper: Roadside "ACCESS ROAD / AUTHORIZED VEHICLES ONLY / NO PARKING" Signpost
+            const addAccessRoadSignpost = (sx, sz, facingAngleY, title = 'ACCESS ROAD', sub1 = 'AUTHORIZED', sub2 = 'VEHICLES ONLY') => {
+                const baseY = yGrade(sx, sz);
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 2.35, 10), galvRailMat);
+                post.position.set(sx, baseY + 1.175, sz);
+                post.castShadow = true;
+                roadGrp.add(post);
+
+                const signTex = getAccessRoadSignTexture(title, sub1, sub2, 'NO PARKING');
+                const faceMat = signTex
+                    ? new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.42, metalness: 0.14 })
+                    : paintWhiteMat;
+                const plate = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.46, 0.58, 0.026),
+                    [galvRailMat, galvRailMat, galvRailMat, galvRailMat, faceMat, faceMat]
+                );
+                plate.position.set(sx, baseY + 2.02, sz);
+                plate.rotation.y = facingAngleY;
+                plate.castShadow = true;
+                roadGrp.add(plate);
+            };
+
+            // Helper: Cast-in-place Architectural Retaining Wall with Beveled Coping Cap, Control Joints & Optional Safety Pipe Railing
+            const addArchitecturalRetainingWall = (x0, z0, x1, z1, {
+                thick = 0.34,
+                yTopFn,
+                yBotFn,
+                withGuardrail = false,
+                guardrailEndU = 1.0
+            }) => {
+                const dx = x1 - x0;
+                const dz = z1 - z0;
+                const totalLen = Math.hypot(dx, dz) || 1;
+                const steps = Math.max(2, Math.ceil(totalLen / 2.20));
+                const angle = Math.atan2(dz, dx);
+
+                for (let i = 0; i < steps; i++) {
+                    const u0 = i / steps;
+                    const u1 = (i + 1) / steps;
+                    const um = 0.5 * (u0 + u1);
+                    const xa = x0 + dx * u0, za = z0 + dz * u0;
+                    const xb = x0 + dx * u1, zb = z0 + dz * u1;
+                    const xm = x0 + dx * um, zm = z0 + dz * um;
+                    const segLen = (totalLen / steps) + 0.025;
+
+                    const topA = yTopFn(xa, za, u0);
+                    const topB = yTopFn(xb, zb, u1);
+                    const topM = 0.5 * (topA + topB);
+                    const botM = Math.min(yBotFn(xm, zm, um), topM - 0.55);
+                    const stemH = Math.max(0.45, topM - botM - 0.09);
+                    const slopeAlong = Math.atan2(topB - topA, totalLen / steps);
+
+                    const segGrp = new THREE.Group();
+                    segGrp.position.set(xm, 0, zm);
+                    segGrp.rotation.y = -angle;
+
+                    // Main board-formed concrete stem
+                    const stem = new THREE.Mesh(new THREE.BoxGeometry(segLen, stemH, thick), retainingWallMat);
+                    stem.position.set(0, botM + stemH * 0.5, 0);
+                    stem.rotation.z = slopeAlong * 0.35;
+                    stem.castShadow = true;
+                    stem.receiveShadow = true;
+                    segGrp.add(stem);
+
+                    // Overhanging precast coping cap sloped cleanly along the wall crest
+                    const cap = new THREE.Mesh(new THREE.BoxGeometry(segLen + 0.01, 0.10, thick + 0.08), retainingCapMat);
+                    cap.position.set(0, topM - 0.04, 0);
+                    cap.rotation.z = slopeAlong;
+                    cap.castShadow = true;
+                    cap.receiveShadow = true;
+                    segGrp.add(cap);
+
+                    // Vertical rustication control joint at segment seam
+                    if (i > 0) {
+                        const jnt = new THREE.Mesh(new THREE.BoxGeometry(0.03, stemH - 0.06, thick + 0.02), retainingJointMat);
+                        jnt.position.set(-segLen * 0.5 + 0.015, botM + stemH * 0.5, 0);
+                        segGrp.add(jnt);
+                    }
+
+                    // Galvanized tubular steel safety guardrail atop tall retaining drops
+                    if (withGuardrail && um <= guardrailEndU) {
+                        const railH = 0.96;
+                        for (const railY of [railH, railH * 0.52]) {
+                            const rBar = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, segLen, 8), galvRailMat);
+                            rBar.rotation.z = Math.PI * 0.5 + slopeAlong;
+                            rBar.position.set(0, topM + railY, 0);
+                            rBar.castShadow = true;
+                            segGrp.add(rBar);
+                        }
+                        const rPost = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, railH + 0.04, 8), galvRailMat);
+                        rPost.position.set(-segLen * 0.5 + 0.04, topM + railH * 0.5, 0);
+                        rPost.castShadow = true;
+                        segGrp.add(rPost);
+                        if (i === steps - 1 || (i + 1) / steps > guardrailEndU) {
+                            const endPost = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, railH + 0.04, 8), galvRailMat);
+                            endPost.position.set(segLen * 0.5 - 0.04, topM + railH * 0.5, 0);
+                            endPost.castShadow = true;
+                            segGrp.add(endPost);
+                        }
+                    }
+
+                    roadGrp.add(segGrp);
+                }
+            };
+
+            // =========================================================================
+            // 1. PURPLE ACCESS ROAD — SINGLE-LANE IN-AND-OUT ACCESS NETWORK (UNMARKED)
+            // =========================================================================
+            // Smooth road height offset: +0.052m clear of terrain along the interior, feathering to +0.018m flush at Douglas St & Orondo Ave
+            const accessRoadYOff = (px) => {
+                const wDoug = THREE.MathUtils.smoothstep(px, 38.46, 41.40);
+                const wOron = 1.0 - THREE.MathUtils.smoothstep(px, 120.20, 123.25);
+                return 0.018 + 0.034 * wDoug * wOron;
+            };
+
+            // Leg 1: Single-lane in-and-out from Douglas St NE edge (38.46, 131.05) -> Barricade & Junction (79.36, 129.42)
+            const leg1CenterZ = (lx) => 131.05 + ((lx - 38.46) / (79.36 - 38.46)) * (129.42 - 131.05);
+            const leg1Angle = Math.atan2(129.42 - 131.05, 79.36 - 38.46);
+            const leg1HalfW = 2.30; // 4.60m single-lane bidirectional ("one lane, in and out") width
+            const leg1Mesh = buildSkirtedOrientedRoadRibbon(
+                38.46,
+                131.05,
+                79.36,
+                129.42,
+                leg1HalfW,
+                38,
+                8,
+                (px) => accessRoadYOff(px),
+                asphaltMat
+            );
+            leg1Mesh.name = 'GymAccessRoad_DouglasLeg';
+
+            // Curve + Leg 2: Single-lane Rounded Arc from Junction (79.36, 129.42) around 426 Concrete Lot -> Orondo Ave (123.25, 119.50)
+            const accessCurve = new THREE.CatmullRomCurve3(
+                [
+                    new THREE.Vector3(79.36, 0, 129.42),
+                    new THREE.Vector3(80.75, 0, 126.40),
+                    new THREE.Vector3(82.65, 0, 123.35),
+                    new THREE.Vector3(85.65, 0, 120.92),
+                    new THREE.Vector3(89.45, 0, 120.08),
+                    new THREE.Vector3(94.80, 0, 120.00),
+                    new THREE.Vector3(109.00, 0, 119.75),
+                    new THREE.Vector3(123.25, 0, 119.50)
+                ],
+                false,
+                'centripetal',
+                0.35
+            );
+            const leg2HalfW = 2.35; // 4.70m single-lane bidirectional width
+            const leg2Mesh = buildSplineRoadRibbon(
+                accessCurve,
+                leg2HalfW,
+                56,
+                8,
+                (px) => accessRoadYOff(px) + 0.001,
+                asphaltMat
+            );
+            leg2Mesh.name = 'GymAccessRoad_OrondoCurveLeg';
+
+            // Exact sampled inner (+1) and outer (-1) edge Z-profiles of `accessCurve` so adjacent parking & turf weld seamlessly
+            const innerEdgeSamples = [];
+            const outerEdgeSamples = [];
+            for (let i = 0; i <= 72; i++) {
+                const u = i / 72;
+                const pt = accessCurve.getPointAt(u);
+                const tan = accessCurve.getTangentAt(u);
+                const l = Math.hypot(tan.x, tan.z) || 1;
+                const nx = -tan.z / l, nz = tan.x / l;
+                innerEdgeSamples.push([pt.x + nx * leg2HalfW, pt.z + nz * leg2HalfW]);
+                outerEdgeSamples.push([pt.x - nx * leg2HalfW, pt.z - nz * leg2HalfW]);
+            }
+            innerEdgeSamples.sort((a, b) => a[0] - b[0]);
+            outerEdgeSamples.sort((a, b) => a[0] - b[0]);
+
+            const evalSampledEdgeZ = (samples, lx) => {
+                if (lx <= samples[0][0]) return samples[0][1];
+                if (lx >= samples[samples.length - 1][0]) return samples[samples.length - 1][1];
+                for (let i = 0; i < samples.length - 1; i++) {
+                    const [x0, z0] = samples[i];
+                    const [x1, z1] = samples[i + 1];
+                    if (lx >= x0 && lx <= x1) {
+                        const t = x1 > x0 ? (lx - x0) / (x1 - x0) : 0;
+                        return z0 + (z1 - z0) * t;
+                    }
+                }
+                return samples[samples.length - 1][1];
+            };
+
+            // Leg 3: Single-lane Rear Alley Access Road behind 426 Concrete Parking & 428 Orondo (80.55, 128.40 -> 81.05, 175.00)
+            const leg3HalfW = 2.15; // 4.30m single-lane rear alley width (clears CASA garage at lx<=78.29 & Red Wall #4 at lx=83.32)
+            const leg3Mesh = buildSkirtedOrientedRoadRibbon(
+                80.55,
+                128.40,
+                81.05,
+                175.00,
+                leg3HalfW,
+                38,
+                6,
+                (px, pz) => 0.052 * (1.0 - 0.55 * THREE.MathUtils.smoothstep(pz, 171.5, 175.0)),
+                asphaltMat
+            );
+            leg3Mesh.name = 'GymAccessRoad_RearAlleyLeg';
+
+            // Smooth Unmarked Asphalt Junction Fillet Patch welding Leg 1, Curve Leg 2, and Rear Alley Leg 3 seamlessly
+            buildVariableZGradedPatch(
+                76.00,
+                82.70,
+                (lx) => (lx < 79.36 ? leg1CenterZ(lx) - leg1HalfW : 127.00),
+                (lx) => (lx < 78.40 ? leg1CenterZ(lx) + leg1HalfW : 132.20),
+                10,
+                8,
+                (lx, lz) => yGrade(lx, lz) + 0.0515,
+                asphaltMat,
+                0.20
+            );
+
+            // Access Road Raised Curbs (Clean unmarked edges — zero painted road markings):
+            // - Leg 1 SW Curb along CASA Retaining Wall #3
+            addCurbAlongPoints(
+                [[39.00, 133.37], [58.00, 132.61], [76.20, 131.89]],
+                0.09,
+                0.115
+            );
+            // - Curve + Leg 2 Outer (NE / Gym & Rec-Yard side) Continuous Curb
+            {
+                const outerCurbPts = outerEdgeSamples.filter(([cx]) => cx >= 77.50 && cx <= 120.80);
+                addCurbAlongPoints(outerCurbPts, 0.09, 0.115);
+            }
+            // - Curve + Leg 2 Inner (426 Concrete Lot side) Curb, split cleanly around two 5.2m flush driveway aprons (lx = 95.8..101.0 & 110.5..115.7)
+            {
+                const innerSegs = [[], [], []];
+                for (const [cx, cz] of innerEdgeSamples) {
+                    if (cx < 83.35 || cx > 120.80) continue;
+                    if (cx <= 95.80) innerSegs[0].push([cx, cz]);
+                    else if (cx >= 101.00 && cx <= 110.50) innerSegs[1].push([cx, cz]);
+                    else if (cx >= 115.70) innerSegs[2].push([cx, cz]);
+                }
+                innerSegs.forEach((pts) => addCurbAlongPoints(pts, 0.09, 0.115));
+            }
+            // - Rear Alley Leg 3 West Curb
+            addCurbAlongPoints([[78.38, 133.20], [78.88, 174.20]], 0.08, 0.108);
+
+            // =========================================================================
+            // 2. YELLOW BARRICADE ACROSS SINGLE-LANE DOUGLAS ACCESS LEG THROAT (af962e33.jpg)
+            // =========================================================================
+            {
+                const barGrp = new THREE.Group();
+                barGrp.name = 'GymAccessRoad_YellowBarricade';
+                const bx0 = 75.95, bz0 = leg1CenterZ(75.95) - 2.22;
+                const bx1 = 76.12, bz1 = leg1CenterZ(76.12) + 2.22;
+                const bdx = bx1 - bx0, bdz = bz1 - bz0;
+                const bLen = Math.hypot(bdx, bdz);
+                const bAng = Math.atan2(bdz, bdx);
+
+                // 3 Heavy-Duty Safety-Yellow Steel Bollard Posts anchored in concrete collars across the single-lane road
+                for (let p = 0; p <= 2; p++) {
+                    const u = p / 2;
+                    const px = bx0 + bdx * u;
+                    const pz = bz0 + bdz * u;
+                    const py = yGrade(px, pz) + 0.05;
+
+                    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.08, 12), wheelStopConcreteMat);
+                    collar.position.set(px, py + 0.04, pz);
+                    barGrp.add(collar);
+
+                    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 1.12, 14), barricadeYellowMat);
+                    post.position.set(px, py + 0.56, pz);
+                    post.castShadow = true;
+                    barGrp.add(post);
+
+                    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.095, 12, 8), barricadeYellowMat);
+                    dome.position.set(px, py + 1.12, pz);
+                    barGrp.add(dome);
+                }
+
+                // 2-Bay Safety-Yellow Tubular Gate Rails + Reflective Yellow/Black Chevron Barricade Boards
+                for (let bay = 0; bay < 2; bay++) {
+                    const uA = bay / 2, uB = (bay + 1) / 2;
+                    const um = 0.5 * (uA + uB);
+                    const mx = bx0 + bdx * um, mz = bz0 + bdz * um;
+                    const yA = yGrade(bx0 + bdx * uA, bz0 + bdz * uA) + 0.05;
+                    const yB = yGrade(bx0 + bdx * uB, bz0 + bdz * uB) + 0.05;
+                    const ym = 0.5 * (yA + yB);
+                    const spanW = (bLen / 2) - 0.14;
+                    const tilt = Math.atan2(yB - yA, bLen / 2);
+
+                    const bayNode = new THREE.Group();
+                    bayNode.position.set(mx, ym, mz);
+                    bayNode.rotation.y = -bAng;
+
+                    // Upper & lower safety-yellow heavy steel gate tubes
+                    for (const ry of [0.46, 0.96]) {
+                        const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, spanW + 0.10, 10), barricadeYellowMat);
+                        tube.rotation.z = Math.PI * 0.5 + tilt;
+                        tube.position.y = ry;
+                        tube.castShadow = true;
+                        bayNode.add(tube);
+                    }
+
+                    // Reflective yellow & black chevron Type-III barricade rail board
+                    const board = new THREE.Mesh(new THREE.BoxGeometry(spanW, 0.28, 0.055), barricadeChevronMat);
+                    board.position.y = 0.72;
+                    board.rotation.z = tilt;
+                    board.castShadow = true;
+                    bayNode.add(board);
+
+                    barGrp.add(bayNode);
+                }
+                roadGrp.add(barGrp);
+            }
+
+            // =========================================================================
+            // 3. ORANGE CONCRETE PARKING LOTS #1 & #2 (af962e33.jpg / park-1338020933)
+            // =========================================================================
+            // 3A. Concrete Parking #1 — Upper Douglas-Side Strip (lx = 40.68..75.55, NE of single-lane Access Road Leg 1)
+            const park1ZSouth = (lx) => leg1CenterZ(lx) - leg1HalfW;
+            const park1ZNorth = (lx) => park1ZSouth(lx) - 8.15;
+            {
+                const p1Mesh = buildVariableZGradedPatch(
+                    40.68,
+                    75.55,
+                    park1ZNorth,
+                    park1ZSouth,
+                    24,
+                    8,
+                    (lx, lz) => yGrade(lx, lz) + 0.068,
+                    parkingConcreteMat,
+                    0.24
+                );
+                p1Mesh.name = 'GymConcreteParking_NorthWestStrip';
+
+                // Raised perimeter concrete curbs on NW, NE, and SE borders of Concrete Parking #1
+                addCurbAlongPoints(
+                    [
+                        [40.72, park1ZSouth(40.72) - 0.15],
+                        [40.72, park1ZNorth(40.72)],
+                        [58.00, park1ZNorth(58.00)],
+                        [75.55, park1ZNorth(75.55)],
+                        [75.55, park1ZSouth(75.55) - 0.15]
+                    ],
+                    0.09,
+                    0.138
+                );
+
+                // 12 Perpendicular 90° White Stall Stripes + Precast Concrete Wheel Stops
+                const p1Dx = 79.36 - 38.46, p1Dz = 129.42 - 131.05;
+                const p1Len = Math.hypot(p1Dx, p1Dz);
+                const p1Nx = -p1Dz / p1Len;
+                for (let s = 0; s <= 12; s++) {
+                    const sx = 41.35 + s * 2.80;
+                    const zs = park1ZSouth(sx) - 0.25;
+                    const zn = zs - 5.45;
+                    addOrientedStripe(sx, zs, sx - p1Nx * 5.45, zn, 0.055, paintWhiteMat, 0.082, 3);
+                    if (s < 12) {
+                        const midX = sx + 1.40;
+                        const wsZ = park1ZNorth(midX) + 0.85;
+                        const ws = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.13, 0.18), wheelStopConcreteMat);
+                        ws.position.set(midX, yGrade(midX, wsZ) + 0.13, wsZ);
+                        ws.rotation.y = -leg1Angle;
+                        ws.castShadow = true;
+                        ws.receiveShadow = true;
+                        roadGrp.add(ws);
+                    }
                 }
             }
-            const sStride = srvSegsZ + 1;
-            for (let ix = 0; ix < srvSegsX; ix++) {
-                for (let iz = 0; iz < srvSegsZ; iz++) {
-                    const a = ix * sStride + iz;
-                    const b = a + 1;
-                    const c = (ix + 1) * sStride + iz;
-                    const d = c + 1;
-                    sIdx.push(a, b, c, b, d, c);
+
+            // 3B. Concrete Parking #2 — Main 426 Orondo Concrete Parking Lot (lx = 83.48..118.15, lz = innerCurveEdge..150.55)
+            const park2ZMin = (lx) => evalSampledEdgeZ(innerEdgeSamples, lx);
+            const park2ZMax = () => 150.55;
+            {
+                const p2Mesh = buildVariableZGradedPatch(
+                    83.48,
+                    118.15,
+                    park2ZMin,
+                    park2ZMax,
+                    32,
+                    22,
+                    (lx, lz) => yGrade(lx, lz) + 0.068,
+                    parkingConcreteMat,
+                    0.24
+                );
+                p2Mesh.name = 'GymConcreteParking_Lot426';
+
+                // North edge concrete curb bordering 428 Orondo's chain-link fence (lz = 150.55)
+                addCurbAlongPoints([[83.48, 150.55], [101.00, 150.55], [118.15, 150.55]], 0.09, 0.138);
+
+                // Flush concrete driveway aprons connecting single-lane Access Road Leg 2 into 426 Concrete Lot
+                for (const [apX0, apX1] of [[95.80, 101.00], [110.50, 115.70]]) {
+                    buildVariableZGradedPatch(
+                        apX0,
+                        apX1,
+                        (lx) => park2ZMin(lx) - 0.55,
+                        (lx) => park2ZMin(lx) + 0.35,
+                        4,
+                        2,
+                        (lx, lz) => yGrade(lx, lz) + 0.062,
+                        parkingConcreteMat,
+                        0.24
+                    );
+                }
+
+                // Parallel NW–SE Parking Stall Rows & Drive Aisles matching the orange bars in af962e33.jpg:
+                // - Row W: 7 West Stalls backing up to Red Retaining Wall #4 (lx = 83.65..88.85, lz = 130.2..149.45)
+                for (let s = 0; s <= 7; s++) {
+                    const sz = 130.20 + s * 2.75;
+                    addOrientedStripe(83.65, sz, 88.85, sz, 0.055, paintWhiteMat, 0.082, 3);
+                    if (s < 7) {
+                        const midZ = sz + 1.375;
+                        const ws = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.13, 1.80), wheelStopConcreteMat);
+                        ws.position.set(84.25, yGrade(84.25, midZ) + 0.13, midZ);
+                        ws.castShadow = true;
+                        roadGrp.add(ws);
+                    }
+                }
+
+                // - Central Double-Loaded Parallel Bay Spine & Stalls (lx = 92.20..114.20, spine at lz = 138.80, stalls 133.6..144.0)
+                addOrientedStripe(92.20, 138.80, 114.20, 138.80, 0.06, paintWhiteMat, 0.082, 8);
+                for (let s = 0; s <= 8; s++) {
+                    const sx = 92.20 + s * 2.75;
+                    addOrientedStripe(sx, 133.60, sx, 144.00, 0.055, paintWhiteMat, 0.082, 4);
+                    if (s < 8) {
+                        const midX = sx + 1.375;
+                        for (const wzOff of [-0.62, 0.62]) {
+                            const wz = 138.80 + wzOff;
+                            const ws = new THREE.Mesh(new THREE.BoxGeometry(1.80, 0.13, 0.18), wheelStopConcreteMat);
+                            ws.position.set(midX, yGrade(midX, wz) + 0.13, wz);
+                            ws.castShadow = true;
+                            roadGrp.add(ws);
+                        }
+                    }
+                }
+
+                // - North Row along 428 Orondo Fence (lx = 92.20..116.95, lz = 145.35..150.35, including Blue ADA Stall near Orondo)
+                for (let s = 0; s <= 9; s++) {
+                    const sx = 92.20 + s * 2.75;
+                    const isAda = s >= 8;
+                    addOrientedStripe(sx, 145.35, sx, 150.35, 0.055, isAda ? paintBlueAdaMat : paintWhiteMat, 0.082, 3);
+                    if (s < 9) {
+                        const midX = sx + 1.375;
+                        const ws = new THREE.Mesh(new THREE.BoxGeometry(1.80, 0.13, 0.18), wheelStopConcreteMat);
+                        ws.position.set(midX, yGrade(midX, 149.75) + 0.13, 149.75);
+                        ws.castShadow = true;
+                        roadGrp.add(ws);
+                    }
+                }
+
+                // - South Row Stalls between Driveway Aprons (lx = 101.60..109.85, lz = 122.9..127.9)
+                for (let s = 0; s <= 3; s++) {
+                    const sx = 101.60 + s * 2.75;
+                    addOrientedStripe(sx, 122.90, sx, 127.85, 0.055, paintWhiteMat, 0.082, 3);
+                    if (s < 3) {
+                        const midX = sx + 1.375;
+                        const ws = new THREE.Mesh(new THREE.BoxGeometry(1.80, 0.13, 0.18), wheelStopConcreteMat);
+                        ws.position.set(midX, yGrade(midX, 123.50) + 0.13, 123.50);
+                        ws.castShadow = true;
+                        roadGrp.add(ws);
+                    }
+                }
+
+                // - Two Tall Dark-Bronze LED Parking Lot Light Poles illuminating Lot 426 & Access Road
+                for (const [lpX, lpZ, armDir] of [[84.05, 139.20, 1], [117.45, 136.80, -1]]) {
+                    const lpY = yGrade(lpX, lpZ) + 0.068;
+                    const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.20, 0.55, 12), wheelStopConcreteMat);
+                    ped.position.set(lpX, lpY + 0.275, lpZ);
+                    roadGrp.add(ped);
+                    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.105, 6.80, 12), darkBronzePoleMat);
+                    pole.position.set(lpX, lpY + 0.55 + 3.40, lpZ);
+                    pole.castShadow = true;
+                    roadGrp.add(pole);
+                    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.08, 0.18), darkBronzePoleMat);
+                    arm.position.set(lpX + armDir * 0.38, lpY + 7.28, lpZ);
+                    roadGrp.add(arm);
+                    const head = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.10, 0.32), darkBronzePoleMat);
+                    head.position.set(lpX + armDir * 0.72, lpY + 7.22, lpZ);
+                    roadGrp.add(head);
                 }
             }
-            srvGeom.setAttribute('position', new THREE.Float32BufferAttribute(sPos, 3));
-            srvGeom.setAttribute('normal', new THREE.Float32BufferAttribute(sNorm, 3));
-            srvGeom.setAttribute('uv', new THREE.Float32BufferAttribute(sUv, 2));
-            srvGeom.setIndex(sIdx);
-            srvGeom.computeVertexNormals();
-            const srvMesh = new THREE.Mesh(srvGeom, asphaltMat);
-            srvMesh.receiveShadow = true;
-            roadGrp.add(srvMesh);
 
-            // Raised White Curbs along both edges of the S-curved Service Road (lx = 39.2m .. 122.4m)
-            for (const side of [-1, 1]) {
-                const cbGeom = new THREE.BufferGeometry();
-                const cPos = [], cNorm = [], cUv = [], cIdx = [];
-                for (let ix = 0; ix <= srvSegsX; ix++) {
-                    const u = ix / srvSegsX;
-                    const lx = 39.0 + (122.4 - 39.0) * u;
-                    const cz = getServiceCenterZ(lx);
-                    const [tx, tz] = getServiceTangent(lx);
-                    const nx = -tz, nz = tx;
-                    const offA = side * srvHalfW - 0.09;
-                    const offB = side * srvHalfW + 0.09;
-                    const xA = lx + nx * offA, zA = cz + nz * offA;
-                    const xB = lx + nx * offB, zB = cz + nz * offB;
-                    cPos.push(xA, yGrade(xA, zA) + 0.095, zA);
-                    cPos.push(xB, yGrade(xB, zB) + 0.095, zB);
-                    cNorm.push(0, 1, 0, 0, 1, 0);
-                    cUv.push(u * 10, 0, u * 10, 1);
-                }
-                for (let ix = 0; ix < srvSegsX; ix++) {
-                    const a = ix * 2, b = a + 1, c = a + 2, d = a + 3;
-                    cIdx.push(a, b, d, a, d, c);
-                }
-                cbGeom.setAttribute('position', new THREE.Float32BufferAttribute(cPos, 3));
-                cbGeom.setAttribute('normal', new THREE.Float32BufferAttribute(cNorm, 3));
-                cbGeom.setAttribute('uv', new THREE.Float32BufferAttribute(cUv, 2));
-                cbGeom.setIndex(cIdx);
-                cbGeom.computeVertexNormals();
-                const cbMesh = new THREE.Mesh(cbGeom, curbWhiteMat);
-                cbMesh.receiveShadow = true;
-                roadGrp.add(cbMesh);
+            // =========================================================================
+            // 4. ALL FOUR RED RETAINING WALLS (af962e33.jpg)
+            // =========================================================================
+            const zWall2Center = (lx) => 115.45 + 0.47 * THREE.MathUtils.clamp((lx - 63.80) / (116.50 - 63.80), 0, 1);
+
+            // Red Wall #1: Top-Left L-Shaped Retaining Wall around Lower Gym Service Parking Bay
+            //   - Short NW-SE leg (51.00, 106.20 -> 51.00, 113.95)
+            addArchitecturalRetainingWall(51.00, 106.20, 51.00, 113.95, {
+                thick: 0.34,
+                yTopFn: (px, pz) => yGrade(49.20, pz) + 0.24,
+                yBotFn: (px, pz) => yGrade(52.40, pz) - 0.55,
+                withGuardrail: true
+            });
+            //   - Long SW-NE leg (51.00, 113.95 -> 59.50, 113.95)
+            addArchitecturalRetainingWall(51.00, 113.95, 59.50, 113.95, {
+                thick: 0.34,
+                yTopFn: (px) => yGrade(px, 115.60) + 0.24,
+                yBotFn: (px) => yGrade(px, 112.50) - 0.55,
+                withGuardrail: true
+            });
+
+            // Red Wall #2: Long Continuous Retaining Wall behind Building 300 Rear Gym & Octagon South Rec Yard (63.80 -> 116.50)
+            addArchitecturalRetainingWall(63.80, 115.45, 116.50, 115.92, {
+                thick: 0.36,
+                yTopFn: (px) => yGrade(px, zWall2Center(px) + 1.35) + 0.26,
+                yBotFn: (px) => yGrade(px, zWall2Center(px) - 0.85) - 0.65,
+                withGuardrail: true,
+                guardrailEndU: 0.80 // Guardrail runs across the deep drop behind the Gym & Rec Yard, tapering off near Orondo Ave
+            });
+
+            // Red Wall #3: SW Property Retaining Wall along single-lane Douglas St Access Road Leg 1 (CASA Program embankment: 39.20 -> 76.20)
+            addArchitecturalRetainingWall(39.20, 133.62, 76.20, 132.14, {
+                thick: 0.32,
+                yTopFn: (px, pz) => Math.max(yGrade(px, pz + 2.20) + 0.22, yGrade(px, pz - 0.80) + 0.78),
+                yBotFn: (px, pz) => yGrade(px, pz - 0.80) - 0.45,
+                withGuardrail: false
+            });
+
+            // Red Wall #4: West Retaining Wall of 426 Concrete Parking Lot along Rear Alley Access Road Leg 3 (83.30, 127.00 -> 83.35, 150.55)
+            addArchitecturalRetainingWall(83.30, 127.00, 83.35, 150.55, {
+                thick: 0.32,
+                yTopFn: (px, pz) => yGrade(81.50, pz) + 0.38,
+                yBotFn: (px, pz) => yGrade(84.40, pz) - 0.45,
+                withGuardrail: false
+            });
+
+            // =========================================================================
+            // 5. UPPER GYM-REAR LANDSCAPED TURF TERRACE, DOUGLAS BANK & SLANTED RAMP
+            // =========================================================================
+            // 5A. Outer Douglas-Side Tree Bank outside Red L-Wall #1 (lx = 40.68..51.00, lz = 106.20..park1ZNorth)
+            buildVariableZGradedPatch(
+                40.68,
+                51.00,
+                () => 106.20,
+                (lx) => park1ZNorth(lx) + 0.08,
+                10,
+                10,
+                (lx, lz) => yGrade(lx, lz) + 0.046,
+                upperTurfMat,
+                0.18
+            );
+            // 5B. Upper Turf Terrace between Red L-Wall #1 (lz = 113.95) and Concrete Parking #1 (lx = 51.00..59.50)
+            buildVariableZGradedPatch(
+                51.00,
+                59.50,
+                () => 113.95,
+                (lx) => park1ZNorth(lx) + 0.08,
+                8,
+                6,
+                (lx, lz) => yGrade(lx, lz) + 0.046,
+                upperTurfMat,
+                0.18
+            );
+            // 5C. Upper Turf Terrace behind Red Wall #2 up to Concrete Parking #1 & Curved Single-Lane Access Road (lx = 63.80..118.50)
+            {
+                const zRoadOuterApprox = (lx) => {
+                    if (lx <= 75.55) return park1ZNorth(lx) + 0.08;
+                    if (lx <= 77.65) {
+                        const u = (lx - 75.55) / (77.65 - 75.55);
+                        return THREE.MathUtils.lerp(park1ZSouth(75.55) + 0.05, evalSampledEdgeZ(outerEdgeSamples, 77.65) + 0.05, u);
+                    }
+                    return evalSampledEdgeZ(outerEdgeSamples, lx) + 0.05;
+                };
+                buildVariableZGradedPatch(
+                    63.80,
+                    118.50,
+                    (lx) => (lx <= 116.50 ? zWall2Center(lx) : 115.92),
+                    zRoadOuterApprox,
+                    40,
+                    10,
+                    (lx, lz) => {
+                        const zw = lx <= 116.50 ? zWall2Center(lx) : 115.92;
+                        const sampleZ = Math.max(lz, zw + 1.25);
+                        return yGrade(lx, sampleZ) + 0.046;
+                    },
+                    upperTurfMat,
+                    0.18
+                );
             }
 
-            // Dashed Yellow Centerline following the S-Curved Service Road (lx = 43.0m .. 116.5m)
-            for (let lx = 43.0; lx <= 116.5; lx += 6.8) {
-                const x0 = lx, x1 = lx + 2.55;
-                const z0 = getServiceCenterZ(x0);
-                const z1 = getServiceCenterZ(x1);
-                addOrientedStripe(x0, z0, x1, z1, 0.065, paintYellowMat, 0.036, 4);
+            // 5D. Slanted Concrete Service & Pedestrian Ramp through the Retaining-Wall Gap (lx = 59.50..63.80, lz = 113.95..park1ZNorth)
+            //     Connects the Upper Terrace & Concrete Parking #1 smoothly down to the auto-leveled Lower Gym Apron!
+            buildVariableZGradedPatch(
+                59.50,
+                63.80,
+                () => 113.85,
+                (lx) => park1ZNorth(lx) + 0.08,
+                4,
+                12,
+                (lx, lz) => yGrade(lx, lz) + 0.062,
+                sidewalkConcreteMat,
+                0.24
+            );
+            // Side Cheek Curbs & Sloped Pipe Handrails flanking the Service Ramp (lx = 59.62 & lx = 63.68)
+            for (const rx of [59.64, 63.66]) {
+                const zBot = 114.05, zTop = park1ZNorth(rx) - 0.10;
+                const yBot = yGrade(rx, zBot) + 0.065;
+                const yTop = yGrade(rx, zTop) + 0.065;
+                const rampSpan = Math.hypot(zTop - zBot, yTop - yBot);
+                const rampPitch = Math.atan2(yTop - yBot, zTop - zBot);
+                const railBar = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, rampSpan, 8), galvRailMat);
+                railBar.position.set(rx, 0.5 * (yBot + yTop) + 0.88, 0.5 * (zBot + zTop));
+                railBar.rotation.x = Math.PI * 0.5 - rampPitch;
+                railBar.castShadow = true;
+                roadGrp.add(railBar);
+                for (const [pz, py] of [[zBot, yBot], [0.5 * (zBot + zTop), 0.5 * (yBot + yTop)], [zTop, yTop]]) {
+                    const pPost = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.90, 8), galvRailMat);
+                    pPost.position.set(rx, py + 0.45, pz);
+                    pPost.castShadow = true;
+                    roadGrp.add(pPost);
+                }
             }
 
-            // Crosswalks symmetrically centered across the 7.60m Service Road throats at Douglas St (lx = 40.20m, cz = 134.35m)
-            // and Orondo Ave (lx = 121.40m, cz = 119.35m): 3 twin-bar pairs at off = -1.90, 0, +1.90
-            for (let s = 0; s < 3; s++) {
-                const off = -1.90 + s * 1.90;
-                addTwinBarPair(40.20, 134.35 + off, 2.35, 0.20, 0);
-                addTwinBarPair(121.40, 119.35 + off, 2.35, 0.20, 0);
+            // =========================================================================
+            // 6. BEHIND BUILDING 400 TERRACED FLAT CONCRETE PARKING BAYS,
+            //    RETAINING WALLS #1 & #2, AND CONTINUOUS CONCRETE REAR ALLEY
+            //    (media_1794447467381_cee37ff3.jpg — park-1338020932 & way-760596321)
+            // =========================================================================
+            {
+                // 6A. Lower Flat Concrete Parking Bay (lx = -16.85 .. 22.42, lz = 74.40 .. 82.32)
+                //     Welds seamlessly at lz = 74.40..75.80 onto Building 411/412's SW concrete pad (+0.106m -> +0.068m)
+                const lowerBayYOff = (lz) =>
+                    THREE.MathUtils.lerp(0.106, 0.068, THREE.MathUtils.smoothstep(lz, 74.40, 75.85));
+
+                const b400LowerMesh = buildVariableZGradedPatch(
+                    -16.85,
+                    22.42,
+                    () => 74.40,
+                    () => 82.32,
+                    28,
+                    10,
+                    (lx, lz) => yGrade(lx, lz) + lowerBayYOff(lz),
+                    parkingConcreteMat,
+                    0.24
+                );
+                b400LowerMesh.name = 'B400ConcreteParking_LowerBay';
+
+                // 1.5m Concrete Pedestrian Walkway Strip + Score Joints along the north face of Retaining Wall #1 (lz = 80.78..82.28, lx = -16.75..22.40)
+                // providing a dedicated 1.50m walkway before the Lower Bay parking stall markings!
+                addGradedStripe(-16.75, 22.40, 80.78, 82.28, sidewalkConcreteMat, 0.076, 14, 2);
+                addGradedStripe(-16.75, 22.40, 80.76, 80.80, tableJointMat, 0.080, 14, 1);
+                for (let jx = -15.00; jx <= 21.50; jx += 1.75) {
+                    addGradedStripe(jx - 0.015, jx + 0.015, 80.80, 82.25, tableJointMat, 0.080, 1, 1);
+                }
+
+                // 11 Perpendicular 90° White Parking Stalls + Concrete Wheel Stops before the 1.5m Walkway at Retaining Wall #1 (lz = 76.25..80.75)
+                // Leaves a clear circulation aisle (lz = 74.40..76.25 & Building400ConcreteParkingGround) from Douglas St Driveway #1 straight to Rear Alley
+                for (let s = 0; s <= 11; s++) {
+                    const sx = -14.80 + s * 2.82;
+                    addOrientedStripe(sx, 76.25, sx, 80.75, 0.055, paintWhiteMat, 0.082, 3);
+                    if (s < 11) {
+                        const midX = sx + 1.41;
+                        const wsZ = 80.22;
+                        const ws = new THREE.Mesh(new THREE.BoxGeometry(1.80, 0.13, 0.18), wheelStopConcreteMat);
+                        ws.position.set(midX, yGrade(midX, wsZ) + 0.13, wsZ);
+                        ws.castShadow = true;
+                        ws.receiveShadow = true;
+                        roadGrp.add(ws);
+                    }
+                }
+
+                // 6B. Upper Flat Concrete Parking Bay between Retaining Wall #1 (82.40) & Retaining Wall #2 (97.25)
+                const b400UpperMesh = buildVariableZGradedPatch(
+                    -16.85,
+                    22.42,
+                    () => 82.52,
+                    () => 97.12,
+                    28,
+                    16,
+                    (lx, lz) => yGrade(lx, lz) + 0.068,
+                    parkingConcreteMat,
+                    0.24
+                );
+                b400UpperMesh.name = 'B400ConcreteParking_UpperBay';
+
+                // 1.5m Concrete Pedestrian Walkway Strips + Score Joints before both rows of Upper Bay parking markings:
+                // - Along south face of Retaining Wall #1 (lz = 82.55 .. 84.05, 1.50m wide)
+                // - Along north face of Retaining Wall #2 (lz = 95.60 .. 97.10, 1.50m wide)
+                addGradedStripe(-16.75, 22.40, 82.55, 84.05, sidewalkConcreteMat, 0.076, 14, 2);
+                addGradedStripe(-16.75, 22.40, 84.03, 84.07, tableJointMat, 0.080, 14, 1);
+                addGradedStripe(-16.75, 22.40, 95.60, 97.10, sidewalkConcreteMat, 0.076, 14, 2);
+                addGradedStripe(-16.75, 22.40, 95.58, 95.62, tableJointMat, 0.080, 14, 1);
+                for (let jx = -15.00; jx <= 21.50; jx += 1.75) {
+                    addGradedStripe(jx - 0.015, jx + 0.015, 82.58, 84.02, tableJointMat, 0.080, 1, 1);
+                    addGradedStripe(jx - 0.015, jx + 0.015, 95.63, 97.07, tableJointMat, 0.080, 1, 1);
+                }
+
+                // Double-Loaded 90° Parking Stalls flanking the central drive aisle (lz = 88.20 .. 91.40)
+                // aligned directly with Douglas St Driveway Apron #2 (87.80 .. 93.60) and the flush Rear Alley opening!
+                // - Lower/NW Row after the 1.5m Retaining Wall #1 walkway (lz = 84.08 .. 88.20, lx = -15.20 .. 18.64, 12 stalls)
+                for (let s = 0; s <= 12; s++) {
+                    const sx = -15.20 + s * 2.82;
+                    addOrientedStripe(sx, 84.08, sx, 88.20, 0.055, paintWhiteMat, 0.082, 3);
+                    if (s < 12) {
+                        const midX = sx + 1.41;
+                        const wsZ = 84.58;
+                        const ws = new THREE.Mesh(new THREE.BoxGeometry(1.80, 0.13, 0.18), wheelStopConcreteMat);
+                        ws.position.set(midX, yGrade(midX, wsZ) + 0.13, wsZ);
+                        ws.castShadow = true;
+                        ws.receiveShadow = true;
+                        roadGrp.add(ws);
+                    }
+                }
+                // - Upper/SE Row before the 1.5m Retaining Wall #2 walkway (lz = 91.40 .. 95.56, lx = -15.20 .. 18.64, 12 stalls; 2 ADA near Douglas St)
+                for (let s = 0; s <= 12; s++) {
+                    const sx = -15.20 + s * 2.82;
+                    const isAda = s >= 10;
+                    addOrientedStripe(sx, 91.40, sx, 95.56, 0.055, isAda ? paintBlueAdaMat : paintWhiteMat, 0.082, 3);
+                    if (s < 12) {
+                        const midX = sx + 1.41;
+                        const wsZ = 95.06;
+                        const ws = new THREE.Mesh(new THREE.BoxGeometry(1.80, 0.13, 0.18), wheelStopConcreteMat);
+                        ws.position.set(midX, yGrade(midX, wsZ) + 0.13, wsZ);
+                        ws.castShadow = true;
+                        ws.receiveShadow = true;
+                        roadGrp.add(ws);
+                    }
+                }
+
+                // Two Tall Dark-Bronze LED Parking Lot Light Poles illuminating the Lower & Upper Concrete Terraces
+                for (const [lpX, lpZ, armDir] of [[21.55, 81.55, -1], [21.55, 96.35, -1]]) {
+                    const lpY = yGrade(lpX, lpZ) + 0.068;
+                    const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.20, 0.55, 12), wheelStopConcreteMat);
+                    ped.position.set(lpX, lpY + 0.275, lpZ);
+                    roadGrp.add(ped);
+                    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.105, 6.60, 12), darkBronzePoleMat);
+                    pole.position.set(lpX, lpY + 0.55 + 3.30, lpZ);
+                    pole.castShadow = true;
+                    roadGrp.add(pole);
+                    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.08, 0.18), darkBronzePoleMat);
+                    arm.position.set(lpX + armDir * 0.38, lpY + 7.08, lpZ);
+                    roadGrp.add(arm);
+                    const head = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.10, 0.32), darkBronzePoleMat);
+                    head.position.set(lpX + armDir * 0.72, lpY + 7.02, lpZ);
+                    roadGrp.add(head);
+                }
+
+                // 6C. Red Retaining Wall #1 (lz = 82.40m, lx = -16.75m -> +22.25m) + Short Alley Ramp Return Cheek (-16.75, 82.40 -> 86.10)
+                //     Levels the terrain step from Lower Flat Concrete Bay up to Upper Flat Concrete Bay
+                addArchitecturalRetainingWall(-16.75, 82.40, 22.25, 82.40, {
+                    thick: 0.34,
+                    yTopFn: (px) => yGrade(px, 83.25) + 0.22,
+                    yBotFn: (px) => yGrade(px, 81.55) - 0.52,
+                    withGuardrail: true
+                });
+                addArchitecturalRetainingWall(-16.75, 82.40, -16.75, 86.10, {
+                    thick: 0.30,
+                    yTopFn: (_px, pz) => yGrade(-16.00, pz) + 0.18,
+                    yBotFn: (_px, pz) => yGrade(-17.60, pz) - 0.45,
+                    withGuardrail: false
+                });
+
+                // 6D. Red Retaining Wall #2 (lz = 97.25m, lx = -16.80m -> +22.25m)
+                //     Retains the higher uphill residential embankment (416 Douglas St & rear garage) above the flat Upper Concrete Bay
+                addArchitecturalRetainingWall(-16.80, 97.25, 22.25, 97.25, {
+                    thick: 0.36,
+                    yTopFn: (px) => Math.max(yGrade(px, 98.55) + 0.24, yGrade(px, 96.40) + 0.88),
+                    yBotFn: (px) => yGrade(px, 96.40) - 0.55,
+                    withGuardrail: true
+                });
+
+                // 6E. Continuous Brushed-Concrete Rear Alley (way-760596321: lx = -21.35 .. -16.85, lz = 74.35 .. 152.00)
+                //     Seamlessly welds onto Building 411/412's concrete alley at lz = 74.4m and extends uphill past both parking bays
+                const b400AlleyMesh = buildSkirtedOrientedRoadRibbon(
+                    -19.10,
+                    74.35,
+                    -19.10,
+                    152.00,
+                    2.25,
+                    64,
+                    6,
+                    (_px, pz) => THREE.MathUtils.lerp(0.106, 0.068, THREE.MathUtils.smoothstep(pz, 74.35, 75.85)),
+                    parkingConcreteMat,
+                    0.26,
+                    0.24
+                );
+                b400AlleyMesh.name = 'B400ConcreteRearAlley';
+
+                // Raised white concrete edge curbs along south alley edge (lz = 75.0 .. 151.6) & uphill north residential edge (lz = 97.35 .. 151.6)
+                const southAlleyCurbPts = [];
+                for (let cz = 75.0; cz <= 151.6; cz += 3.83) {
+                    southAlleyCurbPts.push([-21.35, cz]);
+                }
+                addCurbAlongPoints(southAlleyCurbPts, 0.085, 0.135);
+
+                const northUphillAlleyCurbPts = [];
+                for (let cz = 97.35; cz <= 151.6; cz += 3.875) {
+                    northUphillAlleyCurbPts.push([-16.85, cz]);
+                }
+                addCurbAlongPoints(northUphillAlleyCurbPts, 0.085, 0.135);
             }
         }
     }

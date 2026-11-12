@@ -2645,6 +2645,11 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
         vestOpenFloor.receiveShadow = true;
         arch.add(vestOpenFloor);
 
+        // Vestibule roof, canopy fascia, doors & curtain-wall glazing (hidden during floor cutaway so vestibule floor connects cleanly to Treasurer 1/4 zone)
+        const vestCoverGroup = new THREE.Group();
+        vestCoverGroup.userData.hideOnCutaway = true;
+        arch.add(vestCoverGroup);
+
         // Tier 1 (Left / Building 350 Side): 1-Story Glass Entrance Vestibule with Double Glass Doors, Silver Canopy Fascia & 3-Lite Transom (6496ecdd.jpg!)
         const leftVestDepthX = leftVestFrontX - coreWallX; // 2.60m
         const leftVestRoof = new THREE.Mesh(
@@ -2653,7 +2658,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
         );
         leftVestRoof.position.set(coreWallX + leftVestDepthX * 0.5, leftVestTopY - 0.07, leftVestMidZ);
         leftVestRoof.castShadow = true;
-        arch.add(leftVestRoof);
+        vestCoverGroup.add(leftVestRoof);
 
         const vestThreshold = new THREE.Mesh(
             new THREE.BoxGeometry(0.28, 0.08, leftVestSpanZ + 0.04),
@@ -2669,7 +2674,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
         );
         leftVestGlass.rotation.y = Math.PI * 0.5;
         leftVestGlass.position.set(leftVestFrontX + 0.015, vestFloorY + leftVestH * 0.5, leftVestMidZ);
-        arch.add(leftVestGlass);
+        vestCoverGroup.add(leftVestGlass);
 
         // Silver/light-grey horizontal aluminum canopy fascia band at vestFloorY + 2.49m (6496ecdd.jpg!)
         const canopyY = vestFloorY + 2.49;
@@ -2679,7 +2684,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
         );
         canopyBand.position.set(leftVestFrontX + 0.05, canopyY, leftVestMidZ);
         canopyBand.castShadow = true;
-        arch.add(canopyBand);
+        vestCoverGroup.add(canopyBand);
 
         // Black vertical mullions & double glass entrance door stiles on Left Vestibule (6496ecdd.jpg)
         const vDoorH = canopyY - vestFloorY - 0.10;
@@ -2692,7 +2697,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
                 blackVestFrameMat
             );
             mull.position.set(leftVestFrontX + 0.01, mY, mz);
-            arch.add(mull);
+            vestCoverGroup.add(mull);
         });
 
         // Distinct black aluminum double-door bottom kickplate rails & top door header rails (lz = -19.95m .. -18.15m)
@@ -2702,14 +2707,14 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
                 blackVestFrameMat
             );
             kickRail.position.set(leftVestFrontX + 0.015, vestFloorY + 0.14, dzDoor);
-            arch.add(kickRail);
+            vestCoverGroup.add(kickRail);
 
             const topDoorRail = new THREE.Mesh(
                 new THREE.BoxGeometry(0.08, 0.11, 0.82),
                 blackVestFrameMat
             );
             topDoorRail.position.set(leftVestFrontX + 0.015, canopyY - 0.15, dzDoor);
-            arch.add(topDoorRail);
+            vestCoverGroup.add(topDoorRail);
 
             // Inner vertical door leaf stiles
             [-0.36, 0.36].forEach((szOff) => {
@@ -2718,7 +2723,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
                     blackVestFrameMat
                 );
                 leafStile.position.set(leftVestFrontX + 0.015, vestFloorY + vDoorH * 0.5, dzDoor + szOff);
-                arch.add(leafStile);
+                vestCoverGroup.add(leafStile);
             });
 
             // Silver push bars & vertical pull handles on the double entrance doors
@@ -2727,7 +2732,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
                 silverFasciaMat
             );
             pushBar.position.set(leftVestFrontX + 0.06, vestFloorY + 1.02, dzDoor);
-            arch.add(pushBar);
+            vestCoverGroup.add(pushBar);
 
             const handleZ = dIdx === 0 ? dzDoor + 0.28 : dzDoor - 0.28;
             const pullHandle = new THREE.Mesh(
@@ -2735,7 +2740,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
                 silverFasciaMat
             );
             pullHandle.position.set(leftVestFrontX + 0.07, vestFloorY + 1.12, handleZ);
-            arch.add(pullHandle);
+            vestCoverGroup.add(pullHandle);
         });
 
         // Forward-stepped left side glass bay against Building 350's rear wall (lx = +5.45m .. +6.60m, lz = -17.95m .. -17.425m, 6496ecdd.jpg!)
@@ -2744,7 +2749,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
             blackVestFrameMat
         );
         sideBayBox.position.set(6.02, vestFloorY + 1.24, connMaxZ - 0.26);
-        arch.add(sideBayBox);
+        vestCoverGroup.add(sideBayBox);
 
         // Grey rectangular trash/ash receptacle bin standing in front of the left side bay (6496ecdd.jpg!)
         const trashBin = new THREE.Mesh(
@@ -2772,7 +2777,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
         );
         rightRoof.position.set(coreWallX + (rightVestDepthX + 0.42) * 0.5, rightVestTopY - 0.12, rightVestMidZ);
         rightRoof.castShadow = true;
-        arch.add(rightRoof);
+        vestCoverGroup.add(rightRoof);
 
         // Front & North-East (+Z return) glass curtain walls of Right Lobby Box
         const rightFrontGlass = new THREE.Mesh(
@@ -2781,7 +2786,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
         );
         rightFrontGlass.rotation.y = Math.PI * 0.5;
         rightFrontGlass.position.set(rightVestFrontX - 0.02, vestFloorY + (rightVestH - 0.24) * 0.5, rightVestMidZ);
-        arch.add(rightFrontGlass);
+        vestCoverGroup.add(rightFrontGlass);
 
         // Glowing white interior ceiling light troffer panels visible through the upper glazing (780f317e.jpg, 6496ecdd.jpg!)
         [-23.55, -22.15].forEach((tz) => {
@@ -2790,7 +2795,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
                 ceilingTrofferMat
             );
             troffer.position.set(rightVestFrontX - 1.10, rightVestTopY - 0.32, tz);
-            arch.add(troffer);
+            vestCoverGroup.add(troffer);
         });
 
         // Black curtain-wall mullions & horizontal transom bars on Right Lobby Box
@@ -2800,7 +2805,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
                 blackVestFrameMat
             );
             mull.position.set(rightVestFrontX, vestFloorY + rightVestH * 0.5, mz);
-            arch.add(mull);
+            vestCoverGroup.add(mull);
         });
         [canopyY, leftVestTopY].forEach((hy) => {
             const hBar = new THREE.Mesh(
@@ -2808,7 +2813,7 @@ function buildParkSideGrounds(arch, mats, sampleLocalY, maxX, frontZ, midWalkY) 
                 blackVestFrameMat
             );
             hBar.position.set(rightVestFrontX, hy, rightVestMidZ);
-            arch.add(hBar);
+            vestCoverGroup.add(hBar);
         });
 
         // 5D. L-Shaped Brushed-Concrete Vestibule ADA Pathway & 90° Right Turn into Building 401's South Sidewalk

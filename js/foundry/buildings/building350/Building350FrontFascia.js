@@ -291,6 +291,7 @@ export function buildTwoStoryArchedCourtroomBay(parent, x, z, bayW, rotY, mats) 
     } = mats;
 
     const g = new THREE.Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(x, 0, z);
     g.rotation.y = rotY;
 
@@ -497,7 +498,12 @@ function buildMainOrondoEntrancePortal(parent, cx, frontZ, mats) {
     } = mats;
 
     const g = new THREE.Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(cx, 0, frontZ);
+
+    const groundFixtures = new THREE.Group();
+    groundFixtures.position.set(cx, 0, frontZ);
+    parent.add(groundFixtures);
 
     const openW = 2.48;
     const openH = 3.56;
@@ -511,7 +517,7 @@ function buildMainOrondoEntrancePortal(parent, cx, frontZ, mats) {
 
     const thresholdSill = new THREE.Mesh(new THREE.BoxGeometry(openW + 0.16, 0.42, 0.24), terraCottaTrimMat);
     thresholdSill.position.set(0, 0.21, 0.14);
-    g.add(thresholdSill);
+    groundFixtures.add(thresholdSill);
 
     const topSoffit = new THREE.Mesh(new THREE.BoxGeometry(openW + 0.20, 0.18, 0.28), terraCottaMat);
     topSoffit.position.set(0, openH + 0.05, 0.16);
@@ -716,6 +722,7 @@ function buildMainOrondoEntrancePortal(parent, cx, frontZ, mats) {
  */
 export function buildGraniteBaseWindow(parent, x, y, z, w, h, rotY, graniteMat, frameMat, glassMat) {
     const g = new THREE.Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(x, y, z);
     g.rotation.y = rotY;
 
@@ -757,6 +764,7 @@ export function buildGraniteBaseWindow(parent, x, y, z, w, h, rotY, graniteMat, 
  */
 export function buildRecessedRectWindow(parent, x, y, z, w, h, rotY, frameMat, glassMat, trimMat, hasSill = true) {
     const g = new THREE.Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(x, y, z);
     g.rotation.y = rotY;
 
@@ -790,6 +798,7 @@ export function buildRecessedRectWindow(parent, x, y, z, w, h, rotY, frameMat, g
  */
 export function buildFriezeAtticWindow(parent, x, y, z, w, h, rotY, frameMat, glassMat, trimMat) {
     const g = new THREE.Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(x, y, z);
     g.rotation.y = rotY;
 

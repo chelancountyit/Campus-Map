@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getBrushedParkingConcreteTexture } from '../buildings/building401/WashingtonStreetCorridor.js';
 
 export function buildCampusFoundationPads(groundFoundry, parent) {
         const lotLevelY = groundFoundry.getRawTerrainHeight(-22.0, 10.0);
@@ -408,5 +409,241 @@ export function buildCampusFoundationPads(groundFoundry, parent) {
             addGradedFoundationStrip(-59.65, 51.85, getFootZMin, getFootZMax, 42, 8, 0.06, 1.45, structuralFootingMat);
 
             parent.add(fnd401Group);
+        }
+
+        // 7. Building 400 Brushed Concrete Parking Lot & Douglas St Sidewalk Extension (Scene Ground Layer — outside all .GLB files)
+        //    Covers Building 400's rear/SW parking plaza (lx = +23.62m .. +62.18m) with the exact same brushed parking concrete
+        //    texture & material as B400ConcreteParking_LowerBay / UpperBay, plus the Douglas St sidewalk strip (lx = +62.18m .. +64.40m).
+        {
+            const bCenter = [-73.89, -11.51];
+            const cosA = 0.80801;
+            const sinA = -0.58917;
+            const terrainY = groundFoundry.getTerrainHeight(bCenter[0], bCenter[1]);
+
+            const b400ParkingGroup = new THREE.Group();
+            b400ParkingGroup.name = 'Building400ConcreteParkingGround';
+            b400ParkingGroup.position.set(bCenter[0], terrainY, bCenter[1]);
+            b400ParkingGroup.rotation.y = Math.atan2(sinA, cosA);
+
+            const parkingConcreteTex = getBrushedParkingConcreteTexture();
+            const parkingConcreteMat = new THREE.MeshStandardMaterial({
+                color: '#d4cfc5',
+                map: parkingConcreteTex,
+                roughness: 0.84,
+                metalness: 0.03,
+                side: THREE.DoubleSide,
+                polygonOffset: true,
+                polygonOffsetFactor: -2,
+                polygonOffsetUnits: -2
+            });
+            const swConcreteMat = new THREE.MeshStandardMaterial({
+                color: '#e2dcd0',
+                roughness: 0.86,
+                metalness: 0.03,
+                polygonOffset: true,
+                polygonOffsetFactor: -2,
+                polygonOffsetUnits: -2
+            });
+            const swJointMat = new THREE.MeshBasicMaterial({
+                color: '#9c9588',
+                polygonOffset: true,
+                polygonOffsetFactor: -3,
+                polygonOffsetUnits: -3
+            });
+
+            const yStreetGrade = (lx, lz) => {
+                const wx = bCenter[0] + lx * cosA + lz * sinA;
+                const wz = bCenter[1] - lx * sinA + lz * cosA;
+                return groundFoundry.getTerrainHeight(wx, wz) - terrainY;
+            };
+            const ySwTop = (lx) => yStreetGrade(lx, -23.50) + 0.09;
+            // Exact outer weld line in 411 local coords matching lz401 = 74.415m (overlaps B400ConcreteParking_LowerBay at lz401 = 74.40m by 1.5cm)
+            const zOuter411 = (lx) => 11.11 + 0.00635 * lx;
+            const yAlleyLot = (lx, lz) => {
+                const zOut = zOuter411(lx);
+                const tDoug = THREE.MathUtils.clamp((lx - 23.62) / (64.40 - 23.62), 0, 1);
+                const baseBias = THREE.MathUtils.lerp(0.12, 0.085, tDoug);
+                const rearWeldBias = THREE.MathUtils.lerp(
+                    0.106,
+                    0.085,
+                    THREE.MathUtils.smoothstep(lx, 62.18, 64.40)
+                );
+                const hBias = THREE.MathUtils.lerp(
+                    baseBias,
+                    rearWeldBias,
+                    THREE.MathUtils.smoothstep(lz, 6.00, zOut)
+                );
+                return yStreetGrade(lx, lz) + hBias;
+            };
+
+            const evalParkingUv = (px, pz) => {
+                const wx = bCenter[0] + px * cosA + pz * sinA;
+                const wz = bCenter[1] - px * sinA + pz * cosA;
+                const dx401 = wx - (-4.22);
+                const dz401 = wz - (-38.74);
+                const lx401 = dx401 * 0.80425 + dz401 * 0.59429;
+                const lz401 = -dx401 * 0.59429 + dz401 * 0.80425;
+                return [lx401 * 0.24, lz401 * 0.24];
+            };
+
+            const addGradedQuad = (p00, p10, p11, p01, mat, yBias = 0) => {
+                const geom = new THREE.BufferGeometry();
+                const crossY = (p10[2] - p00[2]) * (p11[0] - p00[0]) - (p10[0] - p00[0]) * (p11[2] - p00[2]);
+                const [a, b, c, d] = crossY >= 0 ? [p00, p10, p11, p01] : [p00, p01, p11, p10];
+                const verts = new Float32Array([
+                    a[0], a[1] + yBias, a[2],
+                    b[0], b[1] + yBias, b[2],
+                    c[0], c[1] + yBias, c[2],
+                    a[0], a[1] + yBias, a[2],
+                    c[0], c[1] + yBias, c[2],
+                    d[0], d[1] + yBias, d[2]
+                ]);
+                let uvs;
+                if (mat === parkingConcreteMat) {
+                    const [ua, va] = evalParkingUv(a[0], a[2]);
+                    const [ub, vb] = evalParkingUv(b[0], b[2]);
+                    const [uc, vc] = evalParkingUv(c[0], c[2]);
+                    const [ud, vd] = evalParkingUv(d[0], d[2]);
+                    uvs = new Float32Array([ua, va, ub, vb, uc, vc, ua, va, uc, vc, ud, vd]);
+                } else {
+                    uvs = new Float32Array([
+                        a[0] * 0.25, a[2] * 0.25,
+                        b[0] * 0.25, b[2] * 0.25,
+                        c[0] * 0.25, c[2] * 0.25,
+                        a[0] * 0.25, a[2] * 0.25,
+                        c[0] * 0.25, c[2] * 0.25,
+                        d[0] * 0.25, d[2] * 0.25
+                    ]);
+                }
+                geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+                geom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+                geom.computeVertexNormals();
+                const m = new THREE.Mesh(geom, mat);
+                m.receiveShadow = true;
+                b400ParkingGroup.add(m);
+                return m;
+            };
+
+            const addGradedSkirtSegment = (x0, z0, x1, z1, thick, yTopFn, wallMat) => {
+                const dx = x1 - x0;
+                const dz = z1 - z0;
+                const len = Math.hypot(dx, dz);
+                const steps = Math.max(1, Math.ceil(len / 1.40));
+                const angle = Math.atan2(dz, dx);
+                for (let i = 0; i < steps; i++) {
+                    const t0 = i / steps;
+                    const t1 = (i + 1) / steps;
+                    const tm = 0.5 * (t0 + t1);
+                    const xA = x0 + dx * t0, zA = z0 + dz * t0;
+                    const xB = x0 + dx * t1, zB = z0 + dz * t1;
+                    const mx = x0 + dx * tm, mz = z0 + dz * tm;
+                    const segLen = (len / steps) + 0.02;
+                    const topA = yTopFn(xA, zA);
+                    const topB = yTopFn(xB, zB);
+                    const yTop = 0.5 * (topA + topB);
+                    const yBot = Math.min(ySwTop(mx) - 0.16, yStreetGrade(mx, mz) - 0.16, yTop - 0.36);
+                    const bodyH = Math.max(0.20, yTop - yBot);
+                    const slopeAlong = Math.atan2(topB - topA, len / steps);
+
+                    const segGroup = new THREE.Group();
+                    segGroup.position.set(mx, 0, mz);
+                    segGroup.rotation.y = -angle;
+
+                    const body = new THREE.Mesh(new THREE.BoxGeometry(segLen, bodyH, thick), wallMat);
+                    body.position.set(0, yBot + bodyH * 0.5, 0);
+                    body.rotation.z = slopeAlong;
+                    body.castShadow = true;
+                    body.receiveShadow = true;
+                    segGroup.add(body);
+                    b400ParkingGroup.add(segGroup);
+                }
+            };
+
+            const dougExtSpans = [
+                { xStart: 23.62, xEnd: 28.98, zInner: -2.26, xSteps: 5, mat: parkingConcreteMat },
+                { xStart: 28.98, xEnd: 47.48, zInner: -3.40, xSteps: 14, mat: parkingConcreteMat },
+                { xStart: 47.48, xEnd: 56.65, zInner: -4.52, xSteps: 7, mat: parkingConcreteMat },
+                { xStart: 56.65, xEnd: 62.34, zInner: -3.40, xSteps: 6, mat: parkingConcreteMat },
+                { xStart: 62.34, xEnd: 64.54, zInner: -3.40, xSteps: 3, mat: swConcreteMat }
+            ];
+            const dougZSteps = 22;
+            const b400WalkWidth = 1.50;
+            dougExtSpans.forEach(({ xStart, xEnd, zInner, xSteps, mat }) => {
+                for (let ix = 0; ix < xSteps; ix++) {
+                    const x0 = xStart + ((xEnd - xStart) * ix) / xSteps;
+                    const x1 = xStart + ((xEnd - xStart) * (ix + 1)) / xSteps;
+                    const zOut0 = zOuter411(x0);
+                    const zOut1 = zOuter411(x1);
+                    for (let iz = 0; iz < dougZSteps; iz++) {
+                        const t0 = iz / dougZSteps;
+                        const t1 = (iz + 1) / dougZSteps;
+                        const z00 = zInner + (zOut0 - zInner) * t0;
+                        const z10 = zInner + (zOut1 - zInner) * t0;
+                        const z11 = zInner + (zOut1 - zInner) * t1;
+                        const z01 = zInner + (zOut0 - zInner) * t1;
+                        addGradedQuad(
+                            [x0, yAlleyLot(x0, z00), z00],
+                            [x1, yAlleyLot(x1, z10), z10],
+                            [x1, yAlleyLot(x1, z11), z11],
+                            [x0, yAlleyLot(x0, z01), z01],
+                            mat
+                        );
+                    }
+                    // 1.50m Concrete Pedestrian Walkway strip along Building 400's SW Rear Wall (zInner .. zInner + 1.50m)
+                    // connecting seamlessly into the Douglas St sidewalk strip (lx = 62.34..64.54)
+                    if (mat !== swConcreteMat) {
+                        const zWalk0 = zInner;
+                        const zWalk1 = zInner + b400WalkWidth;
+                        addGradedQuad(
+                            [x0, yAlleyLot(x0, zWalk0), zWalk0],
+                            [x1, yAlleyLot(x1, zWalk0), zWalk0],
+                            [x1, yAlleyLot(x1, zWalk1), zWalk1],
+                            [x0, yAlleyLot(x0, zWalk1), zWalk1],
+                            swConcreteMat,
+                            0.004
+                        );
+                        addGradedQuad(
+                            [x0, yAlleyLot(x0, zWalk1 - 0.015), zWalk1 - 0.015],
+                            [x1, yAlleyLot(x1, zWalk1 - 0.015), zWalk1 - 0.015],
+                            [x1, yAlleyLot(x1, zWalk1 + 0.015), zWalk1 + 0.015],
+                            [x0, yAlleyLot(x0, zWalk1 + 0.015), zWalk1 + 0.015],
+                            swJointMat,
+                            0.008
+                        );
+                        if (ix > 0) {
+                            addGradedQuad(
+                                [x0 - 0.014, yAlleyLot(x0 - 0.014, zWalk0 + 0.04), zWalk0 + 0.04],
+                                [x0 + 0.014, yAlleyLot(x0 + 0.014, zWalk0 + 0.04), zWalk0 + 0.04],
+                                [x0 + 0.014, yAlleyLot(x0 + 0.014, zWalk1 - 0.04), zWalk1 - 0.04],
+                                [x0 - 0.014, yAlleyLot(x0 - 0.014, zWalk1 - 0.04), zWalk1 - 0.04],
+                                swJointMat,
+                                0.008
+                            );
+                        }
+                    }
+                }
+            });
+
+            for (let jz = -1.75; jz < 11.20; jz += 1.75) {
+                addGradedQuad(
+                    [62.36, yAlleyLot(62.36, jz - 0.014), jz - 0.014],
+                    [64.40, yAlleyLot(64.40, jz - 0.014), jz - 0.014],
+                    [64.40, yAlleyLot(64.40, jz + 0.014), jz + 0.014],
+                    [62.36, yAlleyLot(62.36, jz + 0.014), jz + 0.014],
+                    swJointMat,
+                    0.006
+                );
+            }
+
+            // Outer street-side skirt along Douglas St curb edge (lx = 64.54m, lz = -3.40m .. zOuter411(64.54)),
+            // with NO interior wall along zOuter411 so the transition into B400ConcreteParking_LowerBay is 100% seamless!
+            const zOutDouglas = zOuter411(64.54);
+            for (let iz = 0; iz < 16; iz++) {
+                const sz0 = -3.40 + ((zOutDouglas - (-3.40)) * iz) / 16;
+                const sz1 = -3.40 + ((zOutDouglas - (-3.40)) * (iz + 1)) / 16;
+                addGradedSkirtSegment(64.54, sz0, 64.54, sz1, 0.18, (px, pz) => yAlleyLot(px, pz) - 0.015, swConcreteMat);
+            }
+
+            parent.add(b400ParkingGroup);
         }
 }

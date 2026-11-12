@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Chelan County Campus — Interactive 3D Map & Terrain</title>
-    <link rel="stylesheet" href="./css/styles.css?v=23" />
+    <link rel="stylesheet" href="./css/styles.css?v=27" />
 </head>
 <body>
     <!-- Progressive Multi-Worker 3D Campus Loading Modal -->
@@ -51,9 +51,21 @@
 
     <div class="floating-top-tools">
         <div class="floating-top-triggers-row">
+            <button id="btn-kiosk-top" class="tools-trigger bird-view-pill-trigger kiosk-top-trigger" type="button" aria-pressed="false" title="Launch 65-Inch TV Kiosk Showcase Mode (?kiosk=1 • Hands-Free Loop)" data-tooltip="65&quot; TV Kiosk Mode">
+                <span aria-hidden="true">📺</span>
+                <span class="bird-trigger-label">TV Kiosk</span>
+            </button>
+            <button id="btn-realtime-sun-top" class="tools-trigger bird-view-pill-trigger realtime-sun-top-trigger" type="button" aria-pressed="false" title="Toggle Real-Time Sun Lighting (Wenatchee, WA Live Solar Position)" data-tooltip="Real-Time Sun Lighting">
+                <span class="realtime-top-icon" aria-hidden="true">☀️</span>
+                <span class="bird-trigger-label">Live Sun</span>
+            </button>
             <button id="btn-bird-view-top" class="tools-trigger bird-view-pill-trigger" type="button" aria-pressed="false" aria-label="Toggle Follow Migratory Bird View" title="Follow Migratory Bird View (Aerial Chase Camera)" data-tooltip="Follow Migratory Bird View">
-                <span aria-hidden="true">🦅</span>
+                <span aria-hidden="true">🦆</span>
                 <span class="bird-trigger-label">Bird View</span>
+            </button>
+            <button id="btn-spawn-eagle-top" class="tools-trigger bird-view-pill-trigger" type="button" aria-label="Spawn Bald Eagle Campus Flyover" title="Spawn High-Res Bald Eagle (~300 ft Full Campus Flyover)" data-tooltip="Spawn Bald Eagle">
+                <span aria-hidden="true">🦅</span>
+                <span class="bird-trigger-label">Eagle Fly</span>
             </button>
             <button id="btn-open-tools" class="tools-trigger icon-only-trigger" type="button" aria-expanded="false" aria-controls="map-tools-panel" aria-label="Open campus tools" title="Map Tools &amp; Scene Controls" data-tooltip="Map Tools &amp; Scene Controls">
                 <span aria-hidden="true">🛠️</span>
@@ -94,11 +106,20 @@
 
                 <section class="map-tools-group" aria-labelledby="scene-controls-title">
                     <h3 id="scene-controls-title">Scene controls</h3>
-                    <label class="tool-time-control compact-time-control" for="time-slider" title="Sun Position &amp; Time of Day" data-tooltip="Sun &amp; Time of Day">
-                        <span class="time-icon-badge" aria-hidden="true">☀️</span>
-                        <input id="time-slider" type="range" min="6" max="22" step="0.25" value="14.5" aria-label="Sun and time of day" />
-                        <strong id="time-display">2:30 PM</strong>
-                    </label>
+                    <div class="time-control-row">
+                        <label id="time-control-wrap" class="tool-time-control compact-time-control" for="time-slider" title="Sun Position &amp; Time of Day" data-tooltip="Sun &amp; Time of Day">
+                            <span id="time-icon-badge" class="time-icon-badge" aria-hidden="true">☀️</span>
+                            <input id="time-slider" name="time_of_day" type="range" min="0" max="24" step="0.25" value="14.5" aria-label="Sun and time of day" />
+                            <strong id="time-display">2:30 PM</strong>
+                        </label>
+                        <div class="realtime-sun-switch-wrap">
+                            <input id="toggle-realtime-sun" name="realtime_sun" type="checkbox" class="visually-hidden" />
+                            <label for="toggle-realtime-sun" class="realtime-sun-pill" title="Sync Sun Position &amp; Lighting to Real-Time Wenatchee Local Time" data-tooltip="Real-Time Sun Lighting">
+                                <span class="realtime-sun-dot" aria-hidden="true"></span>
+                                <span class="realtime-sun-text">Live</span>
+                            </label>
+                        </div>
+                    </div>
                     <div class="tool-setting-grid iconized-setting-grid">
                         <label class="tool-setting icon-toggle-pill" title="Toggle Satellite Imagery" data-tooltip="Satellite Imagery">
                             <span aria-hidden="true">🛰️</span>
@@ -108,17 +129,22 @@
                         <label class="tool-setting icon-toggle-pill" title="Switch to Dark Map Theme" data-tooltip="Dark Map Theme">
                             <span aria-hidden="true">🌙</span>
                             <span class="sr-only">Dark map</span>
-                            <input id="toggle-dark-map" type="checkbox" aria-label="Toggle dark map theme" />
+                            <input id="toggle-dark-map" type="checkbox" checked aria-label="Toggle dark map theme" />
                         </label>
                         <label class="tool-setting icon-toggle-pill" title="Show Solid 3D Terrain Without Google Map Image" data-tooltip="Solid 3D Terrain">
                             <span aria-hidden="true">🏞️</span>
                             <span class="sr-only">Draw terrain</span>
                             <input id="toggle-draw-terrain" type="checkbox" aria-label="Show solid 3D terrain without Google Map image" />
                         </label>
-                        <label class="tool-setting icon-toggle-pill" title="Show 2m Topographic Elevation Contours" data-tooltip="Terrain Contours">
+                        <label class="tool-setting icon-toggle-pill" title="Show High-Precision 0.5m / 2.5m Topographic Contours &amp; ASL Callouts" data-tooltip="Terrain Contours (0.5m / 2.5m)">
                             <span aria-hidden="true">🏔️</span>
                             <span class="sr-only">Terrain contours</span>
                             <input id="toggle-contours" type="checkbox" aria-label="Show terrain contours" />
+                        </label>
+                        <label class="tool-setting icon-toggle-pill" title="Show Campus Parcel &amp; Right-of-Way Survey Boundaries" data-tooltip="Parcel Boundaries">
+                            <span aria-hidden="true">📐</span>
+                            <span class="sr-only">Parcel boundaries</span>
+                            <input id="toggle-parcels" type="checkbox" aria-label="Show campus parcel and right-of-way boundaries" />
                         </label>
                         <label class="tool-setting icon-toggle-pill" title="Show Nearby City Context Buildings" data-tooltip="Nearby Buildings">
                             <span aria-hidden="true">🏙️</span>
@@ -133,12 +159,24 @@
                         <label class="tool-setting icon-toggle-pill" title="Enable 4096×4096 Ultra-Crisp Shadows, 2× Retina DPI &amp; Sky/Sun PBR Reflections" data-tooltip="High-Quality Mode (4K + IBL)">
                             <span aria-hidden="true">⚡</span>
                             <span class="sr-only">High-quality mode (4K + IBL)</span>
-                            <input id="toggle-gpu" type="checkbox" aria-label="Toggle high-quality 4K shadow and PBR reflection mode" />
+                            <input id="toggle-gpu" type="checkbox" checked aria-label="Toggle high-quality 4K shadow and PBR reflection mode" />
                         </label>
-                        <label class="tool-setting icon-toggle-pill" title="Show or Hide Outer 500ft Perimeter White Fog" data-tooltip="Outer Perimeter Fog">
+                        <label class="tool-setting icon-toggle-pill" title="Show or Hide Outer 500ft Perimeter Silver Fog" data-tooltip="Outer Silver Fog">
                             <span aria-hidden="true">🌫️</span>
-                            <span class="sr-only">Outer perimeter fog</span>
-                            <input id="toggle-fog" type="checkbox" checked aria-label="Toggle outer perimeter fog" />
+                            <span class="sr-only">Outer perimeter silver fog</span>
+                            <input id="toggle-fog" type="checkbox" checked aria-label="Toggle outer perimeter silver fog" />
+                        </label>
+                    </div>
+                    <div class="vram-watchdog-row" style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-top:6px; padding:4px 8px; border-radius:8px; background:rgba(15,23,42,0.06); font-size:11px;" title="Automatic GPU VRAM Watchdog — Soft purges at 80% and seamlessly restarts &amp; restores camera view if VRAM reaches the selected limit">
+                        <span id="vram-watchdog-readout" style="font-weight:600; white-space:nowrap;">♻️ VRAM: -- MB</span>
+                        <label for="vram-limit-select" style="display:flex; align-items:center; gap:4px; margin:0;">
+                            <span style="opacity:0.75;">Auto-Restart:</span>
+                            <select id="vram-limit-select" aria-label="VRAM Auto-Restart Threshold" style="font-size:11px; padding:1px 4px; border-radius:5px;">
+                                <option value="384">384 MB</option>
+                                <option value="512" selected>512 MB</option>
+                                <option value="768">768 MB</option>
+                                <option value="1024">1024 MB</option>
+                            </select>
                         </label>
                     </div>
                 </section>
@@ -195,8 +233,8 @@
                             </label>
                             <label class="foundry-compact-slider" for="foundry-map-darken" title="Google Map Darkness" data-tooltip="Map Imagery Darkness">
                                 <span class="foundry-slider-icon" aria-hidden="true">🌑</span>
-                                <input id="foundry-map-darken" type="range" min="0" max="90" step="5" value="0" aria-label="Google Map Darkness" />
-                                <strong id="foundry-map-darken-val" class="foundry-slider-val">0%</strong>
+                                <input id="foundry-map-darken" type="range" min="0" max="90" step="5" value="76" aria-label="Google Map Darkness" />
+                                <strong id="foundry-map-darken-val" class="foundry-slider-val">76%</strong>
                             </label>
                         </div>
                         <div class="foundry-glb-actions" style="display:flex; gap:6px; margin-top:6px;">
@@ -218,7 +256,7 @@
 
         <div class="ada-wcag-toggles" role="group" aria-label="Photorealistic Rendering Options">
             <label class="ada-switch-row">
-                <input id="toggle-luma-pbr" type="checkbox" />
+                <input id="toggle-luma-pbr" type="checkbox" checked />
                 <span>HDR Environment Reflections &amp; Luma Pop (Sky IBL / Bloom / Shadows)</span>
             </label>
             <label class="ada-switch-row">
@@ -314,7 +352,7 @@
         </div>
     </section>
 
-    <!-- Interactive 3D Tree Planter Panel (12 Species + JSON Save/Reload) -->
+    <!-- Interactive 3D Tree Planter Panel (22 Species + JSON Save/Reload) -->
     <section id="tree-planter-panel" class="tree-planter-panel hidden" role="dialog" aria-label="Tree and Bush Planter">
         <div class="tree-planter-header">
             <span>🌳🌿 Tree &amp; Bush Planter (<strong id="tree-count-badge">0</strong> planted)</span>
@@ -362,38 +400,27 @@
         <div id="building-list" class="building-list" role="list" aria-label="Campus Buildings"></div>
     </aside>
 
-    <!-- Right Inspector: Selected Building Details & Floor Directory -->
-    <section id="building-detail-card" class="detail-card hidden" role="region" aria-label="Selected Building Details and ADA Information">
+    <!-- Right Inspector: Concise Building & Floor Picker (Interactive Mode Only) -->
+    <section id="building-detail-card" class="detail-card hidden" role="region" aria-label="Selected Building Details">
         <div class="detail-top">
-            <span id="detail-code" class="bldg-badge">350</span>
+            <div class="detail-title-inline">
+                <span id="detail-code" class="bldg-badge">350</span>
+                <h2 id="detail-name">Courthouse</h2>
+            </div>
             <button id="close-detail-btn" class="close-btn" aria-label="Close Building Inspector" title="Close Inspector">✕</button>
         </div>
-        <h2 id="detail-name">Chelan County Courthouse (350 Orondo)</h2>
-        <div id="detail-address">350 Orondo Ave, Wenatchee, WA 98801</div>
-        <p id="detail-summary"></p>
+        <div id="detail-address">350 Orondo Ave • (509) 667-6800</div>
+        <p id="detail-summary" class="hidden"></p>
+        <div id="detail-ada-box" class="detail-ada-box hidden"></div>
 
-        <div class="detail-specs">
-            <div>
-                <span>Structure</span>
-                <strong id="detail-floors">5 Stories</strong>
+        <div id="detail-floor-explorer" class="detail-floor-explorer">
+            <div class="detail-floor-explorer-top">
+                <span class="dept-section-title" style="margin-bottom: 0;">Floors</span>
+                <button id="btn-floor-cutaway" type="button" class="floor-cutaway-btn active" aria-pressed="true" title="Slice upper stories away to inspect architectural floor plate">✂️ Cutaway</button>
             </div>
-            <div>
-                <span>USGS 3DEP Elevation</span>
-                <strong id="detail-year">730.6 ft (222.7m ASL)</strong>
-            </div>
-            <div>
-                <span>Public Hours</span>
-                <strong id="detail-hours">Mon–Fri 8:30–5:00</strong>
-            </div>
-            <div>
-                <span>Main Phone</span>
-                <strong id="detail-phone">(509) 667-6800</strong>
-            </div>
+            <div id="detail-floor-pills" class="detail-floor-pills" role="tablist" aria-label="Select building floor"></div>
         </div>
 
-        <div id="detail-ada-box" class="detail-ada-box"></div>
-
-        <div class="dept-section-title">Floor &amp; Department Directory</div>
         <div id="detail-departments" class="dept-list"></div>
     </section>
 
@@ -404,10 +431,31 @@
             <span class="bird-view-hud-kicker">Migratory Bird View</span>
             <strong id="bird-view-species-label">Bald Eagle</strong>
         </div>
+        <button id="btn-bird-eagle" class="bird-view-hud-btn" type="button" title="Spawn High-Resolution Bald Eagle (~300 ft Full Campus Flyover)">🦅 Eagle</button>
         <button id="btn-bird-next" class="bird-view-hud-btn" type="button" title="Switch to next migratory bird species">Next Bird ↻</button>
         <button id="btn-bird-exit" class="bird-view-hud-btn exit" type="button" title="Exit Migratory Bird View (Esc)">Exit ✕</button>
     </div>
 
-    <script defer src="./js/campus-bundle.js?v=217"></script>
+    <!-- 65-Inch Hands-Free TV Kiosk Minimal Corner HUD (?kiosk=1) -->
+    <header id="tv-kiosk-header" class="tv-kiosk-header hidden" aria-label="Chelan County Campus Live Clock">
+        <span class="tv-kiosk-brand-tag">Chelan County</span>
+        <span class="tv-kiosk-sep" aria-hidden="true">•</span>
+        <span id="tv-kiosk-time" class="tv-kiosk-time">2:30 PM</span>
+        <span id="tv-kiosk-date" class="tv-kiosk-date" aria-hidden="true">☀️</span>
+    </header>
+
+    <aside id="tv-kiosk-stage-bar" class="tv-kiosk-stage-bar hidden" aria-label="Campus Showcase Stage">
+        <div class="tv-kiosk-stage-row">
+            <span id="tv-kiosk-kicker" class="tv-kiosk-kicker">Campus</span>
+            <h2 id="tv-kiosk-stage-title">Chelan County Campus</h2>
+        </div>
+        <div id="tv-kiosk-step-dots" class="tv-kiosk-step-dots hidden" aria-hidden="true"></div>
+        <p id="tv-kiosk-stage-desc" class="hidden"></p>
+        <div class="tv-kiosk-progress-track" aria-hidden="true">
+            <div id="tv-kiosk-progress-fill" class="tv-kiosk-progress-fill"></div>
+        </div>
+    </aside>
+
+    <script defer src="./js/campus-bundle.js?v=254"></script>
 </body>
 </html>

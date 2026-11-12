@@ -308,6 +308,7 @@ export function buildBuilding300DetentionAndGym(ctx) {
                     doorLeaf.position.set(0, 1.26, outZ * 0.02);
                     bayGrp.add(doorLeaf);
                     const doorHood = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.10, 0.44), recCreamMat);
+                    doorHood.userData.hideOnCutaway = true;
                     doorHood.position.set(0, 2.58, outZ * 0.04);
                     bayGrp.add(doorHood);
                 } else {
@@ -600,7 +601,7 @@ export function buildBuilding300DetentionAndGym(ctx) {
             addBox(1.42, 0.012, 0.025, plazaJointMat, 29.18, 0.185, sz, false);
         }
 
-        // 4. -Z (SW Rear) Gymnasium Wall Louvers (lz = -35.94m, visible on right side of f4e9b73e.jpg):
+        // 4. -Z (SW Rear) Gymnasium Wall Louvers & Architectural Details (lz = -35.94m, facing the Access Road):
         //   - Pair of large upper aluminum intake/exhaust louvers (lx = 23.0m & 26.0m, y = 6.25m) + lower louver (y = 2.65m)
         [22.90, 25.90].forEach((lxPos) => {
             addBox(2.45, 1.55, 0.18, silverFlashingMat, lxPos, 6.25, gymZMin - 0.05);
@@ -609,4 +610,68 @@ export function buildBuilding300DetentionAndGym(ctx) {
             }
         });
         addBox(2.45, 1.25, 0.18, silverFlashingMat, 25.90, 2.65, gymZMin - 0.05);
+
+        //   - Vertical Precast Panel Control Joints & Mid-Height Reveal Band across the SW Rear & +X Gym Facades
+        [5.20, 9.85, 14.52, 19.18, 23.85].forEach((jx) => {
+            addBox(0.045, 8.20, 0.06, plazaJointMat, jx, 4.25, gymZMin - 0.02, false);
+        });
+        [-19.20, -23.40, -27.60, -31.80].forEach((jz) => {
+            addBox(0.06, 8.20, 0.045, plazaJointMat, gymXMax + 0.02, 4.25, jz, false);
+        });
+        addBox(gymW + 0.06, 0.12, 0.08, plinthBeigeMat, gymCenterX, 4.55, gymZMin - 0.03, false);
+
+        //   - Eave Collector Gutter & Galvanized Vertical Downspouts along the SW Rear Wall (lz = -36.04m)
+        addBox(gymW + 0.20, 0.16, 0.16, darkFasciaMat, gymCenterX, gymEaveY - 0.06, gymZMin - 0.10, false);
+        [1.15, 14.52, 27.85].forEach((dxPos) => {
+            const dsPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 7.55, 10), silverFlashingMat);
+            dsPipe.position.set(dxPos, 4.52, gymZMin - 0.11);
+            dsPipe.castShadow = true;
+            arch.add(dsPipe);
+            // Cast-iron lower downspout boot
+            addBox(0.14, 0.72, 0.14, blackIronMat, dxPos, 0.54, gymZMin - 0.11, false);
+        });
+
+        //   - Dark-Bronze Architectural LED Security Wall-Pack Luminaires on SW Rear & NW (+X) Gym Walls
+        const ledLensMat = new THREE.MeshStandardMaterial({
+            color: '#fef3c7',
+            emissive: '#fde68a',
+            emissiveIntensity: 0.35,
+            roughness: 0.30
+        });
+        [6.50, 14.52, 21.20].forEach((wxPos) => {
+            addBox(0.36, 0.20, 0.22, blackIronMat, wxPos, 4.32, gymZMin - 0.10);
+            addBox(0.30, 0.04, 0.16, ledLensMat, wxPos, 4.21, gymZMin - 0.11, false);
+        });
+        [-21.60, -29.60].forEach((wzPos) => {
+            addBox(0.22, 0.20, 0.36, blackIronMat, gymXMax + 0.10, 4.32, wzPos);
+            addBox(0.16, 0.04, 0.30, ledLensMat, gymXMax + 0.11, 4.21, wzPos, false);
+        });
+
+        //   - Lower Rear Concrete Service Walk & River-Rock Drainage Swale (lz = -37.42m .. -35.94m)
+        //     Tucked cleanly at washGradeY between the Gym SW wall and the toe of Red Retaining Wall #2!
+        const swaleGravelMat = new THREE.MeshStandardMaterial({ color: '#6e685f', roughness: 0.95, metalness: 0.02 });
+        addBox(gymW + 1.45, 0.18, 0.88, plazaConcreteMat, gymCenterX + 0.70, 0.09, gymZMin - 0.44, false);
+        addBox(gymW + 1.45, 0.15, 0.68, swaleGravelMat, gymCenterX + 0.70, 0.075, gymZMin - 1.20, false);
+        for (let sx = 1.50; sx <= 28.50; sx += 2.00) {
+            addBox(0.025, 0.012, 0.80, plazaJointMat, sx, 0.185, gymZMin - 0.44, false);
+        }
+
+        //   - Exterior Electrical Meter/Conduit Bank, Pad-Mounted HVAC Condenser & Protective Yellow Bollards at NW/SW Gym Service Corner
+        addBox(0.18, 1.35, 0.92, silverFlashingMat, gymXMax + 0.08, 1.55, -31.10);
+        addBox(0.06, 2.65, 0.06, silverFlashingMat, gymXMax + 0.07, 3.55, -30.85, false);
+        addBox(0.06, 2.65, 0.06, silverFlashingMat, gymXMax + 0.07, 3.55, -31.35, false);
+        // Concrete HVAC equipment pad + twin-fan condenser unit + safety bollards
+        addBox(1.35, 0.22, 2.15, plazaConcreteMat, gymXMax + 0.82, 0.11, -34.60, false);
+        addBox(0.96, 1.18, 1.72, darkFasciaMat, gymXMax + 0.78, 0.81, -34.60);
+        [-35.02, -34.18].forEach((fz) => {
+            const fanGrille = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 14), blackIronMat);
+            fanGrille.position.set(gymXMax + 0.78, 1.41, fz);
+            arch.add(fanGrille);
+        });
+        [-35.65, -33.55].forEach((bz) => {
+            const bol = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.02, 10), bollardYellowMat);
+            bol.position.set(gymXMax + 1.52, 0.51, bz);
+            bol.castShadow = true;
+            arch.add(bol);
+        });
 }

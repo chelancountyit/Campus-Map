@@ -12,12 +12,12 @@ import { fetchBuildingGroupFromGlb } from '../glb/BuildingGlbCodec.js';
  *    or if a `.glb` asset is not yet baked on disk.
  */
 export class BuildingWorkerPool {
-    constructor(wallFoundry, groundFoundry, workerScriptUrl = './js/building-worker-bundle.js?v=217') {
+    constructor(wallFoundry, groundFoundry, workerScriptUrl = './js/building-worker-bundle.js?v=246') {
         this.wallFoundry = wallFoundry;
         this.groundFoundry = groundFoundry;
         this.workerScriptUrl = workerScriptUrl;
         this.glbBaseUrl = './assets/models/buildings';
-        this.glbCacheVersion = '1';
+        this.glbCacheVersion = '246';
         this.useGlbFastPath = true;
         this.glbLoadedCount = 0;
 
@@ -378,5 +378,21 @@ export class BuildingWorkerPool {
         });
 
         await Promise.all(tasks);
+    }
+
+    /**
+     * Terminates idle procedural Web Workers when no background jobs are running so worker heaps
+     * can be reclaimed immediately during low-memory soft purges or graceful restarts.
+     */
+    terminateIdleWorkers() {
+        if (this.pendingJobs.size > 0 || this.workers.length === 0) return;
+        for (let i = 0; i < this.workers.length; i++) {
+            try {
+                this.workers[i].terminate();
+            } catch (_) {}
+        }
+        this.workers = [];
+        this.initialized = false;
+        this.warmWorkers = 0;
     }
 }

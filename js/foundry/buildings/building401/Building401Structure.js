@@ -245,11 +245,15 @@ export function buildBuilding401Structure(arch, building, mats, yGrade) {
         addBox(0.05, brickH, 0.04, jx, plinthTopY + brickH * 0.5, mainMinZ - 0.015, jointMat);
     }
 
+    const winCoverGrp = new THREE.Group();
+    winCoverGrp.userData.hideOnCutaway = true;
+    arch.add(winCoverGrp);
+
     // 1C. Floor 5 Recessed Dark-Tinted Clerestory Ribbon Window Band (y = +14.60m .. +16.10m, wraps all 4 sides — 358e2515.jpg, 109ba9fd.jpg)
     const clereH = clerestoryTopY - brickTopY; // 1.50m
     const clereCY = brickTopY + clereH * 0.5; // +15.35m
     // Inset slightly (0.18m) behind the brick & upper precast faces so the upper precast fascia overhangs crisp and deep
-    addBox(mainW - 0.36, clereH, mainD - 0.36, mainCX, clereCY, mainCZ, clerestoryGlassMat, arch, true);
+    addBox(mainW - 0.36, clereH, mainD - 0.36, mainCX, clereCY, mainCZ, clerestoryGlassMat, winCoverGrp, true);
 
     // Precast sill ledge at y = +14.60m under the 5th-floor clerestory band
     addBox(mainW + 0.08, 0.12, mainD + 0.08, mainCX, brickTopY + 0.04, mainCZ, concretePlinthMat);
@@ -257,12 +261,12 @@ export function buildBuilding401Structure(arch, building, mats, yGrade) {
     // Dark vertical structural mullions along the 5th-floor clerestory ribbon window on North (+Z), South (-Z), East (+X) & West (-X)
     const mullionStep = 1.32;
     for (let mx = mainMinX + 1.20; mx <= mainMaxX - 1.20; mx += mullionStep) {
-        addBox(0.06, clereH, 0.12, mx, clereCY, mainMaxZ - 0.14, darkBronzeFrameMat);
-        addBox(0.06, clereH, 0.12, mx, clereCY, mainMinZ + 0.14, darkBronzeFrameMat);
+        addBox(0.06, clereH, 0.12, mx, clereCY, mainMaxZ - 0.14, darkBronzeFrameMat, winCoverGrp);
+        addBox(0.06, clereH, 0.12, mx, clereCY, mainMinZ + 0.14, darkBronzeFrameMat, winCoverGrp);
     }
     for (let mz = mainMinZ + 1.20; mz <= mainMaxZ - 1.20; mz += mullionStep) {
-        addBox(0.12, clereH, 0.06, mainMaxX - 0.14, clereCY, mz, darkBronzeFrameMat);
-        addBox(0.12, clereH, 0.06, mainMinX + 0.14, clereCY, mz, darkBronzeFrameMat);
+        addBox(0.12, clereH, 0.06, mainMaxX - 0.14, clereCY, mz, darkBronzeFrameMat, winCoverGrp);
+        addBox(0.12, clereH, 0.06, mainMinX + 0.14, clereCY, mz, darkBronzeFrameMat, winCoverGrp);
     }
     // Corner brick piers at the 4 corners of the 5th-floor clerestory level (visible in 358e2515.jpg & 109ba9fd.jpg)
     for (const [cxCorner, czCorner] of [
@@ -333,18 +337,18 @@ export function buildBuilding401Structure(arch, building, mats, yGrade) {
 
     for (const bandY of [5.85, 10.15]) {
         // Continuous dark-bronze window frame & sloped sill along Washington St (+Z)
-        addBox(ribbonW + 0.16, ribbonH + 0.12, 0.10, ribbonCX, bandY, mainMaxZ + 0.02, darkBronzeFrameMat);
-        addBox(ribbonW + 0.20, 0.08, 0.16, ribbonCX, bandY - ribbonH * 0.5 - 0.04, mainMaxZ + 0.05, copingDarkMat);
+        addBox(ribbonW + 0.16, ribbonH + 0.12, 0.10, ribbonCX, bandY, mainMaxZ + 0.02, darkBronzeFrameMat, winCoverGrp);
+        addBox(ribbonW + 0.20, 0.08, 0.16, ribbonCX, bandY - ribbonH * 0.5 - 0.04, mainMaxZ + 0.05, copingDarkMat, winCoverGrp);
 
         for (let p = 0; p < paneCount; p++) {
             const px = ribbonStartX + (p + 0.5) * paneW;
             // Deterministic pattern of frosted translucent panes vs dark tinted glass matching f0a3a41e.jpg & 109ba9fd.jpg
             const isFrosted = ((p * 7 + (bandY > 8 ? 3 : 0)) % 5 === 0) || ((p + 2) % 9 === 0);
             const gMat = isFrosted ? frostedSecurityGlassMat : darkSecurityGlassMat;
-            addBox(paneW - 0.06, ribbonH - 0.08, 0.08, px, bandY, mainMaxZ + 0.045, gMat);
+            addBox(paneW - 0.06, ribbonH - 0.08, 0.08, px, bandY, mainMaxZ + 0.045, gMat, winCoverGrp);
             // Vertical mullion bar
             if (p > 0) {
-                addBox(0.05, ribbonH + 0.04, 0.12, ribbonStartX + p * paneW, bandY, mainMaxZ + 0.05, darkBronzeFrameMat);
+                addBox(0.05, ribbonH + 0.04, 0.12, ribbonStartX + p * paneW, bandY, mainMaxZ + 0.05, darkBronzeFrameMat, winCoverGrp);
             }
         }
     }
@@ -370,16 +374,16 @@ export function buildBuilding401Structure(arch, building, mats, yGrade) {
 
     for (const sBandY of [4.65, 7.35, 11.65]) {
         // Continuous dark-bronze frame & sloped sill along South brick wall (-Z)
-        addBox(southRibbonW + 0.16, southRibbonH + 0.10, 0.10, southRibbonCX, sBandY, mainMinZ - 0.02, darkBronzeFrameMat);
-        addBox(southRibbonW + 0.20, 0.07, 0.15, southRibbonCX, sBandY - southRibbonH * 0.5 - 0.035, mainMinZ - 0.045, copingDarkMat);
+        addBox(southRibbonW + 0.16, southRibbonH + 0.10, 0.10, southRibbonCX, sBandY, mainMinZ - 0.02, darkBronzeFrameMat, winCoverGrp);
+        addBox(southRibbonW + 0.20, 0.07, 0.15, southRibbonCX, sBandY - southRibbonH * 0.5 - 0.035, mainMinZ - 0.045, copingDarkMat, winCoverGrp);
 
         for (let p = 0; p < southPaneCount; p++) {
             const px = southRibbonStartX + (p + 0.5) * southPaneW;
             const isFrosted = ((p * 5 + Math.round(sBandY)) % 4 !== 0);
             const gMat = isFrosted ? frostedSecurityGlassMat : darkSecurityGlassMat;
-            addBox(southPaneW - 0.06, southRibbonH - 0.08, 0.08, px, sBandY, mainMinZ - 0.04, gMat);
+            addBox(southPaneW - 0.06, southRibbonH - 0.08, 0.08, px, sBandY, mainMinZ - 0.04, gMat, winCoverGrp);
             if (p > 0) {
-                addBox(0.05, southRibbonH + 0.04, 0.12, southRibbonStartX + p * southPaneW, sBandY, mainMinZ - 0.045, darkBronzeFrameMat);
+                addBox(0.05, southRibbonH + 0.04, 0.12, southRibbonStartX + p * southPaneW, sBandY, mainMinZ - 0.045, darkBronzeFrameMat, winCoverGrp);
             }
         }
     }
@@ -448,9 +452,9 @@ export function buildBuilding401Structure(arch, building, mats, yGrade) {
     addBox(0.55, 3.10, 0.26, -4.08, 0.05, mainMinZ - 0.08, precastPanelMat); // Concrete pier between West door alcove & windows
     const sLowWinW = 39.00;
     const sLowWinCX = 15.70;
-    addBox(sLowWinW, 1.42, 0.14, sLowWinCX, 0.86, mainMinZ - 0.08, darkSecurityGlassMat);
+    addBox(sLowWinW, 1.42, 0.14, sLowWinCX, 0.86, mainMinZ - 0.08, darkSecurityGlassMat, winCoverGrp);
     for (let sx = -3.80; sx <= 35.20; sx += 1.62) {
-        addBox(0.06, 1.46, 0.18, sx, 0.86, mainMinZ - 0.09, darkBronzeFrameMat);
+        addBox(0.06, 1.46, 0.18, sx, 0.86, mainMinZ - 0.09, darkBronzeFrameMat, winCoverGrp);
     }
 
     // White Wall-Mounted Mini-Split AC Condenser Unit on Brackets on the South Concrete Wall (lx = +30.60m, y = +2.38m, a32eb85e.jpg, 4dee9861.jpg, d48a4086.jpg!)
@@ -485,9 +489,9 @@ export function buildBuilding401Structure(arch, building, mats, yGrade) {
     addBox(10.30, 1.14, 0.26, 44.35, -0.38, mainMinZ - 0.08, precastPanelMat);
     addBox(10.34, 0.07, 0.30, 44.35, 0.17, mainMinZ - 0.10, concretePlinthMat); // Projected concrete window sill cap
     // 1st-floor dark-tinted ribbon windows (y = +0.19m .. +1.57m)
-    addBox(10.30, 1.38, 0.14, 44.35, 0.88, mainMinZ - 0.08, darkSecurityGlassMat);
+    addBox(10.30, 1.38, 0.14, 44.35, 0.88, mainMinZ - 0.08, darkSecurityGlassMat, winCoverGrp);
     for (let sx = 39.20; sx <= 49.50; sx += 1.47) {
-        addBox(0.06, 1.42, 0.18, sx, 0.88, mainMinZ - 0.09, darkBronzeFrameMat);
+        addBox(0.06, 1.42, 0.18, sx, 0.88, mainMinZ - 0.09, darkBronzeFrameMat, winCoverGrp);
     }
     // East corner 1st-floor concrete wall pier (lx = +49.50m .. +51.70m, y = -0.95m .. +1.60m)
     addBox(2.20, 2.55, 0.26, 50.60, 0.325, mainMinZ - 0.08, precastPanelMat);
@@ -504,9 +508,9 @@ export function buildBuilding401Structure(arch, building, mats, yGrade) {
     //   * Precast concrete along the straight West edge of the Security Grille (lz = -1.20m .. +5.60m),
     //   * Reddish-brown brick + 5th-floor dark clerestory window + top precast fascia from lz = -1.20m to the SW corner (lz = -9.20m)!
     // 5th-floor dark clerestory window wrap-around on the NW corner West (-X) face at lx = -12.00m (lz = +9.20m .. +17.40m, 69d4ba47.jpg & db99c825.jpg!)
-    addBox(0.16, clerestoryTopY - brickTopY, 8.20, mainMinX - 0.03, (clerestoryTopY + brickTopY) * 0.5, 13.30, clerestoryGlassMat);
+    addBox(0.16, clerestoryTopY - brickTopY, 8.20, mainMinX - 0.03, (clerestoryTopY + brickTopY) * 0.5, 13.30, clerestoryGlassMat, winCoverGrp);
     for (let wz = 10.20; wz <= 16.80; wz += 1.10) {
-        addBox(0.20, clerestoryTopY - brickTopY + 0.04, 0.06, mainMinX - 0.04, (clerestoryTopY + brickTopY) * 0.5, wz, darkBronzeFrameMat);
+        addBox(0.20, clerestoryTopY - brickTopY + 0.04, 0.06, mainMinX - 0.04, (clerestoryTopY + brickTopY) * 0.5, wz, darkBronzeFrameMat, winCoverGrp);
     }
 
     // East Wall (lx = +51.70m): In c71d2af9.jpg, the center section (lz = -2.20m .. +12.20m) is clad in
@@ -837,9 +841,9 @@ export function buildBuilding401Structure(arch, building, mats, yGrade) {
     {
         const bzFloorY = yGrade(connCX, 11.50) + 0.09;
         // Dark soffit ceiling under the 3x3 precast bridge with 3 recessed ceiling light troffers
-        addBox(connW, 0.12, nConnD - 0.08, connCX, connUnderpassTopY - 0.04, nConnCZ, copingDarkMat);
+        addBox(connW, 0.12, nConnD - 0.08, connCX, connUnderpassTopY - 0.04, nConnCZ, copingDarkMat, winCoverGrp);
         for (const lxLight of [connMinX + 1.45, connCX, connMaxX - 1.45]) {
-            addBox(0.65, 0.04, 1.10, lxLight, connUnderpassTopY - 0.09, nConnCZ + 0.35, whiteMetalMat);
+            addBox(0.65, 0.04, 1.10, lxLight, connUnderpassTopY - 0.09, nConnCZ + 0.35, whiteMetalMat, winCoverGrp);
         }
 
         // Open vestibule interior behind the glass storefront (opaque middle/backing wall removed)
@@ -848,18 +852,18 @@ export function buildBuilding401Structure(arch, building, mats, yGrade) {
 
         // Projecting silver-grey horizontal transom canopy/fascia beam across the storefront (y = bzFloorY + 2.42m .. +2.68m, media_1794271546977_6613a6a1.jpg!)
         const canopyY = bzFloorY + 2.54;
-        addBox(connW - 0.06, 0.26, 0.56, connCX, canopyY, nConnMinZ + 0.24, silverMetalMat);
-        addBox(connW - 0.04, 0.06, 0.58, connCX, canopyY - 0.12, nConnMinZ + 0.24, darkBronzeFrameMat);
+        addBox(connW - 0.06, 0.26, 0.56, connCX, canopyY, nConnMinZ + 0.24, silverMetalMat, winCoverGrp);
+        addBox(connW - 0.04, 0.06, 0.58, connCX, canopyY - 0.12, nConnMinZ + 0.24, darkBronzeFrameMat, winCoverGrp);
 
         // Upper clerestory glass transom band above the canopy beam (y = canopyY + 0.14m .. connUnderpassTopY - 0.08m)
         const trBotY = canopyY + 0.13;
         const trTopY = connUnderpassTopY - 0.08;
         const trH = trTopY - trBotY;
         const trCY = (trBotY + trTopY) * 0.5;
-        addBox(connW - 0.16, trH, 0.12, connCX, trCY, nConnMinZ + 0.04, darkSecurityGlassMat);
-        addBox(connW, 0.08, 0.16, connCX, trTopY, nConnMinZ + 0.05, darkBronzeFrameMat);
+        addBox(connW - 0.16, trH, 0.12, connCX, trCY, nConnMinZ + 0.04, darkSecurityGlassMat, winCoverGrp);
+        addBox(connW, 0.08, 0.16, connCX, trTopY, nConnMinZ + 0.05, darkBronzeFrameMat, winCoverGrp);
         for (const mx of [connMinX + 0.08, connMinX + 1.85, connMinX + 3.65, connMinX + 5.45, connMaxX - 0.08]) {
-            addBox(0.07, trH + 0.06, 0.16, mx, trCY, nConnMinZ + 0.05, darkBronzeFrameMat);
+            addBox(0.07, trH + 0.06, 0.16, mx, trCY, nConnMinZ + 0.05, darkBronzeFrameMat, winCoverGrp);
         }
 
         // Lower Storefront Glass Sidelights & Double Dark-Bronze Entrance Doors (y = bzFloorY .. canopyY - 0.12m)
@@ -867,17 +871,17 @@ export function buildBuilding401Structure(arch, building, mats, yGrade) {
         const lowH = lowTopY - bzFloorY;
         const lowCY = bzFloorY + lowH * 0.5;
         // Full-width dark-bronze storefront frame & glass plane
-        addBox(connW - 0.12, lowH, 0.12, connCX, lowCY, nConnMinZ + 0.04, darkSecurityGlassMat);
-        addBox(connW, 0.10, 0.16, connCX, bzFloorY + 0.05, nConnMinZ + 0.06, darkBronzeFrameMat); // Bottom kickplate rail
+        addBox(connW - 0.12, lowH, 0.12, connCX, lowCY, nConnMinZ + 0.04, darkSecurityGlassMat, winCoverGrp);
+        addBox(connW, 0.10, 0.16, connCX, bzFloorY + 0.05, nConnMinZ + 0.06, darkBronzeFrameMat, winCoverGrp); // Bottom kickplate rail
         // Vertical storefront mullions dividing Left 2 Sidelight Bays (51.70..54.70), Double Entrance Doors (54.70..56.70), and Right Sidelight Bay (56.70..58.92)
         for (const mx of [connMinX + 0.08, 53.20, 54.70, 55.70, 56.70, 57.85, connMaxX - 0.08]) {
             const mW = (mx === 54.70 || mx === 55.70 || mx === 56.70) ? 0.09 : 0.065;
-            addBox(mW, lowH, 0.16, mx, lowCY, nConnMinZ + 0.06, darkBronzeFrameMat);
+            addBox(mW, lowH, 0.16, mx, lowCY, nConnMinZ + 0.06, darkBronzeFrameMat, winCoverGrp);
         }
         // Horizontal mid-rails on the left sidelights & silver push bars + white lettering on the double doors (54.70..56.70)
-        addBox(3.00, 0.05, 0.15, 53.20, bzFloorY + 1.02, nConnMinZ + 0.06, darkBronzeFrameMat);
-        addBox(1.84, 0.05, 0.18, 55.70, bzFloorY + 1.02, nConnMinZ + 0.09, silverMetalMat);
-        addBox(0.36, 0.18, 0.02, 56.18, bzFloorY + 1.48, nConnMinZ + 0.12, whiteMetalMat);
+        addBox(3.00, 0.05, 0.15, 53.20, bzFloorY + 1.02, nConnMinZ + 0.06, darkBronzeFrameMat, winCoverGrp);
+        addBox(1.84, 0.05, 0.18, 55.70, bzFloorY + 1.02, nConnMinZ + 0.09, silverMetalMat, winCoverGrp);
+        addBox(0.36, 0.18, 0.02, 56.18, bzFloorY + 1.48, nConnMinZ + 0.12, whiteMetalMat, winCoverGrp);
 
         // Left Breezeway Wall Details along Building 401's East Brick Wall (lx = +51.70m, lz = +8.55m .. +17.85m, media_1794271546977_6613a6a1.jpg & media_1794271635668_a9d4584b.jpg!):
         // 1) Dark-bronze side personnel door + white card-reader plaque at lz = +10.10m

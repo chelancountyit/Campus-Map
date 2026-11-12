@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildCampusFoundationPads } from './ground/CampusFoundationPads.js';
+import { CampusCartographyFoundry } from './ground/CampusCartographyFoundry.js';
 
 /**
  * CampusGroundFoundry — Contoured 3D USGS 3DEP Terrain Draped with Google Maps Ground Texture
@@ -48,8 +49,8 @@ export class CampusGroundFoundry {
             [29.20, 115.22],
             [24.34, 115.33],
             [11.58, 100.16],
-            [2.75, 111.82],
-            [-24.48, 91.72],
+            [3.94, 110.22],
+            [-23.29, 90.11],
             [-3.05, 62.76],
             [-5.12, 59.41],
             [-7.66, 62.82],
@@ -175,92 +176,336 @@ export class CampusGroundFoundry {
             return baseY - steps * 0.3048 * this.exaggeration;
         };
 
-        // 1. Building 400 Lot (400 Douglas St, center [-36.91, 5.92])
-        // Flat, level ground across the building footprint & lower stair landing, while releasing smoothly
-        // along the uphill Douglas St (-X / +Z) contour and pushing the street-side blend past the outer curb
-        // so 4m terrain grid triangles never poke through the Douglas St or SW sidewalks.
+        const dx401 = x - (-4.22);
+        const dz401 = z - (-38.74);
+        const lx401 = dx401 * 0.80425 + dz401 * 0.59429;
+        const lz401 = -dx401 * 0.59429 + dz401 * 0.80425;
+        const rawAt401 = (px, pz) => {
+            const wx = -4.22 + px * 0.80425 - pz * 0.59429;
+            const wz = -38.74 + px * 0.59429 + pz * 0.80425;
+            return this.getRawTerrainHeight(wx, wz);
+        };
+
+        // 1 & 1A. Unified C1-Continuous Auto-Graded Terrain for Building 400 Lot, Douglas St Corridor,
+        //         Behind-400 Sloped Plaza Ramp, Terraced Concrete Parking Bays (#1 & #2) & Concrete Rear Alley
         {
-            const dx = x - (-36.91);
-            const dz = z - 5.92;
-            const lx = dx * 0.5842 - dz * 0.8116;
-            const lz = dx * 0.8116 + dz * 0.5842;
+            const lotLevelY = this.getRawTerrainHeight(-22.0, 10.0);
+            const lowerBayY = lotLevelY + 1.42 * this.exaggeration;
+            const upperBayY = Math.max(
+                lowerBayY + 1.05 * this.exaggeration,
+                rawAt401(24.62, 90.70) - 0.08 * this.exaggeration
+            );
 
-            if (lx > -34.0 && lx < 22.5 && lz > -28.0 && lz < 31.5) {
-                const lotLevelY = this.getRawTerrainHeight(-22.0, 10.0);
-                let padW =
-                    THREE.MathUtils.smoothstep(lx, -32.0, -20.0) *
-                    (1.0 - THREE.MathUtils.smoothstep(lx, 18.0, 22.0)) *
-                    THREE.MathUtils.smoothstep(lz, -28.0, -16.8) *
-                    (1.0 - THREE.MathUtils.smoothstep(lz, 24.8, 31.0));
-
-                // Smoothly release the uphill (-X) Douglas St & SW sidewalk corridor (lx < -0.5m)
-                // partially toward the natural street slope (capped at +0.28m above lotLevelY inside the lot)
-                // so the sidewalk follows a gentle, professional contour along Douglas St without burying the stairs.
-                const uphillBlend =
-                    (1.0 - THREE.MathUtils.smoothstep(lx, -8.5, -0.5)) *
-                    THREE.MathUtils.smoothstep(lz, -16.0, 21.5);
-                const targetPadY = THREE.MathUtils.lerp(
+            // Continuous Douglas St SW Curbline Grade (lx401 = 24.62):
+            // Holds exact flat lotLevelY alongside Building 400's stairs, lawns & sidewalk (lz401 <= 59.50),
+            // then S-curves smoothly up to natural Douglas St grade by lz401 = 70.50 (zero step anywhere).
+            const dougCurbY = (pz) => {
+                if (pz <= 59.50) return lotLevelY;
+                if (pz >= 70.50) return rawAt401(24.62, pz);
+                return THREE.MathUtils.lerp(
                     lotLevelY,
-                    Math.min(Math.max(lotLevelY, rawY), lotLevelY + 0.28),
-                    uphillBlend * 0.65
+                    rawAt401(24.62, pz),
+                    THREE.MathUtils.smoothstep(pz, 59.50, 70.50)
                 );
+            };
 
-                return applyBulldoze(THREE.MathUtils.lerp(rawY, targetPadY, padW));
+            // 1A-0. Douglas St Roadway Transverse Crown Blend (lx401 = 24.62 .. 33.50, lz401 = 34.00 .. 74.00):
+            // Eliminates any curb-to-asphalt cliff along Building 400 while leaving lz401 >= 74.00 100% natural street grade.
+            if (lx401 > 24.62 && lx401 < 33.50 && lz401 >= 34.00 && lz401 < 74.00) {
+                const wZ =
+                    THREE.MathUtils.smoothstep(lz401, 34.00, 41.50) *
+                    (1.0 - THREE.MathUtils.smoothstep(lz401, 70.50, 74.00));
+                const uRoad = THREE.MathUtils.smoothstep(lx401, 24.62, 33.50);
+                const crownY = THREE.MathUtils.lerp(dougCurbY(lz401), rawY, uRoad);
+                return applyBulldoze(THREE.MathUtils.lerp(rawY, crownY, wZ));
+            }
+
+            // 1A. Behind-400 Auto-Graded Concrete Ramp (59.50..74.40), Lower Flat Bay (74.40..82.40),
+            //     Upper Flat Bay (82.40..97.25), Retained Embankment (97.25..105.50) & Rear Alley (59.50..153.50)
+            if (lz401 >= 59.50 && lz401 <= 153.50 && lx401 >= -27.75 && lx401 <= 24.62) {
+                // Keep Douglas St pedestrian sidewalk (lx401 = 22.40..24.62) 100% flush with dougCurbY across
+                // Retaining Walls #1 (82.40) and #2 (97.25), while widening the blend across Driveway Aprons #1 & #2
+                const sidewalkPin = Math.max(
+                    THREE.MathUtils.smoothstep(lz401, 79.60, 80.50) *
+                        (1.0 - THREE.MathUtils.smoothstep(lz401, 86.90, 87.90)),
+                    THREE.MathUtils.smoothstep(lz401, 93.50, 94.40)
+                );
+                const xBlendStart = THREE.MathUtils.lerp(19.80, 20.00, sidewalkPin);
+                const xBlendEnd = THREE.MathUtils.lerp(24.62, 22.35, sidewalkPin);
+
+                // 1A-R. Auto-Graded Concrete Plaza Ramp behind Building 400 & 411/400 Alley (lz401 = 59.50 .. 74.40)
+                if (lz401 < 74.40) {
+                    const zRampStart = THREE.MathUtils.lerp(
+                        61.10,
+                        59.50,
+                        THREE.MathUtils.smoothstep(lx401, 16.00, 21.80)
+                    );
+                    const tRamp = THREE.MathUtils.smoothstep(lz401, zRampStart, 74.40);
+                    const rampLotY = THREE.MathUtils.lerp(lotLevelY, lowerBayY, tRamp);
+                    if (lx401 >= -16.85) {
+                        const uDoug = THREE.MathUtils.smoothstep(lx401, 19.80, 24.62);
+                        return applyBulldoze(THREE.MathUtils.lerp(rampLotY, dougCurbY(lz401), uDoug));
+                    }
+                    // Unified auto-graded 411/400 Alley transition from Building 411's wall (lx401 <= -24.10)
+                    // across the Rear Alley drive lane (lx401 = -21.35 .. -16.85) into Building 400's plaza ramp
+                    const lot411Y = this.getRawTerrainHeight(-73.89, -11.51);
+                    const tAlleyRamp = THREE.MathUtils.smoothstep(lz401, 61.10, 74.40);
+                    const xRampBlend0 = THREE.MathUtils.lerp(-24.10, -23.85, tAlleyRamp);
+                    const xRampBlend1 = THREE.MathUtils.lerp(-16.85, -21.35, tAlleyRamp);
+                    const uToRamp = THREE.MathUtils.smoothstep(lx401, xRampBlend0, xRampBlend1);
+                    const alleyGradedY = THREE.MathUtils.lerp(lot411Y, rampLotY, uToRamp);
+                    const wFrom411 = THREE.MathUtils.smoothstep(lx401, -27.75, -25.00);
+                    return applyBulldoze(THREE.MathUtils.lerp(lot411Y, alleyGradedY, wFrom411));
+                }
+
+                // 1A-1. Lower Flat Concrete Parking Bay + Douglas St Driveway Apron #1 (lz401 = 74.40 .. 82.40)
+                if (lx401 >= -16.85 && lz401 <= 82.40) {
+                    const uDoug = THREE.MathUtils.smoothstep(lx401, xBlendStart, xBlendEnd);
+                    return applyBulldoze(THREE.MathUtils.lerp(lowerBayY, dougCurbY(lz401), uDoug));
+                }
+
+                // 1A-2. Upper Flat Concrete Parking Bay + Douglas St Driveway Apron #2 (lz401 = 82.40 .. 97.25)
+                if (lx401 >= -16.85 && lz401 > 82.40 && lz401 <= 97.25) {
+                    const uDoug = THREE.MathUtils.smoothstep(lx401, xBlendStart, xBlendEnd);
+                    return applyBulldoze(THREE.MathUtils.lerp(upperBayY, dougCurbY(lz401), uDoug));
+                }
+
+                // 1A-3. Retained Uphill Residential Embankment North of Retaining Wall #2 (lz401 = 97.25 .. 105.50)
+                if (lx401 >= -16.85 && lz401 > 97.25 && lz401 <= 105.50) {
+                    const embBoost =
+                        0.72 *
+                        this.exaggeration *
+                        (1.0 - THREE.MathUtils.smoothstep(lz401, 100.80, 105.50)) *
+                        (1.0 - THREE.MathUtils.smoothstep(lx401, 20.40, 22.35));
+                    const baseEmbY = THREE.MathUtils.lerp(
+                        Math.max(rawY, upperBayY + embBoost),
+                        rawY,
+                        THREE.MathUtils.smoothstep(lx401, 20.40, 22.35)
+                    );
+                    return applyBulldoze(baseEmbY);
+                }
+
+                // 1A-4. Continuous Concrete Rear Alley (way-760596321: lx401 = -24.10 .. -15.85, lz401 = 74.40 .. 153.50)
+                if (lx401 >= -24.10 && lx401 < -15.85) {
+                    let alleyCenterY;
+                    if (lz401 <= 82.40) {
+                        alleyCenterY = lowerBayY;
+                    } else if (lz401 <= 86.20) {
+                        alleyCenterY = THREE.MathUtils.lerp(
+                            lowerBayY,
+                            upperBayY,
+                            THREE.MathUtils.smoothstep(lz401, 82.40, 86.20)
+                        );
+                    } else if (lz401 <= 97.25) {
+                        alleyCenterY = upperBayY;
+                    } else {
+                        alleyCenterY = THREE.MathUtils.lerp(
+                            upperBayY,
+                            rawAt401(-19.10, lz401),
+                            THREE.MathUtils.smoothstep(lz401, 97.25, 103.50)
+                        );
+                    }
+
+                    const lot411Y = this.getRawTerrainHeight(-73.89, -11.51);
+                    const zFade411 = 1.0 - THREE.MathUtils.smoothstep(lz401, 74.40, 76.80);
+                    const swBaseY = THREE.MathUtils.lerp(rawY, lot411Y, zFade411);
+                    const xSouthStart = THREE.MathUtils.lerp(-22.15, -23.85, zFade411);
+                    const wSouth = THREE.MathUtils.smoothstep(lx401, xSouthStart, -21.35);
+                    const wNorth =
+                        lz401 <= 97.25
+                            ? 1.0
+                            : 1.0 - THREE.MathUtils.smoothstep(lx401, -16.85, -15.85);
+                    const wEnd = 1.0 - THREE.MathUtils.smoothstep(lz401, 151.50, 153.50);
+                    return applyBulldoze(THREE.MathUtils.lerp(swBaseY, alleyCenterY, wSouth * wNorth * wEnd));
+                }
+            }
+
+            // 1B. Building 400 Footprint, Forecourt Stairs & Washington/Douglas Corner Lot (lz401 < 59.50, lx401 <= 24.62)
+            if (lz401 < 59.50 && lx401 >= -27.75 && lx401 <= 24.62) {
+                const dx = x - (-36.91);
+                const dz = z - 5.92;
+                const lx = dx * 0.5842 - dz * 0.8116;
+
+                if (lx < 22.5) {
+                    const wWash = 1.0 - THREE.MathUtils.smoothstep(lx, 18.0, 22.0);
+                    const wSW = THREE.MathUtils.smoothstep(lx401, -24.10, -16.85);
+                    const lot411Y = this.getRawTerrainHeight(-73.89, -11.51);
+                    const zTo411 = THREE.MathUtils.smoothstep(lz401, 48.00, 59.50);
+                    const xIn411 =
+                        THREE.MathUtils.smoothstep(lx401, -27.75, -25.00) *
+                        (1.0 - THREE.MathUtils.smoothstep(lx401, -24.10, -16.85));
+                    const swSideY = THREE.MathUtils.lerp(rawY, lot411Y, zTo411 * xIn411);
+                    return applyBulldoze(THREE.MathUtils.lerp(swSideY, lotLevelY, wWash * wSW));
+                }
             }
         }
 
-        // 2. Connected Building 316 & Building 300 Lot (graded to Washington St across the front & courtyard,
-        //    while allowing the Douglas St side of Building 316 to follow the natural street terrain contour)
-        if (this._connected316_300ApronPts) {
-            const dx = x - 18.0;
-            const dz = z - 68.0;
-            if (dx * dx + dz * dz < 6400) {
-                const dist = this._distToPolygon2D(x, z, this._connected316_300ApronPts);
-                if (dist < 6.5) {
-                    let padW = 1.0 - THREE.MathUtils.smoothstep(dist, 0.4, 6.5);
-                    // Convert (x, z) to Building 316 local coordinates (lx316, lz316)
-                    const dx316 = x - (-5.08);
-                    const dz316 = z - 48.18;
-                    const lx316 = dx316 * (-0.80283) - dz316 * 0.59621;
-                    const lz316 = dx316 * 0.59621 + dz316 * (-0.80283);
-                    // On the Douglas St (+X) side of Building 316 (lx316 > 4.5m, south of Building 316's front corner lz316 < 27.50m),
-                    // smoothly release the flat Washington St pad so the terrain, grass strip & sidewalk follow a uniform, professional Douglas St contour,
-                    // while keeping the recessed SW Fire Exit stairwell well (lx316 < 8.4m, lz316 = -10.8m..-5.5m) depressed below the sunken landing!
-                    if (lx316 > 4.5 && lz316 < 27.50) {
-                        const inFireExitWell =
-                            (1.0 - THREE.MathUtils.smoothstep(lx316, 7.6, 9.2)) *
-                            THREE.MathUtils.smoothstep(lz316, -11.2, -10.0) *
-                            (1.0 - THREE.MathUtils.smoothstep(lz316, -5.8, -4.5));
-                        const dougContourRelease =
-                            THREE.MathUtils.smoothstep(lx316, 4.5, 7.9) *
-                            THREE.MathUtils.smoothstep(27.50 - lz316, 0.0, 21.5) *
-                            (1.0 - inFireExitWell);
-                        padW *= (1.0 - dougContourRelease);
+        // 2. Connected Building 316 & Building 300 Lot + 2A. Gym Area Access Road, Concrete Parking & Lower Auto-Level Slant
+        {
+            const washGradeY = this.getBuildingRoadHeight('building-316');
+
+            // Red Retaining Wall #2 centerline running behind the Gym & South Rec Yard toward Orondo Ave
+            const zWall2 = 115.45 + 0.47 * THREE.MathUtils.clamp((lx401 - 63.80) / (116.50 - 63.80), 0, 1);
+
+            // Helper: Auto-graded continuous slant plane across the Gym Access Road, Concrete Parking & Upper Terrace
+            const evalUpperSlantY = (px, pz) => {
+                const dougY = rawAt401(38.46, pz);
+                const oronY = rawAt401(123.20, pz);
+                const uX = THREE.MathUtils.clamp((px - 38.46) / (123.20 - 38.46), 0, 1);
+                const planeY = THREE.MathUtils.lerp(dougY, oronY, uX);
+                // Slight recessed terrace cut on the west side of the 426 Concrete Parking Lot against Red Retaining Wall #4 (lx401 = 83.25)
+                const lot426Cut =
+                    0.52 *
+                    THREE.MathUtils.smoothstep(px, 83.15, 83.85) *
+                    (1.0 - THREE.MathUtils.smoothstep(px, 98.0, 116.5)) *
+                    THREE.MathUtils.smoothstep(pz, 126.5, 129.8) *
+                    (1.0 - THREE.MathUtils.smoothstep(pz, 148.5, 151.2));
+                return planeY - lot426Cut;
+            };
+
+            // 2A-1. Slanted Service Ramp Gap between Red L-Wall #1 (lx401 <= 59.50) and Red Wall #2 (lx401 >= 63.80)
+            if (lx401 >= 59.50 && lx401 < 63.80 && lz401 >= 113.95 && lz401 <= 118.65) {
+                const uRamp = THREE.MathUtils.smoothstep(lz401, 113.95, 118.65);
+                const topY = evalUpperSlantY(lx401, 118.65);
+                return applyBulldoze(THREE.MathUtils.lerp(washGradeY, topY, uRamp));
+            }
+
+            // 2A-2. Upper Slanted Access Road, Concrete Parking (#1 & #2), Gym-Rear Terrace & Rear Alley (Leg 3)
+            const inOuterDougBank = lx401 >= 37.50 && lx401 < 51.00 && lz401 >= 106.20 && lz401 < 113.95;
+            const inUpperWest = lx401 >= 37.50 && lx401 < 63.80 && lz401 >= 113.95 && lz401 <= 175.0;
+            const inUpperEast = lx401 >= 63.80 && lx401 <= 124.20 && lz401 >= zWall2 && lz401 <= 175.0;
+
+            if (inOuterDougBank || inUpperWest || inUpperEast) {
+                const slantY = evalUpperSlantY(lx401, lz401);
+                let wSlant =
+                    THREE.MathUtils.smoothstep(lx401, 37.50, 38.50) *
+                    (1.0 - THREE.MathUtils.smoothstep(lx401, 123.00, 124.20)) *
+                    (1.0 - THREE.MathUtils.smoothstep(lz401, 167.00, 175.00));
+
+                // Smoothly blend in the outer Douglas-side bank north of Red L-Wall #1 (lz401 = 106.20 .. 111.50)
+                if (inOuterDougBank) {
+                    wSlant *= THREE.MathUtils.smoothstep(lz401, 106.20, 111.50);
+                }
+
+                // Behind Red Retaining Wall #3 (CASA residential parcel at 427/431 Douglas: lx401 < 77.6, lz401 > 133.35),
+                // release to natural higher CASA embankment while keeping Rear Alley Leg 3 (lx401 >= 78.4) smoothly slanted!
+                if (lz401 > 133.35 && lx401 < 78.40) {
+                    const casaRel =
+                        THREE.MathUtils.smoothstep(lz401, 133.35, 135.20) *
+                        (1.0 - THREE.MathUtils.smoothstep(lx401, 76.60, 78.40));
+                    wSlant *= (1.0 - casaRel);
+                }
+
+                // North of 426 Concrete Parking Lot (lz401 > 150.4, lx401 > 84.5), release smoothly to Building 428's yard pad (2B)
+                // while keeping Rear Alley Leg 3 (lx401 <= 84.5) smoothly slanted behind 428 Orondo up to lz401 = 175!
+                if (lz401 > 150.40 && lx401 > 84.20) {
+                    const b428Rel =
+                        THREE.MathUtils.smoothstep(lz401, 150.40, 152.10) *
+                        THREE.MathUtils.smoothstep(lx401, 84.20, 86.20);
+                    wSlant *= (1.0 - b428Rel);
+                }
+
+                // East of Red Wall #2's end (lx401 > 116.5 near Orondo sidewalk), blend smoothly across zWall2 so zero step exists at the Orondo throat
+                const blendedY = THREE.MathUtils.lerp(rawY, slantY, wSlant);
+                if (lz401 <= 150.50 || lx401 <= 85.00) {
+                    return applyBulldoze(blendedY);
+                }
+                // Fall through into 2B when inside Building 428's residential lot with blendedY as base if needed
+            }
+
+            // 2A-3. Lower Gym & Sallyport Service Parking Lot (inside Red L-Wall #1: lx401 = 38.46..64.35, lz401 = 83.5..113.95)
+            // Smoothly slants from Douglas St down to the auto-leveled lower elevation (washGradeY) at the Gym/Sallyport!
+            if (
+                lx401 >= 38.46 &&
+                lx401 <= 64.35 &&
+                lz401 >= 83.50 &&
+                lz401 < 113.95 &&
+                !(lx401 < 51.00 && lz401 >= 106.20)
+            ) {
+                const dougY = rawAt401(38.46, lz401);
+                const uDoug = 1.0 - THREE.MathUtils.smoothstep(lx401, 38.46, 53.20);
+                const targetLotY = THREE.MathUtils.lerp(washGradeY, dougY, uDoug);
+                const wSouth = THREE.MathUtils.smoothstep(lz401, 83.50, 88.50);
+                return applyBulldoze(THREE.MathUtils.lerp(rawY, targetLotY, wSouth));
+            }
+
+            // 2A-4. Lower Building 300 SW Lawn behind South Rec Yard (lx401 = 92.16..123.20, lz401 = 96.0..zWall2)
+            // Auto-graded continuous slant from Building 300's auto-leveled washGradeY up to Orondo Ave along the toe of Red Wall #2!
+            if (lx401 >= 92.16 && lx401 <= 123.20 && lz401 >= 96.00 && lz401 < zWall2) {
+                const oronY = rawAt401(123.20, lz401);
+                const xToe = THREE.MathUtils.lerp(95.40, 92.50, THREE.MathUtils.smoothstep(lz401, 102.0, 106.5));
+                const uOron = THREE.MathUtils.smoothstep(lx401, xToe, 121.20);
+                const targetLawnY = THREE.MathUtils.lerp(washGradeY, oronY, uOron);
+                const wNorthBlend = THREE.MathUtils.smoothstep(lz401, 96.00, 103.50);
+                if (wNorthBlend > 0.999) {
+                    return applyBulldoze(targetLawnY);
+                }
+                // Blend smoothly with Section 2 north of lz401 = 103.50
+                const dist300 = this._connected316_300ApronPts
+                    ? this._distToPolygon2D(x, z, this._connected316_300ApronPts)
+                    : 10;
+                const basePadW = 1.0 - THREE.MathUtils.smoothstep(dist300, 0.4, 6.5);
+                const dx300 = x - 23.97;
+                const dz300 = z - 79.18;
+                const lx300 = dx300 * (-0.80282848) - dz300 * 0.59621006;
+                const lz300 = dx300 * 0.59621006 + dz300 * (-0.80282848);
+                const orondoSideRel =
+                    THREE.MathUtils.smoothstep(-23.5 - lx300, 0.0, 4.2) *
+                    THREE.MathUtils.smoothstep(26.5 - lz300, 0.0, 8.5);
+                const bldgWallRel =
+                    0.55 *
+                    THREE.MathUtils.smoothstep(-16.0 - lx300, 0.0, 8.0) *
+                    THREE.MathUtils.smoothstep(24.0 - lz300, 0.0, 10.0);
+                const northY = THREE.MathUtils.lerp(rawY, washGradeY, basePadW * (1.0 - Math.max(orondoSideRel, bldgWallRel)));
+                return applyBulldoze(THREE.MathUtils.lerp(northY, targetLawnY, wNorthBlend));
+            }
+
+            if (this._connected316_300ApronPts) {
+                const dx = x - 18.0;
+                const dz = z - 68.0;
+                if (dx * dx + dz * dz < 6400) {
+                    const dist = this._distToPolygon2D(x, z, this._connected316_300ApronPts);
+                    if (dist < 6.5) {
+                        let padW = 1.0 - THREE.MathUtils.smoothstep(dist, 0.4, 6.5);
+                        // Keep auto-leveled Gym pad strictly inside Red Retaining Wall #2
+                        if (lz401 >= zWall2 - 0.15) padW = 0.0;
+                        // Convert (x, z) to Building 316 local coordinates (lx316, lz316)
+                        const dx316 = x - (-5.08);
+                        const dz316 = z - 48.18;
+                        const lx316 = dx316 * (-0.80283) - dz316 * 0.59621;
+                        const lz316 = dx316 * 0.59621 + dz316 * (-0.80283);
+                        if (lx316 > 4.5 && lz316 < 27.50) {
+                            const inFireExitWell =
+                                (1.0 - THREE.MathUtils.smoothstep(lx316, 7.6, 9.2)) *
+                                THREE.MathUtils.smoothstep(lz316, -11.2, -10.0) *
+                                (1.0 - THREE.MathUtils.smoothstep(lz316, -5.8, -4.5));
+                            const dougContourRelease =
+                                THREE.MathUtils.smoothstep(lx316, 4.5, 7.9) *
+                                THREE.MathUtils.smoothstep(27.50 - lz316, 0.0, 21.5) *
+                                (1.0 - inFireExitWell);
+                            padW *= (1.0 - dougContourRelease);
+                        }
+                        // Convert (x, z) to Building 300 local coordinates (lx300, lz300)
+                        const dx300 = x - 23.97;
+                        const dz300 = z - 79.18;
+                        const lx300 = dx300 * (-0.80282848) - dz300 * 0.59621006;
+                        const lz300 = dx300 * 0.59621006 + dz300 * (-0.80282848);
+                        if (lz300 < 26.5) {
+                            const orondoSideRel =
+                                THREE.MathUtils.smoothstep(-23.5 - lx300, 0.0, 4.2) *
+                                THREE.MathUtils.smoothstep(26.5 - lz300, 0.0, 8.5);
+                            const swLawnRel =
+                                THREE.MathUtils.smoothstep(-25.0 - lz300, 0.0, 7.0) *
+                                THREE.MathUtils.smoothstep(-2.0 - lx300, 0.0, 8.0);
+                            const bldgWallRel =
+                                0.55 *
+                                THREE.MathUtils.smoothstep(-16.0 - lx300, 0.0, 8.0) *
+                                THREE.MathUtils.smoothstep(24.0 - lz300, 0.0, 10.0);
+                            const orondoRelease = Math.max(orondoSideRel, swLawnRel, bldgWallRel);
+                            padW *= (1.0 - orondoRelease);
+                        }
+                        return applyBulldoze(THREE.MathUtils.lerp(rawY, washGradeY, padW));
                     }
-                    // Convert (x, z) to Building 300 local coordinates (lx300, lz300)
-                    const dx300 = x - 23.97;
-                    const dz300 = z - 79.18;
-                    const lx300 = dx300 * (-0.80282848) - dz300 * 0.59621006;
-                    const lz300 = dx300 * 0.59621006 + dz300 * (-0.80282848);
-                    // On the Orondo Ave (-X) side of Building 300 (south of lz300 = 26.5m where Orondo Ave climbs uphill above washGradeY)
-                    // and across the SW lawn toward the unnamed service road (lz300 < -25.0m, lx300 < -2.0m),
-                    // smoothly release the flat Washington St pad so the Orondo Ave sidewalk & lawn follow the natural uphill contour!
-                    if (lz300 < 26.5) {
-                        const orondoSideRel =
-                            THREE.MathUtils.smoothstep(-23.5 - lx300, 0.0, 4.2) *
-                            THREE.MathUtils.smoothstep(26.5 - lz300, 0.0, 8.5);
-                        const swLawnRel =
-                            THREE.MathUtils.smoothstep(-25.0 - lz300, 0.0, 7.0) *
-                            THREE.MathUtils.smoothstep(-2.0 - lx300, 0.0, 8.0);
-                        const bldgWallRel =
-                            0.55 *
-                            THREE.MathUtils.smoothstep(-16.0 - lx300, 0.0, 8.0) *
-                            THREE.MathUtils.smoothstep(24.0 - lz300, 0.0, 10.0);
-                        const orondoRelease = Math.max(orondoSideRel, swLawnRel, bldgWallRel);
-                        padW *= (1.0 - orondoRelease);
-                    }
-                    const washGradeY = this.getBuildingRoadHeight('building-316');
-                    return applyBulldoze(THREE.MathUtils.lerp(rawY, washGradeY, padW));
                 }
             }
         }
@@ -580,10 +825,15 @@ export class CampusGroundFoundry {
         // 3. Poured Concrete Foundation Pad & Stepped Footing on the Leveled 400 Lot
         this._buildBuilding400FoundationPad(envGroup);
 
-        // 4. Topographic Elevation Contour Lines (2m intervals)
-        this.contourLinesMesh = this._buildTopographicContours(envGroup);
+        // 4. Full 3D Vector Streets, Alleys, Walkways, 14 Graded Parking Lots, Street Typography,
+        //    Parcel Survey Boundaries, and High-Precision Major/Minor Contours + ASL Callouts
+        if (!this.cartographyFoundry) {
+            this.cartographyFoundry = new CampusCartographyFoundry(this);
+        }
+        this.cartographyFoundry.buildAll(envGroup, campusData);
+        this.contourLinesMesh = this.cartographyFoundry.contourGroup;
 
-        // 5. Atmospheric Ground Fog Skirt & Mist Ring Outside Our Campus Tiles (|x|, |z| > 265m .. 2200m)
+        // 5. Atmospheric Silver Ground Fog Skirt & Mist Ring Outside Our Campus Tiles (|x|, |z| > 167.6m .. 2200m)
         this._buildOuterTileFogSkirt(envGroup);
 
         this.applyGroundTheme();
@@ -592,9 +842,29 @@ export class CampusGroundFoundry {
         return envGroup;
     }
 
+    setParcelBoundariesVisible(visible = false) {
+        if (this.cartographyFoundry?.parcelGroup) {
+            this.cartographyFoundry.parcelGroup.visible = Boolean(visible);
+        }
+    }
+
+    setStreetTypographyVisible(visible = true) {
+        if (this.cartographyFoundry?.streetTypographyGroup) {
+            this.cartographyFoundry.streetTypographyGroup.visible = Boolean(visible);
+        }
+    }
+
+    rebuildCartography() {
+        if (this.cartographyFoundry) {
+            this.cartographyFoundry.rebuildTerrainDependentLayers();
+            this.contourLinesMesh = this.cartographyFoundry.contourGroup;
+            this.applyGroundTheme();
+        }
+    }
+
     setOuterTileFogColor(colorHex) {
         if (!this.outerTileFogColorUniform) {
-            this.outerTileFogColorUniform = { value: new THREE.Color('#ffffff') };
+            this.outerTileFogColorUniform = { value: new THREE.Color('#c4c9d2') };
         }
         this.outerTileFogColorUniform.value.set(colorHex);
         if (this.outerFogSkirtMat && this.outerFogSkirtMat.uniforms?.uFogColor) {
@@ -615,7 +885,7 @@ export class CampusGroundFoundry {
 
     _attachOuterTileBoundaryFogShader(mat) {
         if (!this.outerTileFogColorUniform) {
-            this.outerTileFogColorUniform = { value: new THREE.Color('#ffffff') };
+            this.outerTileFogColorUniform = { value: new THREE.Color('#c4c9d2') };
         }
         if (!this.outerTileFogEnabledUniform) {
             this.outerTileFogEnabledUniform = { value: 1.0 };
@@ -636,11 +906,13 @@ export class CampusGroundFoundry {
                 `varying vec3 vTileWorldPos;\nuniform vec3 uOuterTileFogColor;\nuniform float uOuterTileFogEnabled;\n` +
                 shader.fragmentShader.replace(
                     '#include <fog_fragment>',
-                    `// Feather white fog across a 500-foot (152.40m) perimeter band all around the 320m campus tile edge (167.60m .. 320.00m)
+                    `// Feather silver fog across a 500-foot (152.40m) perimeter band all around the 320m campus tile edge (167.60m .. 320.00m)
+                    // Note: gl_FragColor is already in output sRGB space after <colorspace_fragment>, so convert linear uOuterTileFogColor to match <fog_fragment>
                     vec2 featherOver = max(abs(vTileWorldPos.xz) - vec2(167.60), 0.0);
                     float featherDist = length(featherOver);
                     float edgeBlanket = smoothstep(0.0, 152.40, featherDist) * uOuterTileFogEnabled;
-                    gl_FragColor.rgb = mix(gl_FragColor.rgb, uOuterTileFogColor, edgeBlanket);
+                    vec3 outerFogSrgb = linearToOutputTexel(vec4(uOuterTileFogColor, 1.0)).rgb;
+                    gl_FragColor.rgb = mix(gl_FragColor.rgb, outerFogSrgb, edgeBlanket);
                     #include <fog_fragment>`
                 );
         };
@@ -648,7 +920,7 @@ export class CampusGroundFoundry {
 
     _buildOuterTileFogSkirt(parent) {
         if (!this.outerTileFogColorUniform) {
-            this.outerTileFogColorUniform = { value: new THREE.Color('#ffffff') };
+            this.outerTileFogColorUniform = { value: new THREE.Color('#c4c9d2') };
         }
         const skirtGeo = new THREE.PlaneGeometry(4400, 4400, 1, 1);
         skirtGeo.rotateX(-Math.PI / 2);
@@ -675,12 +947,13 @@ export class CampusGroundFoundry {
                 uniform vec3 uFogColor;
 
                 void main() {
-                    // 500-foot (152.40m) smooth feather all around the 320m campus tile boundary (167.60m .. 320.00m)
+                    // 500-foot (152.40m) smooth silver feather all around the 320m campus tile boundary (167.60m .. 320.00m)
                     vec2 featherOver = max(abs(vWorldPos.xz) - vec2(167.60), 0.0);
                     float featherDist = length(featherOver);
                     float alpha = smoothstep(0.0, 152.40, featherDist);
                     if (alpha < 0.004) discard;
                     gl_FragColor = vec4(uFogColor, alpha);
+                    #include <colorspace_fragment>
                 }
             `
         });
@@ -777,6 +1050,12 @@ export class CampusGroundFoundry {
             }
         }
 
+        if (this.cartographyFoundry) {
+            this.cartographyFoundry.updateTheme({
+                topoActive: this.topoDarkBgActive,
+                mapDarkness: this.mapDarkness
+            });
+        }
         if (this.contourLinesMesh && this.contourLinesMesh.material) {
             const cMat = this.contourLinesMesh.material;
             if (this.topoDarkBgActive || this.mapDarkness > 0.35) {
@@ -969,6 +1248,85 @@ export class CampusGroundFoundry {
         ) {
             const bldgRoadY = this.getBuildingRoadHeight('regional-jail-east') ?? vy;
             return Math.min(vy, bldgRoadY - 1.65);
+        }
+        // Tuck 0.85m global terrain grid triangles right behind Red Retaining Walls #1 & #2
+        // so vertical wall faces stay razor-sharp with zero diagonal grid bridging
+        const zWall2 = 115.45 + 0.47 * THREE.MathUtils.clamp((lx401 - 63.80) / (116.50 - 63.80), 0, 1);
+        const nearWall1 =
+            (lx401 >= 49.90 && lx401 <= 51.10 && lz401 >= 106.10 && lz401 <= 115.05) ||
+            (lx401 >= 49.90 && lx401 <= 59.55 && lz401 >= 113.85 && lz401 <= 115.05);
+        const nearWall2 =
+            lx401 >= 63.75 && lx401 <= 116.55 && lz401 >= zWall2 - 0.15 && lz401 <= zWall2 + 1.05;
+        if (nearWall1 || nearWall2) {
+            const washGradeY = this.getBuildingRoadHeight('building-316') ?? -0.02;
+            if (nearWall1 || lx401 <= 92.60) {
+                return Math.min(vy, washGradeY - 0.12);
+            }
+            const wxLow = -4.22 + lx401 * 0.80425 - (zWall2 - 0.35) * 0.59429;
+            const wzLow = -38.74 + lx401 * 0.59429 + (zWall2 - 0.35) * 0.80425;
+            return Math.min(vy, this.getTerrainHeight(wxLow, wzLow) - 0.08);
+        }
+        // Depress `innerTerrainMesh` strictly underneath the custom 3D Gym Access Road (Legs 1, 2 & 3),
+        // Concrete Parking Lots #1 & #2, and Upper Landscaped Turf Terrace so 0.85m terrain grid triangles
+        // can never overlap or poke through the sloped single-lane access road or concrete parking pads!
+        if (lx401 >= 38.90 && lx401 <= 122.60 && lz401 >= 106.55 && lz401 <= 174.50) {
+            let zMinDep = Infinity;
+            if (lx401 >= 40.95 && lx401 < 50.80) zMinDep = 106.55;
+            else if (lx401 >= 50.80 && lx401 < 63.80) zMinDep = 114.15;
+            else if (lx401 >= 63.80 && lx401 <= 116.30) zMinDep = zWall2 + 0.20;
+            else if (lx401 > 116.30) zMinDep = 117.40;
+            if (lx401 < 40.95) zMinDep = 128.95;
+
+            let zMaxDep = -Infinity;
+            if (lx401 < 78.75) {
+                zMaxDep = 133.10 - ((lx401 - 38.90) / 40.46) * 1.55;
+            } else if (lx401 <= 117.90) {
+                zMaxDep = 150.30;
+            } else {
+                zMaxDep = 121.65;
+            }
+
+            const inMainGymAccessZone = lz401 >= zMinDep && lz401 <= zMaxDep;
+            const inRearAlleyNorth = lx401 >= 78.95 && lx401 <= 83.00 && lz401 > 150.30 && lz401 <= 174.50;
+            if (inMainGymAccessZone || inRearAlleyNorth) {
+                return vy - 0.085;
+            }
+        }
+        // Depress `innerTerrainMesh` beneath Douglas St asphalt roadway & sidewalks so 0.85m terrain grid triangles
+        // can never poke through the roadway or curbline
+        if (lz401 >= 43.25 && lz401 <= 174.80) {
+            const inDougRoad = lx401 >= 24.60 && lx401 <= 38.45;
+            const inDougSwSidewalk = lx401 >= 22.40 && lx401 < 24.60 && lz401 >= 59.40;
+            const inDougNeSidewalk = lx401 > 38.45 && lx401 <= 40.66 && lz401 >= 106.25;
+            if (inDougRoad || inDougSwSidewalk || inDougNeSidewalk) {
+                return vy - 0.105;
+            }
+        }
+        // Tuck `innerTerrainMesh` vertices behind Building 400's two Retaining Walls (lz401 = 82.40m & 97.25m)
+        // and depress strictly beneath the 411/400 Alley, Behind-400 Concrete Plaza Ramp, Lower & Upper Concrete Parking Bays,
+        // and Concrete Rear Alley (way-760596321) so 0.85m terrain grid triangles never poke through sloped concrete
+        if (lx401 >= -27.80 && lx401 <= 24.60 && lz401 >= 41.50 && lz401 <= 151.95) {
+            const lotLevelY = this.getRawTerrainHeight(-22.0, 10.0);
+            const lowerBayY = lotLevelY + 1.42 * this.exaggeration;
+            const wxDoug = -4.22 + 24.62 * 0.80425 - 90.70 * 0.59429;
+            const wzDoug = -38.74 + 24.62 * 0.59429 + 90.70 * 0.80425;
+            const upperBayY = Math.max(
+                lowerBayY + 1.05 * this.exaggeration,
+                this.getRawTerrainHeight(wxDoug, wzDoug) - 0.08 * this.exaggeration
+            );
+            if (lx401 >= -17.00 && lx401 <= 22.35 && lz401 >= 82.10 && lz401 <= 83.40) {
+                return Math.min(vy, lowerBayY - 0.14);
+            }
+            if (lx401 >= -17.00 && lx401 <= 22.35 && lz401 >= 96.95 && lz401 <= 98.25) {
+                return Math.min(vy, upperBayY - 0.14);
+            }
+            const in411Alley = lx401 >= -27.80 && lx401 < -16.20 && lz401 >= 41.50 && lz401 <= 74.45;
+            const inBehind400Plaza = lx401 >= -16.95 && lx401 <= 24.60 && lz401 >= 59.45 && lz401 < 74.40;
+            const inParkingPads = lx401 >= -16.95 && lx401 <= 24.60 && lz401 >= 74.40 && lz401 <= 97.20;
+            const inRearAlley = lx401 >= -21.35 && lx401 <= -16.80 && lz401 >= 74.35 && lz401 <= 151.95;
+            if (in411Alley || inBehind400Plaza || inParkingPads || inRearAlley) {
+                return vy - 0.105;
+            }
         }
         return vy;
     }

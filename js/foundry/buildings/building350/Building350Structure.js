@@ -279,6 +279,7 @@ export function buildBuilding350Structure(arch, building, mats) {
         } else if (floor2Type === 'recessed' || floor2Type === 'transom') {
             // Wide dark upper transom + paired lower windows (visible in 3188a364.jpg, 6cad8200.jpg & 9728efd3.jpg)
             const topDark = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.96, 2.68), darkFrameMat);
+            topDark.userData.hideOnCutaway = true;
             topDark.position.set(minX - 0.02, 3.38, bz);
             arch.add(topDark);
             buildGraniteBaseWindow(arch, minX, 1.82, bz - 0.76, 1.10, 1.68, washRotY, rusticatedGraniteMat, darkFrameMat, glassMat);
@@ -327,6 +328,7 @@ export function buildBuilding350Structure(arch, building, mats) {
         // Floor 1 Basement windows along the Park side (paired narrow basement windows in outer bays)
         if (idx !== 3) {
             const bsmtWin = new THREE.Mesh(new THREE.PlaneGeometry(1.16, 1.15), glassMat);
+            bsmtWin.userData.hideOnCutaway = true;
             bsmtWin.rotation.y = parkRotY;
             bsmtWin.position.set(maxX + 0.10, -0.45, bz);
             arch.add(bsmtWin);
@@ -394,6 +396,7 @@ function buildWashingtonStEntrancePortal(parent, sideX, bz, mats) {
     } = mats;
 
     const g = new THREE.Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(sideX, 0, bz);
     g.rotation.y = -Math.PI * 0.5;
 
@@ -582,6 +585,7 @@ function buildParkSideEntrancePortal(parent, sideX, bz, mats) {
     } = mats;
 
     const g = new THREE.Group();
+    g.userData.hideOnCutaway = true;
     g.position.set(sideX, 0, bz);
     g.rotation.y = Math.PI * 0.5;
 
@@ -769,6 +773,7 @@ function buildRooftopEquipment(arch, midX, whiteRoofMat, trimMat, darkMat) {
 
     // Dark skylight / roof hatch in center of roof (visible in a2489d57.jpg)
     const skylight = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.45, 2.8), darkMat);
+    skylight.userData.hideOnCutaway = true;
     skylight.position.set(midX + 1.6, roofY + 0.22, 11.2);
     arch.add(skylight);
 

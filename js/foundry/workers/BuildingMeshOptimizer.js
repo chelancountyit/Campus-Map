@@ -37,11 +37,22 @@ export function optimizeBuildingGroup(bldgGroup, building = null) {
     bldgGroup.traverse((obj) => {
         if (obj === bldgGroup || !obj.visible) return;
 
+        let hideOnCutaway = false;
+        let ancestor = obj;
+        while (ancestor && ancestor !== bldgGroup) {
+            if (ancestor.userData?.hideOnCutaway) {
+                hideOnCutaway = true;
+                break;
+            }
+            ancestor = ancestor.parent;
+        }
+
         if (obj.isLight) {
             const worldPos = new THREE.Vector3().setFromMatrixPosition(obj.matrixWorld);
             const clonedLight = obj.clone();
             clonedLight.position.copy(worldPos);
             clonedLight.userData = { ...(obj.userData || {}) };
+            if (hideOnCutaway) clonedLight.userData.hideOnCutaway = true;
             standaloneNodes.push(clonedLight);
             return;
         }
@@ -54,13 +65,14 @@ export function optimizeBuildingGroup(bldgGroup, building = null) {
 
             const attrKey = Object.keys(geo.attributes).sort().join(',');
             const isIndexed = Boolean(geo.index);
-            const bucketKey = `${obj.material.uuid}|${obj.renderOrder || 0}|${isIndexed ? 1 : 0}|${attrKey}`;
+            const bucketKey = `${obj.material.uuid}|${obj.renderOrder || 0}|${isIndexed ? 1 : 0}|${hideOnCutaway ? 1 : 0}|${attrKey}`;
 
             let bucket = lineBuckets.get(bucketKey);
             if (!bucket) {
                 bucket = {
                     material: obj.material,
                     renderOrder: obj.renderOrder || 0,
+                    hideOnCutaway,
                     geos: []
                 };
                 lineBuckets.set(bucketKey, bucket);
@@ -95,6 +107,7 @@ export function optimizeBuildingGroup(bldgGroup, building = null) {
             clonedMesh.matrix.copy(obj.matrixWorld);
             clonedMesh.matrix.decompose(clonedMesh.position, clonedMesh.quaternion, clonedMesh.scale);
             clonedMesh.userData = { ...(obj.userData || {}) };
+            if (hideOnCutaway) clonedMesh.userData.hideOnCutaway = true;
             if (clonedMesh.userData.isSelectableBuilding && building) {
                 clonedMesh.userData.building = building;
             }
@@ -114,6 +127,7 @@ export function optimizeBuildingGroup(bldgGroup, building = null) {
             obj.renderOrder || 0,
             isSelectable ? 1 : 0,
             floorLayer,
+            hideOnCutaway ? 1 : 0,
             isIndexed ? 1 : 0,
             attrKey
         ].join('|');
@@ -127,6 +141,7 @@ export function optimizeBuildingGroup(bldgGroup, building = null) {
                 renderOrder: obj.renderOrder || 0,
                 isSelectable,
                 floorLayer,
+                hideOnCutaway,
                 geos: [],
                 sourceRefs: []
             };
@@ -168,11 +183,16 @@ export function optimizeBuildingGroup(bldgGroup, building = null) {
             batchedMesh.castShadow = bucket.castShadow;
             batchedMesh.receiveShadow = bucket.receiveShadow;
             batchedMesh.renderOrder = bucket.renderOrder;
-            if (bucket.isSelectable) {
+            if (bucket.isSelectable || bucket.hideOnCutaway) {
                 batchedMesh.userData = {
-                    isSelectableBuilding: true,
-                    building: building || bldgGroup.userData?.building,
-                    ...(bucket.floorLayer ? { floorLayer: bucket.floorLayer } : {})
+                    ...(bucket.isSelectable
+                        ? {
+                              isSelectableBuilding: true,
+                              building: building || bldgGroup.userData?.building,
+                              ...(bucket.floorLayer ? { floorLayer: bucket.floorLayer } : {})
+                          }
+                        : {}),
+                    ...(bucket.hideOnCutaway ? { hideOnCutaway: true } : {})
                 };
             }
             bldgGroup.add(batchedMesh);
@@ -184,10 +204,15 @@ export function optimizeBuildingGroup(bldgGroup, building = null) {
                 m.castShadow = bucket.castShadow;
                 m.receiveShadow = bucket.receiveShadow;
                 m.renderOrder = bucket.renderOrder;
-                if (bucket.isSelectable) {
+                if (bucket.isSelectable || bucket.hideOnCutaway) {
                     m.userData = {
-                        isSelectableBuilding: true,
-                        building: building || bldgGroup.userData?.building
+                        ...(bucket.isSelectable
+                            ? {
+                                  isSelectableBuilding: true,
+                                  building: building || bldgGroup.userData?.building
+                              }
+                            : {}),
+                        ...(bucket.hideOnCutaway ? { hideOnCutaway: true } : {})
                     };
                 }
                 bldgGroup.add(m);
@@ -212,6 +237,9 @@ export function optimizeBuildingGroup(bldgGroup, building = null) {
         if (mergedLineGeo) {
             const segs = new THREE.LineSegments(mergedLineGeo, lBucket.material);
             segs.renderOrder = lBucket.renderOrder;
+            if (lBucket.hideOnCutaway) {
+                segs.userData = { hideOnCutaway: true };
+            }
             bldgGroup.add(segs);
             optimizedMeshCount++;
         }
@@ -399,6 +427,7 @@ export function serializeBuildingGroupForWorker(bldgGroup) {
                 userData: {
                     isSelectableBuilding: Boolean(child.userData?.isSelectableBuilding),
                     ...(child.userData?.floorLayer !== undefined ? { floorLayer: child.userData.floorLayer } : {}),
+                    ...(child.userData?.hideOnCutaway ? { hideOnCutaway: true } : {}),
                     ...(child.userData?.isAnimatedFlag
                         ? {
                               isAnimatedFlag: true,

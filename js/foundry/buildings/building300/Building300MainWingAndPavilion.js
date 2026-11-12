@@ -299,43 +299,44 @@ export function buildBuilding300MainWingAndPavilion(ctx) {
         // Cream precast base sill plinth under the projecting bay window
         addBox(bayW + 0.16, 0.38, 1.26, plinthBeigeMat, bayCenterX, 0.19, 34.62);
         // Main glass bay body & side return glass panes
-        addBox(bayW, 2.76, 1.18, slotGlassMat, bayCenterX, 1.72, 34.62);
+        addBox(bayW, 2.76, 1.18, slotGlassMat, bayCenterX, 1.72, 34.62).userData.hideOnCutaway = true;
         // White aluminum horizontal storefront rails (top header y = 3.04m, lower transom bar y = 0.86m, bottom sill bar y = 0.38m)
-        addBox(bayW + 0.14, 0.10, 1.24, whiteDoorMat, bayCenterX, 3.04, 34.62);
-        addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.86, 34.62);
-        addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.38, 34.62);
+        addBox(bayW + 0.14, 0.10, 1.24, whiteDoorMat, bayCenterX, 3.04, 34.62).userData.hideOnCutaway = true;
+        addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.86, 34.62).userData.hideOnCutaway = true;
+        addBox(bayW + 0.14, 0.08, 1.24, whiteDoorMat, bayCenterX, 0.38, 34.62).userData.hideOnCutaway = true;
         // Side return vertical corner mullions & mid-side vertical mullions (visible on left & right returns of bay window in a1121394.jpg!)
         [-3.90, 3.90].forEach((sx) => {
-            addBox(0.12, 2.76, 1.24, whiteDoorMat, bayCenterX + sx, 1.72, 34.62);
-            addBox(0.14, 0.08, 1.24, whiteDoorMat, bayCenterX + sx, 2.38, 34.62); // Upper transom bar on side return panes
+            addBox(0.12, 2.76, 1.24, whiteDoorMat, bayCenterX + sx, 1.72, 34.62).userData.hideOnCutaway = true;
+            addBox(0.14, 0.08, 1.24, whiteDoorMat, bayCenterX + sx, 2.38, 34.62).userData.hideOnCutaway = true; // Upper transom bar on side return panes
         });
         // Front vertical mullions: 2 main panes on left (-2.15m), twin central architectural columns (-0.36m & +0.36m), 2 main panes on right (+2.15m)
         [-2.15, 2.15].forEach((dx) => {
-            addBox(0.09, 2.76, 0.16, whiteDoorMat, bayCenterX + dx, 1.72, bayFrontZ);
+            addBox(0.09, 2.76, 0.16, whiteDoorMat, bayCenterX + dx, 1.72, bayFrontZ).userData.hideOnCutaway = true;
         });
         // Central Double-Column Pilaster Feature with narrow vertical glass strip & horizontal ladder bars (a1121394.jpg center of bay window!)
         [-0.36, 0.36].forEach((cxOff) => {
-            addBox(0.16, 2.86, 0.26, whiteDoorMat, bayCenterX + cxOff, 1.76, bayFrontZ + 0.04);
+            addBox(0.16, 2.86, 0.26, whiteDoorMat, bayCenterX + cxOff, 1.76, bayFrontZ + 0.04).userData.hideOnCutaway = true;
         });
         [1.18, 1.48].forEach((hy) => {
-            addBox(0.72, 0.07, 0.22, whiteDoorMat, bayCenterX, hy, bayFrontZ + 0.03);
+            addBox(0.72, 0.07, 0.22, whiteDoorMat, bayCenterX, hy, bayFrontZ + 0.03).userData.hideOnCutaway = true;
         });
         // Stepped / Notched Overhanging Bay Window Roof Canopy (a1121394.jpg: left & right canopy wings project further than the notched center!)
         //   - Left canopy wing (lx = 7.75m..11.55m, projects to lz = 35.48m)
-        addBox(3.80, 0.22, 1.44, whiteDoorMat, 9.65, 3.20, 34.76);
-        addBox(3.88, 0.07, 1.50, silverFlashingMat, 9.65, 3.34, 34.76);
+        addBox(3.80, 0.22, 1.44, whiteDoorMat, 9.65, 3.20, 34.76).userData.hideOnCutaway = true;
+        addBox(3.88, 0.07, 1.50, silverFlashingMat, 9.65, 3.34, 34.76).userData.hideOnCutaway = true;
         //   - Right canopy wing (lx = 12.45m..16.25m, projects to lz = 35.48m)
-        addBox(3.80, 0.22, 1.44, whiteDoorMat, 14.35, 3.20, 34.76);
-        addBox(3.88, 0.07, 1.50, silverFlashingMat, 14.35, 3.34, 34.76);
+        addBox(3.80, 0.22, 1.44, whiteDoorMat, 14.35, 3.20, 34.76).userData.hideOnCutaway = true;
+        addBox(3.88, 0.07, 1.50, silverFlashingMat, 14.35, 3.34, 34.76).userData.hideOnCutaway = true;
         //   - Center stepped/notched canopy bridge over the double-column feature (lx = 11.55m..12.45m, slightly higher & recessed fascia, a1121394.jpg!)
-        addBox(1.02, 0.24, 1.32, whiteDoorMat, bayCenterX, 3.24, 34.68);
-        addBox(1.08, 0.07, 1.38, silverFlashingMat, bayCenterX, 3.38, 34.68);
+        addBox(1.02, 0.24, 1.32, whiteDoorMat, bayCenterX, 3.24, 34.68).userData.hideOnCutaway = true;
+        addBox(1.08, 0.07, 1.38, silverFlashingMat, bayCenterX, 3.38, 34.68).userData.hideOnCutaway = true;
         //   - Small terracotta/bronze crest emblem on the center fascia notch (visible in a1121394.jpg!)
-        addBox(0.12, 0.14, 0.06, hedgeRedMat, bayCenterX, 3.24, 35.35);
+        addBox(0.12, 0.14, 0.06, hedgeRedMat, bayCenterX, 3.24, 35.35).userData.hideOnCutaway = true;
 
         // 4. Two Deeply Recessed Circular "Porthole" Windows with Curved Brick Arch Rings & Dual Vertical Mullions (lx = 5.45m & lx = 18.25m, y = 1.68m, a1121394.jpg!)
         [6.05, 18.25].forEach((cxPos) => {
             const portGrp = new THREE.Group();
+            portGrp.userData.hideOnCutaway = true;
             portGrp.position.set(cxPos, 1.68, 34.12);
             // Outer curved brick soldier-course arch ring (16 radial brick segments forming a 3D circular brick surround!)
             const numVois = 16;
@@ -384,15 +385,15 @@ export function buildBuilding300MainWingAndPavilion(ctx) {
 
         // 6. Right-Hand Return Storefront Entrance Doors facing the Circular Courtyard Landing (lx = 22.14m, lz = 29.95m..33.65m, 413c5333.jpg!)
         // In the aerial photo, the main public glass doors are on the +X return wall of the brick pavilion (lx = 22.14m) sheltered under a projecting flat canopy!
-        addBox(0.28, 3.10, 3.55, slotGlassMat, 22.08, 1.62, 31.80);
-        addBox(0.32, 0.09, 3.65, whiteDoorMat, 22.14, 3.12, 31.80);
-        addBox(0.32, 0.08, 3.65, whiteDoorMat, 22.14, 2.25, 31.80);
+        addBox(0.28, 3.10, 3.55, slotGlassMat, 22.08, 1.62, 31.80).userData.hideOnCutaway = true;
+        addBox(0.32, 0.09, 3.65, whiteDoorMat, 22.14, 3.12, 31.80).userData.hideOnCutaway = true;
+        addBox(0.32, 0.08, 3.65, whiteDoorMat, 22.14, 2.25, 31.80).userData.hideOnCutaway = true;
         [-1.75, -0.88, 0.0, 0.88, 1.75].forEach((dz) => {
-            addBox(0.32, 3.10, 0.07, whiteDoorMat, 22.14, 1.62, 31.80 + dz);
+            addBox(0.32, 3.10, 0.07, whiteDoorMat, 22.14, 1.62, 31.80 + dz).userData.hideOnCutaway = true;
         });
         // Projecting flat entrance roof canopy extending from the brick pavilion out over the doors (lx = 22.14m..23.85m, lz = 29.89m..34.05m, y = 3.38m)
-        addBox(1.85, 0.24, 4.18, whiteDoorMat, 23.00, 3.38, 31.97);
-        addBox(1.92, 0.08, 4.24, silverFlashingMat, 23.00, 3.52, 31.97);
+        addBox(1.85, 0.24, 4.18, whiteDoorMat, 23.00, 3.38, 31.97).userData.hideOnCutaway = true;
+        addBox(1.92, 0.08, 4.24, silverFlashingMat, 23.00, 3.52, 31.97).userData.hideOnCutaway = true;
 
         // 7. Recessed Brick Courtyard Wall (lx = 22.14m..24.08m, lz = 29.89m) with "CHELAN COUNTY / JUVENILE JUSTICE CENTER" Signage & Plaque (413c5333.jpg!)
         // Stops cleanly at Building 300's NW corner (lx = 24.08m) so it does not extend into the open courtyard behind the circular landing!

@@ -686,6 +686,7 @@ export function buildPhotoRealisticWestWing(
     // Helper: 3D Sloped White Corrugated Metal Awning with Triangular Side Valances (`6b872bac.jpg`, `f27ff023.jpg`)
     const addWhiteMetalAwning = (x, yTop, z, width, side = '+Z') => {
         const awningGrp = new THREE.Group();
+        awningGrp.userData.hideOnCutaway = true;
         awningGrp.position.set(x, yTop, z);
         if (side === '-X') awningGrp.rotation.y = -Math.PI / 2;
 
@@ -720,6 +721,7 @@ export function buildPhotoRealisticWestWing(
     // Helper: Multi-Pane Industrial Steel-Sash Window (`6b872bac.jpg`, `f27ff023.jpg`)
     const addMultiPaneWindow = (x, yCenter, z, width, height, cols, rows, side = '+Z', opts = {}) => {
         const winGrp = new THREE.Group();
+        winGrp.userData.hideOnCutaway = true;
         winGrp.position.set(x, yCenter, z);
         if (side === '-X') winGrp.rotation.y = -Math.PI / 2;
         else if (side === '+X') winGrp.rotation.y = Math.PI / 2;

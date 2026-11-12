@@ -486,6 +486,7 @@ export async function exportBuildingGroupToGlbBuffer(bldgGroup, building = null)
                 userData: {
                     isSelectableBuilding: Boolean(child.userData?.isSelectableBuilding),
                     ...(child.userData?.floorLayer !== undefined ? { floorLayer: child.userData.floorLayer } : {}),
+                    ...(child.userData?.hideOnCutaway ? { hideOnCutaway: true } : {}),
                     ...(child.userData?.isAnimatedFlag
                         ? {
                               isAnimatedFlag: true,
@@ -904,13 +905,19 @@ export async function parseBuildingGroupFromGlbBuffer(arrayBuffer, building = nu
 /**
  * Fetches and parses a pre-baked `.glb` file from `./assets/models/buildings/<id>.glb`.
  */
-export async function fetchBuildingGroupFromGlb(url, building = null, wallFoundry = null) {
-    const res = await fetch(url);
-    if (!res.ok) {
-        throw new Error(`HTTP ${res.status} fetching ${url}`);
+export async function fetchBuildingGroupFromGlb(url, building = null, wallFoundry = null, timeoutMs = 12000) {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    try {
+        const res = await fetch(url, controller ? { signal: controller.signal } : undefined);
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status} fetching ${url}`);
+        }
+        const arrayBuffer = await res.arrayBuffer();
+        return parseBuildingGroupFromGlbBuffer(arrayBuffer, building, wallFoundry);
+    } finally {
+        if (timeoutId) clearTimeout(timeoutId);
     }
-    const arrayBuffer = await res.arrayBuffer();
-    return parseBuildingGroupFromGlbBuffer(arrayBuffer, building, wallFoundry);
 }
 
 /**

@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import { preloadHighResBaldEagleGlb, createHighResBaldEagleActor } from './birds/BaldEagleHighRes.js';
+import { disposeTransientObject3D } from './system/CrashResilienceWatchdog.js';
+import { TREE_SPECIES_CATALOG } from './TreePlanterFoundry.js';
+import { ChelanWelcomeBillboard } from './ChelanWelcomeBillboard.js';
+import { ChelanWelcomeDroneSwarmEnding } from './ChelanWelcomeDroneSwarmEnding.js';
 
 /**
  * MigratingGeeseFoundry — Wenatchee Valley & Columbia River Sky Bird System
@@ -14,11 +19,15 @@ import * as THREE from 'three';
 export class MigratingGeeseFoundry {
     constructor(scene, campusContext = {}) {
         this.scene = scene;
+        this.camera = campusContext.camera || null;
+        this._projVec = new THREE.Vector3();
         this.treePlanter = campusContext.treePlanter || null;
         this.campusGroup = campusContext.campusGroup || null;
         this.campusBuildings = campusContext.campusBuildings || [];
         this.getTerrainHeightFn = campusContext.getTerrainHeightFn || (() => 0);
         this.getBuildingRoadHeightFn = campusContext.getBuildingRoadHeightFn || (() => null);
+        this.onEagleSpawn = campusContext.onEagleSpawn || null;
+        this.onEagleSoarEnd = campusContext.onEagleSoarEnd || null;
 
         this.rootGroup = new THREE.Group();
         this.rootGroup.name = 'CampusSkyBirdsRootGroup';
@@ -35,24 +44,66 @@ export class MigratingGeeseFoundry {
         this._raycaster = new THREE.Raycaster();
         this.elapsedTime = 0;
 
-        // Spawn 1 migratory bird / flock every 1 minute (60.0s)
-        this.nextSpawnCountdown = 60.0;
+        // Spawn migratory birds periodically (~45s initial, then every 60s)
+        this.nextSpawnCountdown = 45.0;
         this.lastSpecies = null;
 
         this._initMaterials();
+        this.welcomeBillboard = new ChelanWelcomeBillboard(this.scene);
+        this.welcomeDroneSwarm = new ChelanWelcomeDroneSwarmEnding(this.scene);
+        this.eagleEndings = [
+            {
+                id: 'welcome-text',
+                label: 'Welcome to Chelan County — Floating Sky Typography',
+                controller: this.welcomeBillboard
+            },
+            {
+                id: 'welcome-drone-swarm',
+                label: 'Welcome to Chelan County — Drone Light Show Formation',
+                controller: this.welcomeDroneSwarm
+            }
+        ];
+        this.nextEagleEndingIndex = 0;
+        this.activeEagleEnding = this.eagleEndings[0];
+        preloadHighResBaldEagleGlb();
         this.refreshCampusPerches();
         this._initCampusSparrowsAndDoves();
     }
 
+    /**
+     * Registers an additional Bald Eagle flyover ending controller into the growing `eagleEndings` catalog.
+     */
+    registerEagleEnding(endingSpec) {
+        if (!endingSpec || !endingSpec.id || !endingSpec.controller) return;
+        const existingIdx = this.eagleEndings.findIndex((e) => e.id === endingSpec.id);
+        if (existingIdx >= 0) {
+            this.eagleEndings[existingIdx] = endingSpec;
+        } else {
+            this.eagleEndings.push(endingSpec);
+        }
+    }
+
+    /**
+     * Hides all registered Bald Eagle ending controllers.
+     */
+    _hideAllEagleEndings() {
+        for (let i = 0; i < this.eagleEndings.length; i++) {
+            this.eagleEndings[i].controller?.hide?.();
+        }
+    }
+
     _initMaterials() {
-        const makeMat = (color, roughness = 0.76, metalness = 0.04, doubleSide = false) =>
-            new THREE.MeshStandardMaterial({
+        const makeMat = (color, roughness = 0.76, metalness = 0.04, doubleSide = false) => {
+            const mat = new THREE.MeshStandardMaterial({
                 color,
                 roughness,
                 metalness,
                 side: doubleSide ? THREE.DoubleSide : THREE.FrontSide,
                 fog: false
             });
+            mat.userData = { sharedAsset: true };
+            return mat;
+        };
 
         this.mats = {
             gooseBody: makeMat('#635647', 0.78, 0.04, true),
@@ -95,6 +146,10 @@ export class MigratingGeeseFoundry {
      *  `bald-eagle`, `red-tailed-hawk`, `osprey`, `raven`, `gull`, `sparrow`, `dove`).
      */
     _createBirdActor(species = 'goose', phaseOffset = 0, scale = 1.0) {
+        if (species === 'bald-eagle') {
+            return createHighResBaldEagleActor(phaseOffset, scale);
+        }
+
         const bird = new THREE.Group();
         bird.scale.setScalar(scale);
 
@@ -521,26 +576,27 @@ export class MigratingGeeseFoundry {
 
         // 1. Live planted trees from TreePlanterFoundry
         const planted = this.treePlanter?.plantedTrees || [];
-        const heightByType = {
-            birch: 9.0, oak: 9.8, willow: 8.8, pine: 11.2, palm: 9.2,
-            maple: 9.2, cedar: 10.8, sycamore: 10.2, spruce: 10.6,
-            baobab: 9.2, elm: 10.0, fir: 11.0,
-            bush: 1.65, red_bush: 1.55, gold_bush: 1.55, juniper_bush: 1.25
-        };
+        const heightByType = {};
+        for (let s = 0; s < TREE_SPECIES_CATALOG.length; s++) {
+            const entry = TREE_SPECIES_CATALOG[s];
+            heightByType[entry.id] = entry.defaultHeight || 9.2;
+        }
+        const narrowTypes = new Set(['columnar_poplar', 'arborvitae', 'arborvitae_clump', 'street_sapling']);
 
         for (let i = 0; i < planted.length; i++) {
             const t = planted[i];
             if (!t || typeof t.x !== 'number' || typeof t.z !== 'number') continue;
             const baseH = heightByType[t.type] || 9.2;
             const isBush = baseH < 3.0;
+            const isNarrow = narrowTypes.has(t.type);
             const scale = typeof t.scale === 'number' ? t.scale : 1.0;
             const treeH = baseH * scale;
             const groundY = typeof t.y === 'number' ? t.y : this.getTerrainHeightFn(t.x, t.z);
 
-            const branchCount = isBush ? 1 : 3;
+            const branchCount = isBush ? 1 : (isNarrow ? 2 : 3);
             for (let b = 0; b < branchCount; b++) {
                 const ang = (i * 2.1 + b * 2.09) % (Math.PI * 2);
-                const rad = (isBush ? 0.35 : 0.85 + (b % 2) * 0.75) * scale;
+                const rad = (isBush ? 0.32 : (isNarrow ? 0.38 + (b % 2) * 0.22 : 0.85 + (b % 2) * 0.75)) * scale;
                 const hFrac = isBush ? 0.85 : 0.56 + b * 0.12;
                 treePerches.push({
                     type: 'tree',
@@ -939,6 +995,7 @@ export class MigratingGeeseFoundry {
      */
     spawnRandomBirdEvent(forFollowView = false) {
         const catalog = [
+            'bald-eagle',
             'mallard-flock',
             'wood-duck-flock',
             'pintail-flock',
@@ -948,7 +1005,6 @@ export class MigratingGeeseFoundry {
             'white-pelican-flock',
             'great-blue-heron',
             'geese-v-flock',
-            'bald-eagle',
             'red-tailed-hawk',
             'osprey',
             'raven',
@@ -956,9 +1012,15 @@ export class MigratingGeeseFoundry {
         ];
 
         if (!this.recentSpecies) this.recentSpecies = [];
-        const choices = catalog.filter((s) => !this.recentSpecies.includes(s));
-        const pool = choices.length > 0 ? choices : catalog;
-        const picked = pool[Math.floor(Math.random() * pool.length)];
+        let picked;
+        // On background sky spawns, feature the signature Bald Eagle regularly (~30% chance if not the immediately previous bird)
+        if (!forFollowView && this.lastSpecies !== 'bald-eagle' && Math.random() < 0.30) {
+            picked = 'bald-eagle';
+        } else {
+            const choices = catalog.filter((s) => !this.recentSpecies.includes(s));
+            const pool = choices.length > 0 ? choices : catalog;
+            picked = pool[Math.floor(Math.random() * pool.length)];
+        }
 
         this.recentSpecies.push(picked);
         if (this.recentSpecies.length > 7) {
@@ -967,7 +1029,9 @@ export class MigratingGeeseFoundry {
         this.lastSpecies = picked;
 
         let flight;
-        if (picked === 'geese-v-flock') {
+        if (picked === 'bald-eagle') {
+            flight = this.spawnBaldEagleSoar();
+        } else if (picked === 'geese-v-flock') {
             flight = this.spawnGeeseVFlock(forFollowView);
         } else if (
             picked === 'mallard-flock' ||
@@ -988,6 +1052,29 @@ export class MigratingGeeseFoundry {
     }
 
     /**
+     * Removes a transient flight group from `rootGroup` and disposes all per-flight WebGL
+     * `BufferGeometry` / transient material buffers so VRAM never leaks across hours of runtime.
+     */
+    _disposeFlightGroup(group) {
+        if (!group) return;
+        this.rootGroup.remove(group);
+        disposeTransientObject3D(group);
+    }
+
+    /**
+     * Disposes any background (non-followed) flights during a soft VRAM purge.
+     */
+    purgeBackgroundFlights() {
+        for (let i = this.activeFlights.length - 1; i >= 0; i--) {
+            const fl = this.activeFlights[i];
+            if (fl !== this.followedFlight) {
+                this._disposeFlightGroup(fl.group);
+                this.activeFlights.splice(i, 1);
+            }
+        }
+    }
+
+    /**
      * Ensures there is an active migratory flight suitable for the Bird's-Eye Chase Camera,
      * spawning a new one immediately if none is active (or if `forceNext` is true).
      */
@@ -996,11 +1083,20 @@ export class MigratingGeeseFoundry {
             if (this.followedFlight) {
                 const idx = this.activeFlights.indexOf(this.followedFlight);
                 if (idx !== -1) {
-                    this.rootGroup.remove(this.followedFlight.group);
+                    this._disposeFlightGroup(this.followedFlight.group);
                     this.activeFlights.splice(idx, 1);
                 }
             }
             return this.spawnRandomBirdEvent(true);
+        }
+
+        // Never cut a 30-second Bald Eagle campus soar short before its full 30.0s completion!
+        if (
+            this.followedFlight &&
+            this.followedFlight.isOrbitalEagleSoar &&
+            this.activeFlights.includes(this.followedFlight)
+        ) {
+            return this.followedFlight;
         }
 
         if (
@@ -1013,7 +1109,8 @@ export class MigratingGeeseFoundry {
 
         for (let i = this.activeFlights.length - 1; i >= 0; i--) {
             const candidate = this.activeFlights[i];
-            if ((candidate.traveled / candidate.totalDist) < 0.82) {
+            const limit = candidate.isOrbitalEagleSoar ? 0.999 : 0.82;
+            if ((candidate.traveled / candidate.totalDist) < limit) {
                 this.followedFlight = candidate;
                 return candidate;
             }
@@ -1040,6 +1137,9 @@ export class MigratingGeeseFoundry {
         const bank = flight.group.rotation.z || 0;
         const progress = THREE.MathUtils.clamp(flight.traveled / flight.totalDist, 0, 1);
         const info = this.getSpeciesDisplayInfo(flight.species);
+        const remainingSeconds = flight.isOrbitalEagleSoar
+            ? Math.max(0, flight.totalDist - flight.traveled)
+            : null;
 
         return {
             flight,
@@ -1047,6 +1147,10 @@ export class MigratingGeeseFoundry {
             heading,
             bank,
             progress,
+            isOrbitalEagleSoar: Boolean(flight.isOrbitalEagleSoar),
+            endingId: flight.endingId || null,
+            endingLabel: flight.endingLabel || null,
+            remainingSeconds,
             type: flight.type,
             species: flight.species,
             label: info.label,
@@ -1278,10 +1382,206 @@ export class MigratingGeeseFoundry {
     }
 
     /**
+     * Spawns the high-resolution Bald Eagle (`assets/models/birds/bald-eagle-hd.glb`) from a random
+     * 360° horizon direction on a full active-flapping flyover (~44–50s) at ~300 feet (91.4m):
+     * flies slower (~6.9 m/s) with deep steady wingbeats while approaching the Chelan County Campus,
+     * then accelerates (~20 m/s, ~2.9x faster) with brisk power-stroke wingbeats once passing the campus.
+     * Supports an extensible list of endings (`this.eagleEndings`, e.g., `'welcome-text'` or `'welcome-drone-swarm'`).
+     * Automatically triggers `onEagleSpawn` on ALL eagle spawns so the app saves the user's camera
+     * position, switches to Bird's-Eye View, and restores it afterward.
+     */
+    spawnBaldEagleSoar(endingId = null) {
+        // Remove & dispose any prior eagle flight if re-spawned directly
+        for (let i = this.activeFlights.length - 1; i >= 0; i--) {
+            if (this.activeFlights[i].isOrbitalEagleSoar) {
+                this._disposeFlightGroup(this.activeFlights[i].group);
+                this.activeFlights.splice(i, 1);
+            }
+        }
+        this._hideAllEagleEndings();
+
+        // Select requested ending or cycle through the registered `this.eagleEndings` list
+        let chosenEnding = null;
+        if (endingId) {
+            chosenEnding = this.eagleEndings.find((e) => e.id === endingId) || null;
+        }
+        if (!chosenEnding && this.eagleEndings.length > 0) {
+            const idx = this.nextEagleEndingIndex % this.eagleEndings.length;
+            chosenEnding = this.eagleEndings[idx];
+            this.nextEagleEndingIndex = (idx + 1) % this.eagleEndings.length;
+        }
+        this.activeEagleEnding = chosenEnding;
+
+        const flightGroup = new THREE.Group();
+        flightGroup.name = 'BaldEagleFullFlyover';
+
+        const durationSec = 44.0 + Math.random() * 6.0;
+
+        // Full 360° random spawn location on the horizon aiming straight across the Chelan County Campus
+        const headingAngle = Math.random() * Math.PI * 2.0;
+        const dirX = Math.sin(headingAngle);
+        const dirZ = Math.cos(headingAngle);
+        const perpX = Math.cos(headingAngle);
+        const perpZ = -Math.sin(headingAngle);
+
+        const cx = 8.0;
+        const cz = 16.0;
+        const latBase = (Math.random() - 0.5) * 32.0;
+        const weaveSign = Math.random() < 0.5 ? 1 : -1;
+
+        // Full flyover at ~300 ft (91.5m) across the Campus, then soaring higher (~443 ft / 135m) into the horizon mist
+        const exitLat = latBase - weaveSign * 3.0;
+        const localProfile = [
+            [-220,  87.5, latBase - weaveSign * 6.0], // Random horizon entry (~220m out)
+            [-135,  89.8, latBase + weaveSign * 4.0], // Slower approach — campus dead ahead
+            [ -50,  91.2, latBase + weaveSign * 7.0], // Approaching campus edge (~300 ft)
+            [  15,  91.6, latBase + weaveSign * 2.0], // Passing across the heart of Campus (300 ft)
+            [  85, 103.5, latBase - weaveSign * 3.0], // Soaring higher past the campus (~340 ft)
+            [ 165, 120.5, latBase - weaveSign * 4.0], // Climbing high into the silver horizon mist (~395 ft)
+            [ 250, 135.0, exitLat]                    // High-altitude soar across the opposite horizon (~443 ft)
+        ];
+        if (chosenEnding?.controller) {
+            chosenEnding.controller.placeForEagleCorridor({
+                cx,
+                cz,
+                dirX,
+                dirZ,
+                perpX,
+                perpZ,
+                exitLat
+            });
+        }
+        const waypoints = localProfile.map(([along, py, lat]) => new THREE.Vector3(
+            cx + dirX * along + perpX * lat,
+            py,
+            cz + dirZ * along + perpZ * lat
+        ));
+
+        const flightCurve = new THREE.CatmullRomCurve3(waypoints, false, 'catmullrom', 0.5);
+        flightCurve.arcLengthDivisions = 600;
+        const totalCurveLen = flightCurve.getLength();
+        const pointStart = flightCurve.getPointAt(0);
+        const pointEnd = flightCurve.getPointAt(1);
+        const tangentStart = flightCurve.getTangentAt(0);
+        const tangentEnd = flightCurve.getTangentAt(1);
+
+        // Smooth C1 monotonic speed curve: slower (1.0x ~ 6.9 m/s) while approaching the campus,
+        // ramping up to 2.95x faster (~20.3 m/s) once the eagle passes the campus!
+        const lutSteps = 256;
+        const speedCumLut = new Float64Array(lutSteps + 1);
+        const evalRelSpeed = (tau) => 1.0 + 1.95 * THREE.MathUtils.smoothstep(tau, 0.62, 0.78);
+        for (let i = 1; i <= lutSteps; i++) {
+            const tauMid = (i - 0.5) / lutSteps;
+            speedCumLut[i] = speedCumLut[i - 1] + evalRelSpeed(tauMid) / lutSteps;
+        }
+        const totalCum = speedCumLut[lutSteps] || 1.0;
+        for (let i = 1; i <= lutSteps; i++) {
+            speedCumLut[i] /= totalCum;
+        }
+        const startSlope = evalRelSpeed(0) / totalCum;
+        const endSlope = evalRelSpeed(1) / totalCum;
+
+        const mapTimeToCurveU = (tau) => {
+            if (tau <= 0) return tau * startSlope;
+            if (tau >= 1) return 1.0 + (tau - 1.0) * endSlope;
+            const scaled = tau * lutSteps;
+            const idx = Math.min(lutSteps - 1, Math.floor(scaled));
+            const frac = scaled - idx;
+            return speedCumLut[idx] + (speedCumLut[idx + 1] - speedCumLut[idx]) * frac;
+        };
+
+        const evalOrbitPoint = (tSec) => {
+            const tau = tSec / durationSec;
+            const uCurve = mapTimeToCurveU(tau);
+            if (uCurve <= 0) {
+                return pointStart.clone().addScaledVector(tangentStart, uCurve * totalCurveLen);
+            }
+            if (uCurve >= 1) {
+                return pointEnd.clone().addScaledVector(tangentEnd, (uCurve - 1) * totalCurveLen);
+            }
+            return flightCurve.getPointAt(uCurve);
+        };
+
+        const evalOrbitState = (tSec) => {
+            const dtSample = 0.06;
+            const pPrev = evalOrbitPoint(tSec - dtSample);
+            const pCurr = evalOrbitPoint(tSec);
+            const pNext = evalOrbitPoint(tSec + dtSample);
+
+            const vx = (pNext.x - pPrev.x) / (2 * dtSample);
+            const vy = (pNext.y - pPrev.y) / (2 * dtSample);
+            const vz = (pNext.z - pPrev.z) / (2 * dtSample);
+            const heading = Math.atan2(vx, vz);
+
+            // Wide 1.4s aerodynamic roll window so wings stay level entering/exiting the horizon
+            // and bank smoothly (~20 deg) into the 500-ft campus thermal circle
+            const dtBank = 1.4;
+            const bPrev = evalOrbitPoint(tSec - dtBank);
+            const bCurr = evalOrbitPoint(tSec);
+            const bNext = evalOrbitPoint(tSec + dtBank);
+            const h1 = Math.atan2(bCurr.x - bPrev.x, bCurr.z - bPrev.z);
+            const h2 = Math.atan2(bNext.x - bCurr.x, bNext.z - bCurr.z);
+            let dHeading = h2 - h1;
+            while (dHeading > Math.PI) dHeading -= Math.PI * 2;
+            while (dHeading < -Math.PI) dHeading += Math.PI * 2;
+            const yawRate = dHeading / dtBank;
+
+            const bank = THREE.MathUtils.clamp(-yawRate * 2.4, -0.32, 0.32);
+            const pitch = THREE.MathUtils.clamp(-Math.atan2(vy, Math.hypot(vx, vz) || 1) * 0.85, -0.34, 0.22);
+            return { position: pCurr, heading, bank, pitch };
+        };
+
+        // True-to-life ~2.35m (~7.7 ft) wingspan (`0.58 * 4.05m` base rig) so the campus is the star of the view
+        const actor = this._createBirdActor('bald-eagle', 0.0, 0.58);
+        actor.localOffset = new THREE.Vector3(0, 0, 0);
+        flightGroup.add(actor.mesh);
+
+        const initState = evalOrbitState(0);
+        flightGroup.position.copy(initState.position);
+        flightGroup.rotation.order = 'YXZ';
+        flightGroup.rotation.set(initState.pitch, initState.heading, initState.bank);
+        this.rootGroup.add(flightGroup);
+
+        const flightObj = {
+            type: 'solo',
+            species: 'bald-eagle',
+            isOrbitalEagleSoar: true,
+            endingId: chosenEnding?.id || 'welcome-text',
+            endingLabel: chosenEnding?.label || 'Welcome to Chelan County',
+            endingController: chosenEnding?.controller || this.welcomeBillboard,
+            evalOrbitState,
+            group: flightGroup,
+            birds: [actor],
+            startPos: initState.position.clone(),
+            endPos: evalOrbitPoint(durationSec),
+            baseHeading: initState.heading,
+            swerveAmp: 0,
+            swerveFreq: 0,
+            totalDist: durationSec, // With speed = 1.0, traveled === elapsed seconds (0..30.0s)
+            traveled: 0,
+            speed: 1.0,
+            age: 0
+        };
+
+        this.activeFlights.push(flightObj);
+        this.followedFlight = flightObj;
+        this.lastSpecies = 'bald-eagle';
+
+        if (typeof this.onEagleSpawn === 'function') {
+            this.onEagleSpawn(flightObj);
+        }
+
+        return flightObj;
+    }
+
+    /**
      * Spawns an individual flying bird (`bald-eagle`, `red-tailed-hawk`, `osprey`, `great-blue-heron`, `raven`, or `gull`)
      * that flies across the campus with smooth S-curve banking & thermal gliding.
      */
-    spawnSoloBird(species = 'bald-eagle', forFollowView = false) {
+    spawnSoloBird(species = 'bald-eagle', forFollowView = false, endingId = null) {
+        if (species === 'bald-eagle') {
+            return this.spawnBaldEagleSoar(endingId);
+        }
         const flightGroup = new THREE.Group();
         flightGroup.name = `SoloFlyingBird_${species}`;
 
@@ -1318,7 +1618,7 @@ export class MigratingGeeseFoundry {
         );
 
         const scaleMap = {
-            'bald-eagle': 1.85,
+            'bald-eagle': 0.58,
             'great-blue-heron': 1.75,
             'red-tailed-hawk': 1.60,
             'osprey': 1.65,
@@ -1480,6 +1780,8 @@ export class MigratingGeeseFoundry {
             this.nextSpawnCountdown = 60.0;
         }
 
+        let hasActiveEagleSoar = false;
+
         for (let f = this.activeFlights.length - 1; f >= 0; f--) {
             const flight = this.activeFlights[f];
             flight.age += clampedDt;
@@ -1487,33 +1789,151 @@ export class MigratingGeeseFoundry {
 
             const u = flight.traveled / flight.totalDist;
             if (u >= 1.0) {
-                this.rootGroup.remove(flight.group);
+                this._disposeFlightGroup(flight.group);
                 this.activeFlights.splice(f, 1);
+                if (this.followedFlight === flight) {
+                    this.followedFlight = null;
+                }
+                if (flight.isOrbitalEagleSoar) {
+                    this._hideAllEagleEndings();
+                    if (typeof this.onEagleSoarEnd === 'function') {
+                        this.onEagleSoarEnd(flight);
+                    }
+                }
                 continue;
             }
 
-            flight.group.position.lerpVectors(flight.startPos, flight.endPos, u);
+            if (flight.isOrbitalEagleSoar && typeof flight.evalOrbitState === 'function') {
+                hasActiveEagleSoar = true;
+                const st = flight.evalOrbitState(flight.age);
+                flight.group.position.copy(st.position);
+                flight.group.rotation.order = 'YXZ';
+                flight.group.rotation.set(st.pitch, st.heading, st.bank);
 
-            // Solo soaring birds weave gently along an S-curve and bank into turns
-            if (flight.type === 'solo' && flight.swerveAmp > 0) {
-                const perpX = Math.cos(flight.baseHeading);
-                const perpZ = -Math.sin(flight.baseHeading);
-                const wavePhase = u * Math.PI * 2.0 * flight.swerveFreq;
-                const lateralOff = Math.sin(wavePhase) * flight.swerveAmp;
-                flight.group.position.x += perpX * lateralOff;
-                flight.group.position.z += perpZ * lateralOff;
+                const endingCtrl = flight.endingController || this.welcomeBillboard;
+                if (endingCtrl) {
+                    if (st.position.y < 93.2) {
+                        flight._welcomePopped = false;
+                        flight._welcomePopElapsed = 0;
+                        endingCtrl.setReveal(0.0, this.scene?.fog?.color, 1.0, 0.0, 0.0, clampedDt);
+                    } else {
+                        if (!flight._welcomePopped) {
+                            let camHit = st.position.y >= 97.8;
+                            if (!camHit && this.camera && endingCtrl.group) {
+                                this._projVec.copy(endingCtrl.group.position).project(this.camera);
+                                if (
+                                    this._projVec.z > 0.0 &&
+                                    this._projVec.z < 1.0 &&
+                                    Math.abs(this._projVec.x) <= 0.96 &&
+                                    this._projVec.y <= 0.92 &&
+                                    this._projVec.y >= -0.92
+                                ) {
+                                    camHit = true;
+                                }
+                            }
+                            if (camHit) {
+                                flight._welcomePopped = true;
+                                flight._welcomePopElapsed = 0.016;
+                            }
+                        }
 
-                const yawOffset = Math.atan2(
-                    Math.cos(wavePhase) * flight.swerveAmp * (Math.PI * 2.0 * flight.swerveFreq) / flight.totalDist,
-                    1.0
-                );
-                flight.group.rotation.y = flight.baseHeading + yawOffset;
-                flight.group.rotation.z = -yawOffset * 0.85; // Natural aerodynamic roll/bank angle
+                        if (flight._welcomePopped) {
+                            flight._welcomePopElapsed = (flight._welcomePopElapsed || 0) + clampedDt;
+                            const popProgress = THREE.MathUtils.clamp(flight._welcomePopElapsed / 0.24, 0.0, 1.0);
+                            const popReveal = 1.0 - Math.pow(1.0 - popProgress, 3);
+
+                            const sT = THREE.MathUtils.clamp(flight._welcomePopElapsed / 0.44, 0.0, 1.0);
+                            const backC1 = 2.65;
+                            const backC3 = backC1 + 1.0;
+                            const uBack = sT - 1.0;
+                            const easedBack = 1.0 + backC3 * uBack * uBack * uBack + backC1 * uBack * uBack;
+                            const popScale = 0.72 + 0.28 * easedBack;
+
+                            const popFlash = Math.max(0.0, 1.0 - flight._welcomePopElapsed / 0.40);
+                            const exitDissolve = 1.0 - THREE.MathUtils.smootherstep(u, 0.955, 0.996);
+                            // For the drone swarm ending, drones converge smoothly from scattered patrol into the spelled text over 2.6s
+                            const formationProgress = THREE.MathUtils.clamp(flight._welcomePopElapsed / 2.60, 0.0, 1.0);
+                            endingCtrl.setReveal(
+                                popReveal * exitDissolve,
+                                this.scene?.fog?.color,
+                                popScale,
+                                popFlash * exitDissolve,
+                                formationProgress,
+                                clampedDt
+                            );
+                        } else {
+                            endingCtrl.setReveal(0.0, this.scene?.fog?.color, 1.0, 0.0, 0.0, clampedDt);
+                        }
+                    }
+                }
+            } else {
+                flight.group.position.lerpVectors(flight.startPos, flight.endPos, u);
+
+                // Solo soaring birds weave gently along an S-curve and bank into turns
+                if (flight.type === 'solo' && flight.swerveAmp > 0) {
+                    const perpX = Math.cos(flight.baseHeading);
+                    const perpZ = -Math.sin(flight.baseHeading);
+                    const wavePhase = u * Math.PI * 2.0 * flight.swerveFreq;
+                    const lateralOff = Math.sin(wavePhase) * flight.swerveAmp;
+                    flight.group.position.x += perpX * lateralOff;
+                    flight.group.position.z += perpZ * lateralOff;
+
+                    const yawOffset = Math.atan2(
+                        Math.cos(wavePhase) * flight.swerveAmp * (Math.PI * 2.0 * flight.swerveFreq) / flight.totalDist,
+                        1.0
+                    );
+                    flight.group.rotation.y = flight.baseHeading + yawOffset;
+                    flight.group.rotation.z = -yawOffset * 0.85; // Natural aerodynamic roll/bank angle
+                }
             }
 
             // Animate each bird's articulated 2-segment wings & thermal glide posture
             for (let i = 0; i < flight.birds.length; i++) {
                 const b = flight.birds[i];
+
+                if (b.isHighResEagle) {
+                    // Full active flight (no static gliding/soaring):
+                    // Slower, deep wingbeats while approaching the campus, accelerating to fast power strokes once past the campus!
+                    const accelBlend = THREE.MathUtils.smoothstep(u, 0.62, 0.78);
+                    const flapRate = THREE.MathUtils.lerp(4.6, 8.8, accelBlend);
+                    flight._eagleWingPhase = (flight._eagleWingPhase || 0) + clampedDt * flapRate;
+                    const t = flight._eagleWingPhase + b.phaseOffset;
+                    const flapAmp = 0.94 + accelBlend * 0.14;
+
+                    const s = Math.sin(t);
+                    const c = Math.cos(t);
+
+                    const shoulderAngle = s * 0.48 * flapAmp + 0.04;
+                    const wristAngle = (Math.sin(t - 0.85) * 0.42 - 0.10) * flapAmp;
+
+                    b.leftWing.shoulderPivot.rotation.z = shoulderAngle;
+                    b.leftWing.wristPivot.rotation.z = wristAngle;
+                    b.rightWing.shoulderPivot.rotation.z = -shoulderAngle;
+                    b.rightWing.wristPivot.rotation.z = -wristAngle;
+
+                    // Dynamic aero-elastic flex on the 7 slotted primary wingtip fingers with each wingstroke
+                    const tipFlex = -c * 0.11 * flapAmp;
+                    if (b.leftWing.primaryTipsGroup) {
+                        b.leftWing.primaryTipsGroup.rotation.z = tipFlex;
+                    }
+                    if (b.rightWing.primaryTipsGroup) {
+                        b.rightWing.primaryTipsGroup.rotation.z = -tipFlex;
+                    }
+
+                    if (b.headGroup) {
+                        b.headGroup.rotation.y = Math.sin(flight.age * 0.55) * 0.08 * (1.0 - accelBlend * 0.6);
+                        b.headGroup.rotation.x = -c * 0.03;
+                    }
+                    if (b.tail) {
+                        b.tail.rotation.z = (flight.group.rotation.z || 0) * 0.25;
+                        b.tail.rotation.x = -0.02 + c * 0.035;
+                    }
+
+                    const bobY = -c * 0.055 * flapAmp;
+                    b.mesh.position.set(b.localOffset.x, b.localOffset.y + bobY, b.localOffset.z);
+                    continue;
+                }
+
                 const t = flight.age * b.flapFreq + b.phaseOffset;
 
                 const glideWave = Math.sin(flight.age * 0.65 + b.phaseOffset * 0.7);
@@ -1540,6 +1960,15 @@ export class MigratingGeeseFoundry {
                     b.localOffset.y + bobY,
                     b.localOffset.z
                 );
+            }
+        }
+
+        if (!hasActiveEagleSoar) {
+            for (let i = 0; i < this.eagleEndings.length; i++) {
+                const ctrl = this.eagleEndings[i].controller;
+                if (ctrl && ctrl.revealFactor > 0) {
+                    ctrl.hide();
+                }
             }
         }
     }

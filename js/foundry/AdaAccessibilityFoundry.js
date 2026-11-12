@@ -126,8 +126,8 @@ export const ADA_CAMPUS_FEATURES = [
         category: 'ramp',
         badge: '♿ Covered Canopy Walk',
         title: '410 / 411 / 412 Washington — Single-Story Accessible Entrances',
-        location: '412 Covered Porch Walkway & 411 Alley Entrance',
-        specs: 'Continuous covered concrete walkway along 412 WSU Extension & graded concrete approach to 411 Natural Resources',
+        location: '410 Front Entry & 411/412 Rear Wing Covered Walkway',
+        specs: 'Stepped/ramped front entry facing Washington St (Regional Justice Center) & covered concrete walkway along 411/412 rear Natural Resources wing',
         x: -82.0,
         z: -8.5,
         camOffset: [11.5, 5.8, -14.5],
@@ -155,7 +155,7 @@ export const ADA_CAMPUS_FEATURES = [
         badge: '♿ Graded Sidewalk Entry',
         title: '401 & 413–415 Washington — Law & Justice / CCRJ Accessible Entries',
         location: 'Washington St Sidewalk Grade (Floor 2 East / Floor 1 West)',
-        specs: 'Road-level public lobby entry on Washington St • Public elevator access to Sheriff, Prosecutor & Superior Court',
+        specs: 'Road-level public lobby entry on Washington St • Elevator access to Floor 1 Sheriff, Floors 2–4 Regional Justice Center & Floor 5 Superior Court',
         x: -18.5,
         z: -41.5,
         camOffset: [-14.0, 7.5, 16.0],
@@ -182,7 +182,7 @@ export const BUILDING_ADA_SUMMARY = {
         status: 'ADA Accessible via Washington St (Floor 2)',
         entrance: 'West Washington St road-level entrance bypasses the historic Orondo Ave front stairs.',
         parking: 'Designated ADA stalls in the Courthouse North Lot & along Washington St.',
-        elevator: 'Public elevator serves all 5 floors (Floor 1 Basement Treasurer to Floor 5 Superior Court Clerk).'
+        elevator: 'Public elevator serves all 5 floors (Floor 2 Assessor/Treasurer/Auditor, Floor 3 Elections & Child Support, Floor 4 District Court/Judges & Courtrooms 1–2, Floor 5 Chelan County Clerk).'
     },
     'building-316': {
         status: 'Full Barrier-Free Plaza & Elevator Access',
@@ -204,21 +204,21 @@ export const BUILDING_ADA_SUMMARY = {
     },
     'building-411-412': {
         status: 'Single-Story Complex with Van-Accessible Stall',
-        entrance: 'Covered level porch walkway for 412 (WSU Extension), ramped/stepped entry for 410, and graded concrete entry for 411.',
-        parking: 'Reserved van-accessible stall with yellow hashed access aisle in front 412 concrete lot.',
-        elevator: 'All public offices (410, 411, 412) are on the ground floor.'
+        entrance: 'Front entry facing Washington St (Regional Justice Center) plus covered level porch walkway & graded entry for the rear Natural Resources half (411/412).',
+        parking: 'Reserved van-accessible stall with yellow hashed access aisle in front concrete lot.',
+        elevator: 'All Regional Justice Center & Natural Resources offices (410, 411, 412) are on the ground floor.'
     },
     'regional-jail-east': {
-        status: 'Road-Level Entry & Multi-Floor Elevator',
-        entrance: 'Floor 2 main public entrance sits flush with Washington St sidewalk grade.',
+        status: 'Washington St Level Entry & Multi-Floor Elevator',
+        entrance: 'Floor 2 main entrance sits flush with Washington St sidewalk grade; lower walk-out access serves Floor 1 (Sheriff).',
         parking: 'Accessible spaces along Washington St & visitor parking lot.',
-        elevator: 'Public security elevators serve Floors 1–5 (Sheriff, Prosecutor & Superior Court).'
+        elevator: 'Public security elevators serve Floors 1–5 (Floor 1 Chelan County Sheriff, Floors 2–4 Regional Justice Center, Floor 5 Superior Court).'
     },
     'regional-jail-west': {
         status: 'Graded Sidewalk Perimeter Access',
-        entrance: 'Floor 1 intake & public vestibule graded directly to the Washington St sidewalk.',
+        entrance: 'Floor 1 Regional Justice Center West Wing Annex entry graded directly to the Washington St sidewalk.',
         parking: 'Adjacent Washington St accessible drop-off & visitor stalls.',
-        elevator: 'Ground-level public intake & visitation.'
+        elevator: 'Serves Floors 1–2 of the Regional Justice Center West Wing Annex.'
     },
     'building-428': {
         status: 'Dedicated Front ADA Wheelchair Ramp',

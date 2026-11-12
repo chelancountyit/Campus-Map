@@ -74,20 +74,20 @@ export function createBuilding316Context(foundry, group, building, shape, terrai
             metalness: 0.05
         });
 
-        // 2. Procedural Copper/Terracotta Horizontal Louver Texture (Level 4 Screen Wall)
+        // 2. Procedural Copper/Terracotta Horizontal Louver Fence Texture (Level 4 Perimeter Rooftop Fence)
         const copperCanvas = document.createElement('canvas');
         copperCanvas.width = 256;
         copperCanvas.height = 256;
         const cCtx = copperCanvas.getContext('2d');
-        cCtx.fillStyle = '#733d20';
+        cCtx.fillStyle = '#381c0e';
         cCtx.fillRect(0, 0, 256, 256);
         for (let y = 0; y < 256; y += 8) {
-            cCtx.fillStyle = '#c4794e';
-            cCtx.fillRect(0, y, 256, 4);
-            cCtx.fillStyle = '#a45d36';
-            cCtx.fillRect(0, y + 4, 256, 2);
-            cCtx.fillStyle = '#582c15';
-            cCtx.fillRect(0, y + 6, 256, 2);
+            cCtx.fillStyle = '#c97d50';
+            cCtx.fillRect(0, y, 256, 3);
+            cCtx.fillStyle = '#a65e36';
+            cCtx.fillRect(0, y + 3, 256, 2);
+            cCtx.fillStyle = '#34190c';
+            cCtx.fillRect(0, y + 5, 256, 3);
         }
         const copperLouverTex = new THREE.CanvasTexture(copperCanvas);
         copperLouverTex.wrapS = THREE.RepeatWrapping;
@@ -277,6 +277,7 @@ export function createBuilding316Context(foundry, group, building, shape, terrai
         // Helper: Multi-Bay White-Mullioned Horizontal Ribbon Window (matches Photos 1, 4, 5)
         const addRibbonWindow = (wallAxis, centerCoord, yBot, totalW, totalH, numBays, hasLowerHopper = true) => {
             const winGrp = new THREE.Group();
+            winGrp.userData.hideOnCutaway = true;
             const isZWall = Math.abs(wallAxis.nz) > 0.5;
             if (isZWall) {
                 winGrp.position.set(centerCoord, yBot + totalH * 0.5, wallAxis.pos + wallAxis.nz * 0.05);
