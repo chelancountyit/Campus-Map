@@ -4,12 +4,11 @@ import * as THREE from 'three';
  * ChelanWelcomeDroneSwarmEnding
  *
  * Alternative Bald Eagle flyover ending (`welcome-drone-swarm`):
- * A synchronized fleet of luminous quadcopter drones scattered across the sky
- * converges smoothly as the eagle climbs past the campus to spell
- * "WELCOME TO" / "CHELAN COUNTY" in glowing 3D aerial drone formation,
- * with spinning propellers, quad-arm navigation LEDs, and a central high-intensity
- * show beacon on every drone, allowing the eagle & chase camera to soar right
- * past/through the living drone constellation.
+ * A synchronized fleet of luminous quadcopter drones spells
+ * "WELCOME TO" / "CHELAN COUNTY" in huge outlined (stroke-only, no fill) 3D aerial
+ * typography ahead of the Bald Eagle, and once the camera begins to see the formation,
+ * the drones hold the crisp stroke outline briefly before gracefully separating and
+ * dispersing outward across the sky as the eagle and chase camera soar right through them.
  *
  * Zero runtime GPU buffer churn: all geometries, materials, and InstancedMeshes
  * are allocated once and updated in-place via instance matrices & colors.
@@ -21,6 +20,7 @@ export class ChelanWelcomeDroneSwarmEnding {
         this.label = 'Welcome to Chelan County — Drone Light Show';
         this.revealFactor = 0.0;
         this.formationFactor = 0.0;
+        this.separationFactor = 0.0;
         this.elapsedTime = 0.0;
 
         this._dummy = new THREE.Object3D();
@@ -37,44 +37,49 @@ export class ChelanWelcomeDroneSwarmEnding {
     }
 
     /**
-     * Rasterizes "WELCOME TO" and "CHELAN COUNTY" onto an offscreen canvas grid
-     * and extracts crisp 3D drone target coordinates, scatter offsets, and LED colors.
+     * Rasterizes "WELCOME TO" and "CHELAN COUNTY" onto an offscreen canvas using
+     * pure font outlines (`strokeText` only, NO fill) and extracts larger 3D drone
+     * target coordinates, separation vectors, and LED colors.
      */
     _sampleTextDroneTargets() {
         const drones = [];
         if (typeof document === 'undefined') return drones;
 
-        const W = 440;
-        const H = 140;
+        const W = 680;
+        const H = 220;
         const canvas = document.createElement('canvas');
         canvas.width = W;
         canvas.height = H;
         const ctx = canvas.getContext('2d');
 
         ctx.clearRect(0, 0, W, H);
-        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        // Row 1: "WELCOME TO"
+        // Row 1: "WELCOME TO" — stroke outline only (no fill!)
+        if ('letterSpacing' in ctx) {
+            ctx.letterSpacing = '6px';
+        }
+        ctx.lineWidth = 2.6;
+        ctx.font = '800 44px "Segoe UI", system-ui, -apple-system, sans-serif';
+        ctx.strokeText('WELCOME TO', W * 0.5, 56);
+
+        // Row 2: "CHELAN COUNTY" — bigger stroke outline only (no fill!)
         if ('letterSpacing' in ctx) {
             ctx.letterSpacing = '4px';
         }
-        ctx.font = '900 26px "Segoe UI", system-ui, -apple-system, sans-serif';
-        ctx.fillText('WELCOME TO', W * 0.5, 36);
-
-        // Row 2: "CHELAN COUNTY"
-        if ('letterSpacing' in ctx) {
-            ctx.letterSpacing = '2px';
-        }
-        ctx.font = '900 44px "Segoe UI", system-ui, -apple-system, sans-serif';
-        ctx.fillText('CHELAN COUNTY', W * 0.5, 96);
+        ctx.lineWidth = 3.0;
+        ctx.font = '900 72px "Segoe UI", system-ui, -apple-system, sans-serif';
+        ctx.strokeText('CHELAN COUNTY', W * 0.5, 150);
 
         const imgData = ctx.getImageData(0, 0, W, H).data;
-        const spanW = 52.0; // 52m wide sky formation
-        const spanH = 16.5; // 16.5m tall sky formation
+        const spanW = 86.0; // Bigger 86m wide sky formation
+        const spanH = 28.5; // Bigger 28.5m tall sky formation
 
-        // Sample on a 2px step so letters are unmistakably legible & dense (~600-850 drones)
+        // Sample on a 2px step along the hollow font strokes (~1,200-1,800 drones)
         const stepX = 2;
         const stepY = 2;
         let idx = 0;
@@ -82,13 +87,13 @@ export class ChelanWelcomeDroneSwarmEnding {
         for (let py = 0; py < H; py += stepY) {
             for (let px = 0; px < W; px += stepX) {
                 const alpha = imgData[(py * W + px) * 4 + 3];
-                if (alpha < 135) continue;
+                if (alpha < 110) continue;
 
                 const u = px / (W - 1) - 0.5;
                 const v = 0.5 - py / (H - 1);
                 const tx = u * spanW;
                 const ty = v * spanH;
-                const isTopRow = py < 62;
+                const isTopRow = py < 96;
 
                 // Deterministic pseudo-random scatter & phase per drone
                 const s1 = Math.sin(idx * 12.9898 + 78.233) * 43758.5453;
@@ -98,26 +103,27 @@ export class ChelanWelcomeDroneSwarmEnding {
                 const r2 = s2 - Math.floor(s2);
                 const r3 = s3 - Math.floor(s3);
 
-                // Initial scattered patrol cloud before converging into the spelled words
-                const scatterAngle = r1 * Math.PI * 2.0;
-                const scatterRadius = 18.0 + r2 * 44.0;
-                const sx = tx + Math.cos(scatterAngle) * scatterRadius;
-                const sy = ty + (r3 - 0.42) * 28.0;
-                const sz = (r1 - 0.45) * 42.0;
+                // Slow, graceful 3D disengagement targets so the eagle and chase camera fly right past the drones while they are still slowly disengaging from the title
+                const radialDirX = u >= 0 ? 1 : -1;
+                const radialAng = Math.atan2(v * 1.35, u + radialDirX * 0.08) + (r1 - 0.5) * 0.85;
+                const sepDist = 10.0 + r2 * 22.0;
+                const sx = tx + Math.cos(radialAng) * sepDist + (r3 - 0.5) * 7.5;
+                const sy = ty + Math.sin(radialAng) * (sepDist * 0.68) + (r1 - 0.38) * 9.5;
+                const sz = (r2 - 0.48) * 28.0;
 
-                // Subtle 3D layered depth when locked in letter formation so passing by looks deeply volumetric
-                const tz = (r2 - 0.5) * 0.85;
+                // Subtle 3D layered depth when locked in stroke outline formation
+                const tz = (r3 - 0.5) * 0.55;
 
                 // Base LED color: icy sky-cyan/white for "WELCOME TO", warm gold-amber for "CHELAN COUNTY"
                 const baseColor = new THREE.Color();
                 if (isTopRow) {
-                    baseColor.setHSL(0.53 + (r1 - 0.5) * 0.04, 0.92, 0.78 + r2 * 0.18);
+                    baseColor.setHSL(0.53 + (r1 - 0.5) * 0.04, 0.92, 0.80 + r2 * 0.16);
                 } else {
-                    const gradT = THREE.MathUtils.clamp((py - 68) / 48, 0, 1);
+                    const gradT = THREE.MathUtils.clamp((py - 105) / 76, 0, 1);
                     baseColor.setHSL(
                         THREE.MathUtils.lerp(0.14, 0.09, gradT),
                         0.96,
-                        THREE.MathUtils.lerp(0.84, 0.62, gradT)
+                        THREE.MathUtils.lerp(0.86, 0.64, gradT)
                     );
                 }
 
@@ -128,6 +134,7 @@ export class ChelanWelcomeDroneSwarmEnding {
                     sx,
                     sy,
                     sz,
+                    sepDelay: r1 * 0.36, // Staggered per-drone breakaway timing for slow organic title disengagement
                     phase: r1 * Math.PI * 2.0,
                     bobSpeed: 2.1 + r2 * 1.4,
                     baseColor,
@@ -342,12 +349,14 @@ export class ChelanWelcomeDroneSwarmEnding {
     }
 
     /**
-     * Positions the drone swarm corridor ahead of the Bald Eagle's climb trajectory
-     * so the eagle and chase camera fly directly past/through the glowing drone formation.
+     * Positions the drone swarm corridor directly on the Bald Eagle's high-altitude climb path
+     * (`along = 176m`, `y = 122.5m`, while the eagle climbs to `along = 250m`, `y = 135m`)
+     * so the eagle and chase camera fly right through and pass the drones while they are
+     * slowly disengaging from the spelled title.
      */
     placeForEagleCorridor({ cx, cz, dirX, dirZ, perpX, perpZ, exitLat = 0 }) {
-        const alongDist = 292.0; // Positioned along the high-altitude soar corridor so eagle passes right by the swarm
-        const centerY = 124.5;
+        const alongDist = 176.0;
+        const centerY = 122.5;
         const wx = cx + dirX * alongDist + perpX * exitLat;
         const wz = cz + dirZ * alongDist + perpZ * exitLat;
 
@@ -359,18 +368,20 @@ export class ChelanWelcomeDroneSwarmEnding {
     }
 
     /**
-     * Updates the drone swarm convergence, hover bobbing, propeller spin, and show-light shimmer.
+     * Updates the drone swarm stroke formation, separation once seen by the camera,
+     * hover bobbing, propeller spin, and show-light shimmer.
      * @param {number} reveal - Overall visibility envelope (0..1)
      * @param {THREE.Color|null} liveFogColor - Current scene fog color
      * @param {number} popScale - Group scale multiplier
      * @param {number} popFlash - Arrival flash boost (0..1)
-     * @param {number} formationProgress - Convergence progress from scattered patrol into spelled words (0..1)
+     * @param {number} separationProgress - Separation progress from stroke words outward as camera sees & approaches (0..1)
      * @param {number} dt - Frame delta time in seconds
      */
-    setReveal(reveal, liveFogColor = null, popScale = 1.0, popFlash = 0.0, formationProgress = 1.0, dt = 0.016) {
+    setReveal(reveal, liveFogColor = null, popScale = 1.0, popFlash = 0.0, separationProgress = 0.0, dt = 0.016) {
         const clamped = THREE.MathUtils.clamp(reveal, 0.0, 1.0);
         this.revealFactor = clamped;
-        this.formationFactor = THREE.MathUtils.clamp(formationProgress, 0.0, 1.0);
+        this.separationFactor = THREE.MathUtils.clamp(separationProgress, 0.0, 1.0);
+        this.formationFactor = Number((1.0 - this.separationFactor).toFixed(4));
         this.elapsedTime += Math.max(0, dt);
 
         if (liveFogColor && liveFogColor.isColor) {
@@ -387,10 +398,7 @@ export class ChelanWelcomeDroneSwarmEnding {
         this.group.visible = true;
         this.group.scale.setScalar(popScale);
 
-        // Smooth C2 quintic convergence from scattered sky patrol into "WELCOME TO CHELAN COUNTY"
-        const f = this.formationFactor;
-        const easedForm = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-        const scatterWeight = 1.0 - easedForm;
+        const sepGlobal = this.separationFactor;
         const t = this.elapsedTime;
         const flashBoost = THREE.MathUtils.clamp(popFlash, 0.0, 1.0) * 0.45;
 
@@ -400,17 +408,21 @@ export class ChelanWelcomeDroneSwarmEnding {
 
         for (let i = 0; i < this.droneCount; i++) {
             const d = this.drones[i];
-            const hoverBobY = Math.sin(t * d.bobSpeed + d.phase) * (0.09 + scatterWeight * 0.35);
-            const hoverSwayX = Math.cos(t * (d.bobSpeed * 0.75) + d.phase) * (0.05 + scatterWeight * 0.28);
-            const hoverSwayZ = Math.sin(t * (d.bobSpeed * 0.82) - d.phase) * (0.07 + scatterWeight * 0.32);
+            // Each drone starts in the crisp stroke-only text formation and separates outward once the camera sees it
+            const localSep = THREE.MathUtils.clamp((sepGlobal - d.sepDelay) / (1.0 - d.sepDelay), 0.0, 1.0);
+            const easedSep = localSep * localSep * (3.0 - 2.0 * localSep);
 
-            const px = THREE.MathUtils.lerp(d.sx, d.tx, easedForm) + hoverSwayX;
-            const py = THREE.MathUtils.lerp(d.sy, d.ty, easedForm) + hoverBobY;
-            const pz = THREE.MathUtils.lerp(d.sz, d.tz, easedForm) + hoverSwayZ;
+            const hoverBobY = Math.sin(t * d.bobSpeed + d.phase) * (0.08 + easedSep * 0.36);
+            const hoverSwayX = Math.cos(t * (d.bobSpeed * 0.75) + d.phase) * (0.04 + easedSep * 0.28);
+            const hoverSwayZ = Math.sin(t * (d.bobSpeed * 0.82) - d.phase) * (0.06 + easedSep * 0.32);
 
-            // Subtle quadcopter banking tilt while flying into formation, leveling out once locked in place
-            const bankZ = Math.sin(t * 2.8 + d.phase) * (0.05 + scatterWeight * 0.26);
-            const pitchX = Math.cos(t * 2.4 + d.phase) * (0.04 + scatterWeight * 0.22);
+            const px = THREE.MathUtils.lerp(d.tx, d.sx, easedSep) + hoverSwayX;
+            const py = THREE.MathUtils.lerp(d.ty, d.sy, easedSep) + hoverBobY;
+            const pz = THREE.MathUtils.lerp(d.tz, d.sz, easedSep) + hoverSwayZ;
+
+            // Subtle quadcopter banking tilt as each drone peels away from the stroke outline
+            const bankZ = Math.sin(t * 2.8 + d.phase) * (0.04 + easedSep * 0.28);
+            const pitchX = Math.cos(t * 2.4 + d.phase) * (0.03 + easedSep * 0.24);
 
             this._dummy.position.set(px, py, pz);
             this._dummy.rotation.set(pitchX, 0, bankZ);
@@ -427,8 +439,8 @@ export class ChelanWelcomeDroneSwarmEnding {
             this._propDummy.updateMatrix();
             this.propMesh.setMatrixAt(i, this._propDummy.matrix);
 
-            // Shimmering LED wave across the spelled letters
-            const wave = 0.5 + 0.5 * Math.sin(t * 3.6 - d.tx * 0.18 + d.phase * 0.3);
+            // Shimmering LED wave across the spelled stroke letters
+            const wave = 0.5 + 0.5 * Math.sin(t * 3.6 - d.tx * 0.14 + d.phase * 0.3);
             this._tmpColor.copy(d.baseColor);
             if (flashBoost > 0.01 || wave > 0.72) {
                 this._tmpColor.lerp(

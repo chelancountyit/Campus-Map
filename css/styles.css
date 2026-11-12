@@ -2352,15 +2352,15 @@ body.tv-kiosk-mode #bird-view-hud {
 
 .tv-kiosk-header {
     position: fixed;
-    top: max(clamp(1rem, 2.2dvh, 2rem), env(safe-area-inset-top, 0px));
-    right: max(clamp(1.25rem, 2.5dvw, 2.5rem), env(safe-area-inset-right, 0px));
+    top: max(clamp(1rem, 2.2dvh, 3.2rem), env(safe-area-inset-top, 0px));
+    right: max(clamp(1.25rem, 2.5dvw, 3.8rem), env(safe-area-inset-right, 0px));
     z-index: 30;
     inline-size: fit-content;
-    min-block-size: 2.5rem;
+    min-block-size: clamp(2.5rem, 4.2dvh, 4.8rem);
     display: inline-flex;
     align-items: center;
-    gap: 0.55rem;
-    padding: 0.45rem 0.95rem;
+    gap: clamp(0.55rem, 0.5dvw, 1.15rem);
+    padding: clamp(0.45rem, 0.8dvh, 0.9rem) clamp(0.95rem, 1.1dvw, 1.9rem);
     background: rgba(15, 23, 42, 0.84);
     backdrop-filter: blur(14px);
     border: 1px solid rgba(56, 189, 248, 0.36);
@@ -2371,7 +2371,7 @@ body.tv-kiosk-mode #bird-view-hud {
 }
 
 .tv-kiosk-brand-tag {
-    font-size: clamp(0.85rem, 0.65rem + 0.45vw, 1.45rem);
+    font-size: clamp(0.85rem, 0.55rem + 0.55vw, 2.35rem);
     font-weight: 700;
     color: #e2e8f0;
     white-space: nowrap;
@@ -2379,11 +2379,11 @@ body.tv-kiosk-mode #bird-view-hud {
 
 .tv-kiosk-sep {
     color: rgba(148, 163, 184, 0.7);
-    font-size: clamp(0.8rem, 0.6rem + 0.4vw, 1.3rem);
+    font-size: clamp(0.8rem, 0.5rem + 0.48vw, 2.1rem);
 }
 
 .tv-kiosk-time {
-    font-size: clamp(0.95rem, 0.7rem + 0.55vw, 1.7rem);
+    font-size: clamp(0.95rem, 0.6rem + 0.65vw, 2.75rem);
     font-weight: 800;
     line-height: 1.2;
     font-variant-numeric: tabular-nums;
@@ -2392,26 +2392,26 @@ body.tv-kiosk-mode #bird-view-hud {
 }
 
 .tv-kiosk-date {
-    font-size: clamp(0.9rem, 0.7rem + 0.45vw, 1.5rem);
+    font-size: clamp(0.9rem, 0.6rem + 0.55vw, 2.4rem);
     line-height: 1;
 }
 
 .tv-kiosk-stage-bar {
     position: fixed;
-    left: max(clamp(1.25rem, 2.5dvw, 2.5rem), env(safe-area-inset-left, 0px));
-    bottom: max(clamp(1.1rem, 2.4dvh, 2.2rem), env(safe-area-inset-bottom, 0px));
+    left: max(clamp(1.25rem, 2.5dvw, 3.8rem), env(safe-area-inset-left, 0px));
+    bottom: max(clamp(1.1rem, 2.4dvh, 3.4rem), env(safe-area-inset-bottom, 0px));
     inline-size: fit-content;
-    max-inline-size: min(46dvw, 34rem);
-    min-block-size: 2.75rem;
+    max-inline-size: min(46dvw, 64rem);
+    min-block-size: clamp(2.75rem, 4.6dvh, 5.4rem);
     z-index: 30;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    padding: 0.55rem 1rem 0.5rem;
+    gap: clamp(0.4rem, 0.55dvh, 0.8rem);
+    padding: clamp(0.55rem, 0.95dvh, 1.1rem) clamp(1rem, 1.2dvw, 2rem) clamp(0.5rem, 0.85dvh, 1rem);
     background: rgba(15, 23, 42, 0.86);
     backdrop-filter: blur(14px);
     border: 1px solid rgba(56, 189, 248, 0.4);
-    border-radius: 14px;
+    border-radius: clamp(14px, 0.8dvw, 24px);
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.48);
     pointer-events: none;
 }
@@ -2419,7 +2419,7 @@ body.tv-kiosk-mode #bird-view-hud {
 .tv-kiosk-stage-row {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
+    gap: clamp(0.65rem, 0.6dvw, 1.3rem);
     min-inline-size: 0;
 }
 
@@ -2427,11 +2427,11 @@ body.tv-kiosk-mode #bird-view-hud {
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
-    padding: 0.18rem 0.6rem;
+    padding: clamp(0.18rem, 0.32dvh, 0.36rem) clamp(0.6rem, 0.65dvw, 1.2rem);
     border-radius: 999px;
     background: rgba(2, 132, 199, 0.3);
     border: 1px solid rgba(125, 211, 252, 0.52);
-    font-size: clamp(0.75rem, 0.58rem + 0.35vw, 1.25rem);
+    font-size: clamp(0.75rem, 0.5rem + 0.42vw, 2rem);
     font-weight: 700;
     line-height: 1.2;
     color: #bae6fd;
@@ -2440,7 +2440,7 @@ body.tv-kiosk-mode #bird-view-hud {
 
 .tv-kiosk-stage-bar h2 {
     min-inline-size: 0;
-    font-size: clamp(0.95rem, 0.7rem + 0.55vw, 1.75rem);
+    font-size: clamp(0.95rem, 0.6rem + 0.65vw, 2.8rem);
     font-weight: 700;
     line-height: 1.25;
     color: #ffffff;
@@ -2451,7 +2451,7 @@ body.tv-kiosk-mode #bird-view-hud {
 
 .tv-kiosk-progress-track {
     inline-size: 100%;
-    block-size: 0.22rem;
+    block-size: clamp(0.22rem, 0.38dvh, 0.44rem);
     border-radius: 999px;
     background: rgba(2, 6, 23, 0.8);
     overflow: hidden;
@@ -2465,22 +2465,22 @@ body.tv-kiosk-mode #bird-view-hud {
     transition: width 0.12s linear;
 }
 
-/* Distance-Readable Concise 3D Floating Campus & Street Labels on 65" TV */
+/* Distance-Readable Concise 3D Floating Campus & Street Labels on 65" 4K UHD TV */
 body.tv-kiosk-mode .campus-3d-label {
-    font-size: clamp(0.82rem, 0.62rem + 0.4vw, 1.4rem);
-    padding: 0.3rem 0.75rem;
+    font-size: clamp(0.82rem, 0.55rem + 0.48vw, 2.25rem);
+    padding: clamp(0.3rem, 0.45dvh, 0.6rem) clamp(0.75rem, 0.8dvw, 1.5rem);
     border-width: 1.5px;
     pointer-events: none;
 }
 
 body.tv-kiosk-mode .campus-3d-label .label-code {
-    font-size: clamp(0.72rem, 0.55rem + 0.34vw, 1.15rem);
-    padding: 0.12rem 0.42rem;
+    font-size: clamp(0.72rem, 0.48rem + 0.4vw, 1.85rem);
+    padding: clamp(0.12rem, 0.22dvh, 0.24rem) clamp(0.42rem, 0.45dvw, 0.84rem);
 }
 
 body.tv-kiosk-mode .street-3d-label {
-    font-size: clamp(0.72rem, 0.55rem + 0.32vw, 1.15rem);
-    padding: 0.2rem 0.55rem;
+    font-size: clamp(0.72rem, 0.48rem + 0.38vw, 1.85rem);
+    padding: clamp(0.2rem, 0.32dvh, 0.4rem) clamp(0.55rem, 0.6dvw, 1.1rem);
 }
 
 

@@ -4,6 +4,7 @@ import { disposeTransientObject3D } from './system/CrashResilienceWatchdog.js';
 import { TREE_SPECIES_CATALOG } from './TreePlanterFoundry.js';
 import { ChelanWelcomeBillboard } from './ChelanWelcomeBillboard.js';
 import { ChelanWelcomeDroneSwarmEnding } from './ChelanWelcomeDroneSwarmEnding.js';
+import { ChelanWelcomeMissVeedolEnding } from './ChelanWelcomeMissVeedolEnding.js';
 
 /**
  * MigratingGeeseFoundry — Wenatchee Valley & Columbia River Sky Bird System
@@ -51,6 +52,7 @@ export class MigratingGeeseFoundry {
         this._initMaterials();
         this.welcomeBillboard = new ChelanWelcomeBillboard(this.scene);
         this.welcomeDroneSwarm = new ChelanWelcomeDroneSwarmEnding(this.scene);
+        this.welcomeMissVeedol = new ChelanWelcomeMissVeedolEnding(this.scene);
         this.eagleEndings = [
             {
                 id: 'welcome-text',
@@ -61,6 +63,11 @@ export class MigratingGeeseFoundry {
                 id: 'welcome-drone-swarm',
                 label: 'Welcome to Chelan County — Drone Light Show Formation',
                 controller: this.welcomeDroneSwarm
+            },
+            {
+                id: 'welcome-miss-veedol',
+                label: 'Welcome to Chelan County — Miss Veedol (NR796W) Tow Banner',
+                controller: this.welcomeMissVeedol
             }
         ];
         this.nextEagleEndingIndex = 0;
@@ -1765,7 +1772,7 @@ export class MigratingGeeseFoundry {
      */
     update(dt, reducedMotion = false) {
         if (reducedMotion) return;
-        const clampedDt = Math.min(dt, 0.1);
+        const clampedDt = Math.min(dt, 0.25);
         this.elapsedTime += clampedDt;
 
         // Animate resident campus sparrows and doves flying between trees and buildings
@@ -1850,15 +1857,17 @@ export class MigratingGeeseFoundry {
                             const popScale = 0.72 + 0.28 * easedBack;
 
                             const popFlash = Math.max(0.0, 1.0 - flight._welcomePopElapsed / 0.40);
-                            const exitDissolve = 1.0 - THREE.MathUtils.smootherstep(u, 0.955, 0.996);
-                            // For the drone swarm ending, drones converge smoothly from scattered patrol into the spelled text over 2.6s
-                            const formationProgress = THREE.MathUtils.clamp(flight._welcomePopElapsed / 2.60, 0.0, 1.0);
+                            const exitDissolve = 1.0 - THREE.MathUtils.smootherstep(u, 0.968, 0.998);
+                            // For the drone swarm ending, drones start in the crisp stroke-only text formation when the camera
+                            // first sees them, hold the legible outline briefly (~0.90s), and then disburse very slowly (~21.6s)
+                            // so the eagle and chase camera fly right past the drones while they are still disengaging from the title!
+                            const separationProgress = THREE.MathUtils.smoothstep(flight._welcomePopElapsed, 0.90, 22.5);
                             endingCtrl.setReveal(
                                 popReveal * exitDissolve,
                                 this.scene?.fog?.color,
                                 popScale,
                                 popFlash * exitDissolve,
-                                formationProgress,
+                                separationProgress,
                                 clampedDt
                             );
                         } else {

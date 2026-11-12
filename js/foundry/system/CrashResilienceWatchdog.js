@@ -408,11 +408,11 @@ export class CrashResilienceWatchdog {
                 this.slowFrameStreak++;
                 if (this.slowFrameStreak > 90 && !this.lowPowerThrottle) {
                     this.lowPowerThrottle = true;
-                    if (this.app.renderer) {
+                    if (this.app.renderer && !this.app.kioskMode) {
                         this.app.renderer.setPixelRatio(1.0);
                         this.app.renderer.setSize(window.innerWidth, window.innerHeight);
                     }
-                    console.info('[CrashResilienceWatchdog] Adaptive governor enabled 1.0x DPR under heavy load.');
+                    console.info('[CrashResilienceWatchdog] Adaptive governor enabled under heavy load.');
                 }
             } else if (this.emaFrameMs < 26.0) {
                 this.slowFrameStreak = 0;

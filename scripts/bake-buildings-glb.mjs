@@ -547,14 +547,15 @@ const server = http.createServer((req, res) => {
                             // Exercise Alternative Eagle Ending #1: Drone Swarm ("WELCOME TO CHELAN COUNTY")
                             const eagleEndingsCount = app.geeseFoundry.eagleEndings?.length || 0;
                             const droneFlight = app.geeseFoundry.spawnBaldEagleSoar('welcome-drone-swarm');
-                            const droneMidSteps = Math.round((droneFlight.totalDist * 0.66) / 0.1);
+                            const droneStepDt = 0.25;
+                            const droneMidSteps = Math.round((droneFlight.totalDist * 0.66) / droneStepDt);
                             for (let step = 0; step < droneMidSteps; step++) {
-                                app.geeseFoundry.update(0.1, false);
+                                app.geeseFoundry.update(droneStepDt, false);
                             }
                             const droneVisibleAtMid = Boolean(app.geeseFoundry.welcomeDroneSwarm?.group?.visible);
-                            const droneHighSteps = Math.round((droneFlight.totalDist * 0.90) / 0.1) - droneMidSteps;
+                            const droneHighSteps = Math.round((droneFlight.totalDist * 0.90) / droneStepDt) - droneMidSteps;
                             for (let step = 0; step < droneHighSteps; step++) {
-                                app.geeseFoundry.update(0.1, false);
+                                app.geeseFoundry.update(droneStepDt, false);
                             }
                             app._updateMigratoryBirdViewCamera(0.016, true);
                             app.camera.lookAt(app.controls.target);
@@ -563,10 +564,10 @@ const server = http.createServer((req, res) => {
                             const droneSwarmCount = app.geeseFoundry.welcomeDroneSwarm?.droneCount || 0;
                             const droneVisibleAtHighSoar = Boolean(app.geeseFoundry.welcomeDroneSwarm?.group?.visible);
                             const droneRevealAtHighSoar = Number((app.geeseFoundry.welcomeDroneSwarm?.revealFactor ?? 0).toFixed(3));
-                            const droneFormationAtHighSoar = Number((app.geeseFoundry.welcomeDroneSwarm?.formationFactor ?? 0).toFixed(3));
-                            const droneFinishSteps = Math.ceil(droneFlight.totalDist / 0.1) - droneMidSteps - droneHighSteps + 4;
+                            const droneSeparationAtHighSoar = Number((app.geeseFoundry.welcomeDroneSwarm?.separationFactor ?? 0).toFixed(3));
+                            const droneFinishSteps = Math.ceil(droneFlight.totalDist / droneStepDt) - droneMidSteps - droneHighSteps + 4;
                             for (let step = 0; step < droneFinishSteps; step++) {
-                                app.geeseFoundry.update(0.1, false);
+                                app.geeseFoundry.update(droneStepDt, false);
                             }
                             const droneHiddenAfterEnd = Boolean(
                                 app.geeseFoundry.welcomeDroneSwarm &&
@@ -574,16 +575,54 @@ const server = http.createServer((req, res) => {
                                 app.geeseFoundry.welcomeDroneSwarm.revealFactor === 0
                             );
                             if (
-                                eagleEndingsCount < 2 ||
+                                eagleEndingsCount < 3 ||
                                 droneSwarmCount < 300 ||
                                 droneVisibleAtMid ||
                                 !droneVisibleAtHighSoar ||
                                 droneRevealAtHighSoar < 0.98 ||
-                                droneFormationAtHighSoar < 0.98 ||
+                                droneSeparationAtHighSoar < 0.08 ||
+                                droneSeparationAtHighSoar > 0.55 ||
                                 !droneHiddenAfterEnd
                             ) {
                                 window.__verifyErrors.push(
-                                    'Alternative Drone Swarm Eagle Ending verification failed (endings=' + eagleEndingsCount + ', drones=' + droneSwarmCount + ', midVis=' + droneVisibleAtMid + ', highVis=' + droneVisibleAtHighSoar + ', reveal=' + droneRevealAtHighSoar + ', form=' + droneFormationAtHighSoar + ', hiddenEnd=' + droneHiddenAfterEnd + ')'
+                                    'Alternative Drone Swarm Eagle Ending verification failed (endings=' + eagleEndingsCount + ', drones=' + droneSwarmCount + ', midVis=' + droneVisibleAtMid + ', highVis=' + droneVisibleAtHighSoar + ', reveal=' + droneRevealAtHighSoar + ', sep=' + droneSeparationAtHighSoar + ', hiddenEnd=' + droneHiddenAfterEnd + ')'
+                                );
+                            }
+
+                            // Exercise Alternative Eagle Ending #2: Miss Veedol pulling "WELCOME TO CHELAN COUNTY" tow banner
+                            const veedolFlight = app.geeseFoundry.spawnBaldEagleSoar('welcome-miss-veedol');
+                            const veedolMidSteps = Math.round((veedolFlight.totalDist * 0.66) / droneStepDt);
+                            for (let step = 0; step < veedolMidSteps; step++) {
+                                app.geeseFoundry.update(droneStepDt, false);
+                            }
+                            const veedolVisibleAtMid = Boolean(app.geeseFoundry.welcomeMissVeedol?.group?.visible);
+                            const veedolHighSteps = Math.round((veedolFlight.totalDist * 0.90) / droneStepDt) - veedolMidSteps;
+                            for (let step = 0; step < veedolHighSteps; step++) {
+                                app.geeseFoundry.update(droneStepDt, false);
+                            }
+                            app._updateMigratoryBirdViewCamera(0.016, true);
+                            app.camera.lookAt(app.controls.target);
+                            app.camera.updateMatrixWorld(true);
+                            app.renderer.render(app.scene, app.camera);
+                            const veedolVisibleAtHighSoar = Boolean(app.geeseFoundry.welcomeMissVeedol?.group?.visible);
+                            const veedolRevealAtHighSoar = Number((app.geeseFoundry.welcomeMissVeedol?.revealFactor ?? 0).toFixed(3));
+                            const veedolFinishSteps = Math.ceil(veedolFlight.totalDist / droneStepDt) - veedolMidSteps - veedolHighSteps + 4;
+                            for (let step = 0; step < veedolFinishSteps; step++) {
+                                app.geeseFoundry.update(droneStepDt, false);
+                            }
+                            const veedolHiddenAfterEnd = Boolean(
+                                app.geeseFoundry.welcomeMissVeedol &&
+                                !app.geeseFoundry.welcomeMissVeedol.group.visible &&
+                                app.geeseFoundry.welcomeMissVeedol.revealFactor === 0
+                            );
+                            if (
+                                veedolVisibleAtMid ||
+                                !veedolVisibleAtHighSoar ||
+                                veedolRevealAtHighSoar < 0.98 ||
+                                !veedolHiddenAfterEnd
+                            ) {
+                                window.__verifyErrors.push(
+                                    'Alternative Miss Veedol Eagle Ending verification failed (midVis=' + veedolVisibleAtMid + ', highVis=' + veedolVisibleAtHighSoar + ', reveal=' + veedolRevealAtHighSoar + ', hiddenEnd=' + veedolHiddenAfterEnd + ')'
                                 );
                             }
 
@@ -711,6 +750,8 @@ const server = http.createServer((req, res) => {
                             );
                             const kioskEnteredOk = Boolean(
                                 app.kioskMode &&
+                                app.gpuAccelerated === true &&
+                                app._getOptimalPixelRatio(true) >= 1.0 &&
                                 document.body.classList.contains('tv-kiosk-mode') &&
                                 app.controls && app.controls.enabled === false &&
                                 app.realTimeSunEnabled === true &&
@@ -988,8 +1029,12 @@ const server = http.createServer((req, res) => {
                                         droneVisibleAtMid,
                                         droneVisibleAtHighSoar,
                                         droneRevealAtHighSoar,
-                                        droneFormationAtHighSoar,
+                                        droneSeparationAtHighSoar,
                                         droneHiddenAfterEnd,
+                                        veedolVisibleAtMid,
+                                        veedolVisibleAtHighSoar,
+                                        veedolRevealAtHighSoar,
+                                        veedolHiddenAfterEnd,
                                         autoEnteredBirdView,
                                         autoExitedOnComplete,
                                         restoredCamMatch

@@ -271,14 +271,21 @@ class ChelanCampus3DApp {
 
     _getOptimalPixelRatio(highQualityActive = false) {
         const rawDpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-        const maxDpr = highQualityActive ? 2.0 : 1.5;
-        const cappedDpr = Math.min(rawDpr, maxDpr);
         const vpW = Math.max(1, (typeof window !== 'undefined' && window.innerWidth) || 1920);
-        // On 65" 4K TVs (3840x2160 CSS or 1920x1080 @ 2x DPR), cap WebGL framebuffer width at 2880px (1620p)
-        // in Kiosk Mode so HTML/CSS signage stays native 4K razor-sharp while WebGL runs locked at 60 FPS
-        const maxFbWidth = this.kioskMode ? 2880 : 3840;
+        // Native 4K UHD (3840x2160) WebGL framebuffer resolution for 65" 4K TV Kiosk & High-Quality mode
+        const maxFbWidth = 3840;
+        if (this.kioskMode) {
+            const kioskDpr = Math.min(2.0, Math.max(rawDpr, maxFbWidth / vpW));
+            if (vpW * kioskDpr > maxFbWidth) {
+                return Math.max(1.0, maxFbWidth / vpW);
+            }
+            return kioskDpr;
+        }
+        const isHq = highQualityActive || this.gpuAccelerated || this.hdrPopEnabled;
+        const maxDpr = isHq ? 2.0 : 1.5;
+        const cappedDpr = Math.min(rawDpr, maxDpr);
         if (vpW * cappedDpr > maxFbWidth) {
-            return Math.max(0.75, maxFbWidth / vpW);
+            return Math.max(1.0, maxFbWidth / vpW);
         }
         return cappedDpr;
     }
@@ -3030,7 +3037,9 @@ class ChelanCampus3DApp {
                     titleEl.textContent = flight.group.position.y >= 104
                         ? (flight.endingId === 'welcome-drone-swarm'
                             ? 'Welcome to Chelan County • Drone Formation'
-                            : 'Welcome to Chelan County')
+                            : flight.endingId === 'welcome-miss-veedol'
+                                ? 'Welcome to Chelan County • Miss Veedol'
+                                : 'Welcome to Chelan County')
                         : 'Bald Eagle Soar';
                 }
             }
@@ -3131,7 +3140,8 @@ class ChelanCampus3DApp {
                 realTimeSunEnabled: this.realTimeSunEnabled,
                 currentHour: this.currentHour,
                 labelsChecked: Boolean(labelsToggle && labelsToggle.checked),
-                floorCutawayEnabled: this.floorCutawayEnabled
+                floorCutawayEnabled: this.floorCutawayEnabled,
+                gpuAccelerated: this.gpuAccelerated
             };
 
             // Close any open authoring/tool panels and disable interactive camera controls
@@ -3149,13 +3159,16 @@ class ChelanCampus3DApp {
                 this.controls.enabled = false;
             }
 
-            // Tune pixel ratio for locked 60 FPS on 65" 4K/1080p TVs
-            const hq = this.gpuAccelerated || this.hdrPopEnabled;
-            const pr = this._getOptimalPixelRatio(hq);
-            this.renderer.setPixelRatio(pr);
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-            if (this.lumaFoundry) {
-                this.lumaFoundry.setSize(window.innerWidth, window.innerHeight, pr);
+            // Enable full 4K UHD (3840x2160) WebGL resolution, 4096x4096 shadow maps, and max anisotropic filtering
+            if (!this.gpuAccelerated) {
+                this.setGpuAcceleration(true);
+            } else {
+                const pr = this._getOptimalPixelRatio(true);
+                this.renderer.setPixelRatio(pr);
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                if (this.lumaFoundry) {
+                    this.lumaFoundry.setSize(window.innerWidth, window.innerHeight, pr);
+                }
             }
 
             // Enable Real-Time Wenatchee Sun Lighting & live clock header
@@ -3171,7 +3184,7 @@ class ChelanCampus3DApp {
             this._enterKioskBeat(startBeatIndex || 0);
 
             if (!silent) {
-                this.announceToScreenReader('65-inch TV Kiosk Showcase Mode enabled');
+                this.announceToScreenReader('65-inch 4K TV Kiosk Showcase Mode enabled');
             }
         } else {
             if (this.followBirdViewActive) {
@@ -3192,6 +3205,9 @@ class ChelanCampus3DApp {
                 this.floorCutawayEnabled = saved.floorCutawayEnabled;
                 const labelsToggle = document.getElementById('toggle-labels');
                 if (labelsToggle) labelsToggle.checked = saved.labelsChecked;
+                if (saved.gpuAccelerated !== undefined && saved.gpuAccelerated !== this.gpuAccelerated) {
+                    this.setGpuAcceleration(saved.gpuAccelerated);
+                }
                 if (!saved.realTimeSunEnabled) {
                     this.currentHour = saved.currentHour;
                     this.setRealTimeSunEnabled(false, { silent: true });
@@ -3329,7 +3345,12 @@ class ChelanCampus3DApp {
                 const labelEl = document.getElementById('bird-view-species-label');
                 if (labelEl) {
                     const altFt = Math.round(pose.position.y / 0.3048 / 10) * 10;
-                    const endingTag = pose.endingId === 'welcome-drone-swarm' ? ' • Drone Show' : '';
+                    const endingTag =
+                        pose.endingId === 'welcome-drone-swarm'
+                            ? ' • Drone Show'
+                            : pose.endingId === 'welcome-miss-veedol'
+                                ? ' • Miss Veedol'
+                                : '';
                     const phaseTag = pose.position.y >= 95.0 ? `~${altFt} ft High Soar${endingTag}` : '~300 ft Flyover';
                     labelEl.textContent = `${pose.label} • ${phaseTag} (${formatCountdown(secLeft)})`;
                 }

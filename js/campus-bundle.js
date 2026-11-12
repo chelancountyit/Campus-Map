@@ -67713,11 +67713,11 @@ ${I}`;
           this.slowFrameStreak++;
           if (this.slowFrameStreak > 90 && !this.lowPowerThrottle) {
             this.lowPowerThrottle = true;
-            if (this.app.renderer) {
+            if (this.app.renderer && !this.app.kioskMode) {
               this.app.renderer.setPixelRatio(1);
               this.app.renderer.setSize(window.innerWidth, window.innerHeight);
             }
-            console.info("[CrashResilienceWatchdog] Adaptive governor enabled 1.0x DPR under heavy load.");
+            console.info("[CrashResilienceWatchdog] Adaptive governor enabled under heavy load.");
           }
         } else if (this.emaFrameMs < 26) {
           this.slowFrameStreak = 0;
@@ -68062,6 +68062,7 @@ uniform float uFogReveal;
       this.label = "Welcome to Chelan County \u2014 Drone Light Show";
       this.revealFactor = 0;
       this.formationFactor = 0;
+      this.separationFactor = 0;
       this.elapsedTime = 0;
       this._dummy = new Object3D();
       this._propDummy = new Object3D();
@@ -68074,68 +68075,74 @@ uniform float uFogReveal;
       this.scene.add(this.group);
     }
     /**
-     * Rasterizes "WELCOME TO" and "CHELAN COUNTY" onto an offscreen canvas grid
-     * and extracts crisp 3D drone target coordinates, scatter offsets, and LED colors.
+     * Rasterizes "WELCOME TO" and "CHELAN COUNTY" onto an offscreen canvas using
+     * pure font outlines (`strokeText` only, NO fill) and extracts larger 3D drone
+     * target coordinates, separation vectors, and LED colors.
      */
     _sampleTextDroneTargets() {
       const drones = [];
       if (typeof document === "undefined") return drones;
-      const W2 = 440;
-      const H2 = 140;
+      const W2 = 680;
+      const H2 = 220;
       const canvas = document.createElement("canvas");
       canvas.width = W2;
       canvas.height = H2;
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, W2, H2);
-      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       if ("letterSpacing" in ctx) {
+        ctx.letterSpacing = "6px";
+      }
+      ctx.lineWidth = 2.6;
+      ctx.font = '800 44px "Segoe UI", system-ui, -apple-system, sans-serif';
+      ctx.strokeText("WELCOME TO", W2 * 0.5, 56);
+      if ("letterSpacing" in ctx) {
         ctx.letterSpacing = "4px";
       }
-      ctx.font = '900 26px "Segoe UI", system-ui, -apple-system, sans-serif';
-      ctx.fillText("WELCOME TO", W2 * 0.5, 36);
-      if ("letterSpacing" in ctx) {
-        ctx.letterSpacing = "2px";
-      }
-      ctx.font = '900 44px "Segoe UI", system-ui, -apple-system, sans-serif';
-      ctx.fillText("CHELAN COUNTY", W2 * 0.5, 96);
+      ctx.lineWidth = 3;
+      ctx.font = '900 72px "Segoe UI", system-ui, -apple-system, sans-serif';
+      ctx.strokeText("CHELAN COUNTY", W2 * 0.5, 150);
       const imgData = ctx.getImageData(0, 0, W2, H2).data;
-      const spanW = 52;
-      const spanH = 16.5;
+      const spanW = 86;
+      const spanH = 28.5;
       const stepX = 2;
       const stepY = 2;
       let idx = 0;
       for (let py2 = 0; py2 < H2; py2 += stepY) {
         for (let px2 = 0; px2 < W2; px2 += stepX) {
           const alpha = imgData[(py2 * W2 + px2) * 4 + 3];
-          if (alpha < 135) continue;
+          if (alpha < 110) continue;
           const u2 = px2 / (W2 - 1) - 0.5;
           const v2 = 0.5 - py2 / (H2 - 1);
           const tx = u2 * spanW;
           const ty = v2 * spanH;
-          const isTopRow = py2 < 62;
+          const isTopRow = py2 < 96;
           const s1 = Math.sin(idx * 12.9898 + 78.233) * 43758.5453;
           const s2 = Math.sin(idx * 39.3467 + 11.135) * 24634.6345;
           const s3 = Math.sin(idx * 73.1562 + 51.719) * 19583.2417;
           const r1 = s1 - Math.floor(s1);
           const r2 = s2 - Math.floor(s2);
           const r3 = s3 - Math.floor(s3);
-          const scatterAngle = r1 * Math.PI * 2;
-          const scatterRadius = 18 + r2 * 44;
-          const sx = tx + Math.cos(scatterAngle) * scatterRadius;
-          const sy = ty + (r3 - 0.42) * 28;
-          const sz = (r1 - 0.45) * 42;
-          const tz = (r2 - 0.5) * 0.85;
+          const radialDirX = u2 >= 0 ? 1 : -1;
+          const radialAng = Math.atan2(v2 * 1.35, u2 + radialDirX * 0.08) + (r1 - 0.5) * 0.85;
+          const sepDist = 10 + r2 * 22;
+          const sx = tx + Math.cos(radialAng) * sepDist + (r3 - 0.5) * 7.5;
+          const sy = ty + Math.sin(radialAng) * (sepDist * 0.68) + (r1 - 0.38) * 9.5;
+          const sz = (r2 - 0.48) * 28;
+          const tz = (r3 - 0.5) * 0.55;
           const baseColor = new Color();
           if (isTopRow) {
-            baseColor.setHSL(0.53 + (r1 - 0.5) * 0.04, 0.92, 0.78 + r2 * 0.18);
+            baseColor.setHSL(0.53 + (r1 - 0.5) * 0.04, 0.92, 0.8 + r2 * 0.16);
           } else {
-            const gradT = MathUtils.clamp((py2 - 68) / 48, 0, 1);
+            const gradT = MathUtils.clamp((py2 - 105) / 76, 0, 1);
             baseColor.setHSL(
               MathUtils.lerp(0.14, 0.09, gradT),
               0.96,
-              MathUtils.lerp(0.84, 0.62, gradT)
+              MathUtils.lerp(0.86, 0.64, gradT)
             );
           }
           drones.push({
@@ -68145,6 +68152,8 @@ uniform float uFogReveal;
             sx,
             sy,
             sz,
+            sepDelay: r1 * 0.36,
+            // Staggered per-drone breakaway timing for slow organic title disengagement
             phase: r1 * Math.PI * 2,
             bobSpeed: 2.1 + r2 * 1.4,
             baseColor,
@@ -68328,12 +68337,14 @@ uniform float uFogReveal;
       return merged;
     }
     /**
-     * Positions the drone swarm corridor ahead of the Bald Eagle's climb trajectory
-     * so the eagle and chase camera fly directly past/through the glowing drone formation.
+     * Positions the drone swarm corridor directly on the Bald Eagle's high-altitude climb path
+     * (`along = 176m`, `y = 122.5m`, while the eagle climbs to `along = 250m`, `y = 135m`)
+     * so the eagle and chase camera fly right through and pass the drones while they are
+     * slowly disengaging from the spelled title.
      */
     placeForEagleCorridor({ cx, cz, dirX, dirZ, perpX, perpZ, exitLat = 0 }) {
-      const alongDist = 292;
-      const centerY = 124.5;
+      const alongDist = 176;
+      const centerY = 122.5;
       const wx = cx + dirX * alongDist + perpX * exitLat;
       const wz = cz + dirZ * alongDist + perpZ * exitLat;
       this.group.position.set(wx, centerY, wz);
@@ -68342,18 +68353,20 @@ uniform float uFogReveal;
       this.setReveal(0, null, 1, 0, 0, 0);
     }
     /**
-     * Updates the drone swarm convergence, hover bobbing, propeller spin, and show-light shimmer.
+     * Updates the drone swarm stroke formation, separation once seen by the camera,
+     * hover bobbing, propeller spin, and show-light shimmer.
      * @param {number} reveal - Overall visibility envelope (0..1)
      * @param {THREE.Color|null} liveFogColor - Current scene fog color
      * @param {number} popScale - Group scale multiplier
      * @param {number} popFlash - Arrival flash boost (0..1)
-     * @param {number} formationProgress - Convergence progress from scattered patrol into spelled words (0..1)
+     * @param {number} separationProgress - Separation progress from stroke words outward as camera sees & approaches (0..1)
      * @param {number} dt - Frame delta time in seconds
      */
-    setReveal(reveal, liveFogColor = null, popScale = 1, popFlash = 0, formationProgress = 1, dt = 0.016) {
+    setReveal(reveal, liveFogColor = null, popScale = 1, popFlash = 0, separationProgress = 0, dt = 0.016) {
       const clamped = MathUtils.clamp(reveal, 0, 1);
       this.revealFactor = clamped;
-      this.formationFactor = MathUtils.clamp(formationProgress, 0, 1);
+      this.separationFactor = MathUtils.clamp(separationProgress, 0, 1);
+      this.formationFactor = Number((1 - this.separationFactor).toFixed(4));
       this.elapsedTime += Math.max(0, dt);
       if (liveFogColor && liveFogColor.isColor) {
         this._fogColor.copy(liveFogColor);
@@ -68366,9 +68379,7 @@ uniform float uFogReveal;
       }
       this.group.visible = true;
       this.group.scale.setScalar(popScale);
-      const f = this.formationFactor;
-      const easedForm = f * f * f * (f * (f * 6 - 15) + 10);
-      const scatterWeight = 1 - easedForm;
+      const sepGlobal = this.separationFactor;
       const t = this.elapsedTime;
       const flashBoost = MathUtils.clamp(popFlash, 0, 1) * 0.45;
       this._frameMat.opacity = MathUtils.clamp(clamped * 0.96, 0, 1);
@@ -68376,14 +68387,16 @@ uniform float uFogReveal;
       this._propMat.opacity = MathUtils.clamp(clamped * 0.68, 0, 0.85);
       for (let i = 0; i < this.droneCount; i++) {
         const d = this.drones[i];
-        const hoverBobY = Math.sin(t * d.bobSpeed + d.phase) * (0.09 + scatterWeight * 0.35);
-        const hoverSwayX = Math.cos(t * (d.bobSpeed * 0.75) + d.phase) * (0.05 + scatterWeight * 0.28);
-        const hoverSwayZ = Math.sin(t * (d.bobSpeed * 0.82) - d.phase) * (0.07 + scatterWeight * 0.32);
-        const px2 = MathUtils.lerp(d.sx, d.tx, easedForm) + hoverSwayX;
-        const py2 = MathUtils.lerp(d.sy, d.ty, easedForm) + hoverBobY;
-        const pz2 = MathUtils.lerp(d.sz, d.tz, easedForm) + hoverSwayZ;
-        const bankZ = Math.sin(t * 2.8 + d.phase) * (0.05 + scatterWeight * 0.26);
-        const pitchX = Math.cos(t * 2.4 + d.phase) * (0.04 + scatterWeight * 0.22);
+        const localSep = MathUtils.clamp((sepGlobal - d.sepDelay) / (1 - d.sepDelay), 0, 1);
+        const easedSep = localSep * localSep * (3 - 2 * localSep);
+        const hoverBobY = Math.sin(t * d.bobSpeed + d.phase) * (0.08 + easedSep * 0.36);
+        const hoverSwayX = Math.cos(t * (d.bobSpeed * 0.75) + d.phase) * (0.04 + easedSep * 0.28);
+        const hoverSwayZ = Math.sin(t * (d.bobSpeed * 0.82) - d.phase) * (0.06 + easedSep * 0.32);
+        const px2 = MathUtils.lerp(d.tx, d.sx, easedSep) + hoverSwayX;
+        const py2 = MathUtils.lerp(d.ty, d.sy, easedSep) + hoverBobY;
+        const pz2 = MathUtils.lerp(d.tz, d.sz, easedSep) + hoverSwayZ;
+        const bankZ = Math.sin(t * 2.8 + d.phase) * (0.04 + easedSep * 0.28);
+        const pitchX = Math.cos(t * 2.4 + d.phase) * (0.03 + easedSep * 0.24);
         this._dummy.position.set(px2, py2, pz2);
         this._dummy.rotation.set(pitchX, 0, bankZ);
         this._dummy.scale.setScalar(1 + flashBoost * 0.22);
@@ -68395,7 +68408,7 @@ uniform float uFogReveal;
         this._propDummy.scale.setScalar(1);
         this._propDummy.updateMatrix();
         this.propMesh.setMatrixAt(i, this._propDummy.matrix);
-        const wave = 0.5 + 0.5 * Math.sin(t * 3.6 - d.tx * 0.18 + d.phase * 0.3);
+        const wave = 0.5 + 0.5 * Math.sin(t * 3.6 - d.tx * 0.14 + d.phase * 0.3);
         this._tmpColor.copy(d.baseColor);
         if (flashBoost > 0.01 || wave > 0.72) {
           this._tmpColor.lerp(
@@ -68410,6 +68423,419 @@ uniform float uFogReveal;
       this.propMesh.instanceMatrix.needsUpdate = true;
       if (this.beaconMesh.instanceColor) {
         this.beaconMesh.instanceColor.needsUpdate = true;
+      }
+    }
+    hide() {
+      this.setReveal(0, null, 1, 0, 0, 0);
+    }
+  };
+
+  // js/foundry/ChelanWelcomeMissVeedolEnding.js
+  var ChelanWelcomeMissVeedolEnding = class {
+    constructor(scene) {
+      this.scene = scene;
+      this.id = "welcome-miss-veedol";
+      this.label = "Welcome to Chelan County \u2014 Miss Veedol Tow Banner";
+      this.revealFactor = 0;
+      this.elapsedTime = 0;
+      this._fogColor = new Color("#0d1729");
+      this._materials = [];
+      this._bannerBasePositions = null;
+      this.group = this._buildMissVeedolAndBannerGroup();
+      this.group.visible = false;
+      this.scene.add(this.group);
+    }
+    _registerMaterial(mat, baseOpacity = 1) {
+      mat.transparent = true;
+      mat.opacity = 0;
+      mat.fog = false;
+      mat.userData = { sharedAsset: true, baseOpacity };
+      this._materials.push(mat);
+      return mat;
+    }
+    /**
+     * Builds the 3D Bellanca J-300 "Miss Veedol" monoplane + tow harness + waving aerial banner.
+     * In local `this.carryRig` coordinates:
+     *   +X = flight direction of Miss Veedol (left-to-right across the eagle's view)
+     *   +Y = up
+     *   +Z = facing toward the approaching eagle & chase camera
+     */
+    _buildMissVeedolAndBannerGroup() {
+      const root = new Group();
+      root.name = "WelcomeToChelanCountyMissVeedol";
+      this.carryRig = new Group();
+      this.carryRig.name = "MissVeedolCarryRig";
+      root.add(this.carryRig);
+      const crimsonMat = this._registerMaterial(
+        new MeshStandardMaterial({
+          color: "#b91c1c",
+          emissive: "#450a0a",
+          emissiveIntensity: 0.32,
+          roughness: 0.36,
+          metalness: 0.18
+        }),
+        1
+      );
+      const orangeWingMat = this._registerMaterial(
+        new MeshStandardMaterial({
+          color: "#ea580c",
+          emissive: "#431407",
+          emissiveIntensity: 0.28,
+          roughness: 0.4,
+          metalness: 0.14
+        }),
+        1
+      );
+      const cowlingSilverMat = this._registerMaterial(
+        new MeshStandardMaterial({
+          color: "#cbd5e1",
+          emissive: "#1e293b",
+          emissiveIntensity: 0.25,
+          roughness: 0.28,
+          metalness: 0.78
+        }),
+        1
+      );
+      const darkMetalMat = this._registerMaterial(
+        new MeshStandardMaterial({
+          color: "#1e293b",
+          roughness: 0.55,
+          metalness: 0.65
+        }),
+        1
+      );
+      const cabinGlassMat = this._registerMaterial(
+        new MeshStandardMaterial({
+          color: "#93c5fd",
+          emissive: "#1e3a8a",
+          emissiveIntensity: 0.35,
+          roughness: 0.15,
+          metalness: 0.45
+        }),
+        0.88
+      );
+      const propDiscMat = this._registerMaterial(
+        new MeshBasicMaterial({
+          color: "#e2e8f0",
+          side: DoubleSide,
+          depthWrite: false
+        }),
+        0.52
+      );
+      const towCableMat = this._registerMaterial(
+        new MeshBasicMaterial({
+          color: "#cbd5e1",
+          side: DoubleSide
+        }),
+        0.9
+      );
+      this.planeGroup = new Group();
+      this.planeGroup.name = "BellancaJ300MissVeedol";
+      this.planeGroup.position.set(22.5, 0, 0);
+      this.carryRig.add(this.planeGroup);
+      const markShared = (geo) => {
+        geo.userData = { sharedAsset: true };
+        return geo;
+      };
+      const fuseMain = new Mesh(markShared(new BoxGeometry(4.8, 1.55, 1.32)), crimsonMat);
+      fuseMain.position.set(1.2, 0, 0);
+      this.planeGroup.add(fuseMain);
+      const tailCone = new Mesh(
+        markShared(new CylinderGeometry(0.28, 0.78, 5.2, 12)),
+        crimsonMat
+      );
+      tailCone.rotation.z = Math.PI * 0.5;
+      tailCone.scale.set(1.15, 1, 0.85);
+      tailCone.position.set(-3.6, 0.12, 0);
+      this.planeGroup.add(tailCone);
+      const fuseLiveryMat = this._buildFuselageLiveryMaterial();
+      const fusePlaqueGeo = markShared(new PlaneGeometry(4.4, 0.92));
+      for (const zSide of [-0.67, 0.67]) {
+        const plaque = new Mesh(fusePlaqueGeo, fuseLiveryMat);
+        plaque.position.set(1.15, -0.08, zSide);
+        if (zSide < 0) plaque.rotation.y = Math.PI;
+        this.planeGroup.add(plaque);
+      }
+      const cabinWindshield = new Mesh(
+        markShared(new BoxGeometry(1.65, 0.72, 1.26)),
+        cabinGlassMat
+      );
+      cabinWindshield.position.set(2.35, 0.56, 0);
+      cabinWindshield.rotation.z = -0.18;
+      this.planeGroup.add(cabinWindshield);
+      const cowlRing = new Mesh(
+        markShared(new CylinderGeometry(0.86, 0.82, 1.05, 20)),
+        cowlingSilverMat
+      );
+      cowlRing.rotation.z = -Math.PI * 0.5;
+      cowlRing.position.set(4.02, 0.04, 0);
+      this.planeGroup.add(cowlRing);
+      const crankcase = new Mesh(
+        markShared(new CylinderGeometry(0.48, 0.52, 0.85, 16)),
+        darkMetalMat
+      );
+      crankcase.rotation.z = -Math.PI * 0.5;
+      crankcase.position.set(4.22, 0.04, 0);
+      this.planeGroup.add(crankcase);
+      this.propellerGroup = new Group();
+      this.propellerGroup.position.set(4.72, 0.04, 0);
+      this.planeGroup.add(this.propellerGroup);
+      const spinner = new Mesh(
+        markShared(new ConeGeometry(0.22, 0.45, 14)),
+        cowlingSilverMat
+      );
+      spinner.rotation.z = -Math.PI * 0.5;
+      spinner.position.set(0.12, 0, 0);
+      this.propellerGroup.add(spinner);
+      const blade = new Mesh(
+        markShared(new BoxGeometry(0.08, 2.75, 0.22)),
+        cowlingSilverMat
+      );
+      this.propellerGroup.add(blade);
+      const blurDisc = new Mesh(
+        markShared(new CircleGeometry(1.38, 24)),
+        propDiscMat
+      );
+      blurDisc.rotation.y = Math.PI * 0.5;
+      this.propellerGroup.add(blurDisc);
+      const mainWing = new Mesh(
+        markShared(new BoxGeometry(2.55, 0.22, 15.6)),
+        orangeWingMat
+      );
+      mainWing.position.set(1.45, 0.88, 0);
+      this.planeGroup.add(mainWing);
+      for (const zTip of [-7.8, 7.8]) {
+        const tip = new Mesh(
+          markShared(new CylinderGeometry(1.26, 1.26, 0.2, 16)),
+          crimsonMat
+        );
+        tip.position.set(1.45, 0.88, zTip);
+        this.planeGroup.add(tip);
+      }
+      for (const zSign of [-1, 1]) {
+        const strut = new Mesh(
+          markShared(new BoxGeometry(0.62, 0.09, 4.45)),
+          orangeWingMat
+        );
+        strut.position.set(1.35, 0.05, zSign * 2.55);
+        strut.rotation.x = zSign * 0.36;
+        this.planeGroup.add(strut);
+      }
+      for (const zSign of [-1, 1]) {
+        const leg = new Mesh(
+          markShared(new BoxGeometry(0.16, 1.45, 0.12)),
+          crimsonMat
+        );
+        leg.position.set(2.05, -1.15, zSign * 1.15);
+        leg.rotation.x = -zSign * 0.32;
+        this.planeGroup.add(leg);
+        const spat = new Mesh(
+          markShared(new SphereGeometry(0.46, 14, 12)),
+          crimsonMat
+        );
+        spat.scale.set(2.15, 0.88, 0.62);
+        spat.position.set(2.05, -1.82, zSign * 1.38);
+        this.planeGroup.add(spat);
+        const tire = new Mesh(
+          markShared(new CylinderGeometry(0.36, 0.36, 0.24, 16)),
+          darkMetalMat
+        );
+        tire.rotation.x = Math.PI * 0.5;
+        tire.position.set(2.05, -1.96, zSign * 1.38);
+        this.planeGroup.add(tire);
+      }
+      const hStab = new Mesh(
+        markShared(new BoxGeometry(1.45, 0.12, 4.8)),
+        orangeWingMat
+      );
+      hStab.position.set(-5.55, 0.35, 0);
+      this.planeGroup.add(hStab);
+      const vFin = new Mesh(
+        markShared(new BoxGeometry(1.65, 1.95, 0.14)),
+        crimsonMat
+      );
+      vFin.position.set(-5.65, 1.15, 0);
+      vFin.rotation.z = -0.18;
+      this.planeGroup.add(vFin);
+      for (const yBridle of [2.5, -2.5]) {
+        const dx = 16.3 - 9.5;
+        const dy = 0.2 - yBridle;
+        const cableLen = Math.hypot(dx, dy);
+        const cable = new Mesh(
+          markShared(new BoxGeometry(cableLen, 0.07, 0.07)),
+          towCableMat
+        );
+        cable.position.set(9.5 + dx * 0.5, yBridle + dy * 0.5, 0);
+        cable.rotation.z = Math.atan2(dy, dx);
+        this.carryRig.add(cable);
+      }
+      const spreaderBar = new Mesh(
+        markShared(new CylinderGeometry(0.11, 0.11, 10.6, 10)),
+        cowlingSilverMat
+      );
+      spreaderBar.position.set(9.5, 0, 0);
+      this.carryRig.add(spreaderBar);
+      const bannerW = 38;
+      const bannerH = 10.2;
+      const segsX = 36;
+      const segsY = 8;
+      this.bannerGeo = markShared(new PlaneGeometry(bannerW, bannerH, segsX, segsY));
+      const posAttr = this.bannerGeo.attributes.position;
+      this._bannerBasePositions = new Float32Array(posAttr.array.length);
+      this._bannerBasePositions.set(posAttr.array);
+      this.bannerMat = this._buildTowBannerMaterial();
+      this.bannerMesh = new Mesh(this.bannerGeo, this.bannerMat);
+      this.bannerMesh.position.set(-9.5, 0, 0);
+      this.bannerMesh.frustumCulled = false;
+      this.bannerMesh.renderOrder = 9;
+      this.carryRig.add(this.bannerMesh);
+      return root;
+    }
+    _buildFuselageLiveryMaterial() {
+      let tex = null;
+      if (typeof document !== "undefined") {
+        const canvas = document.createElement("canvas");
+        canvas.width = 512;
+        canvas.height = 128;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#b91c1c";
+        ctx.fillRect(0, 0, 512, 128);
+        ctx.strokeStyle = "#fbbf24";
+        ctx.lineWidth = 5;
+        ctx.strokeRect(8, 8, 496, 112);
+        ctx.fillStyle = "#fef3c7";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = '900 44px Georgia, "Times New Roman", serif';
+        ctx.fillText("MISS VEEDOL", 256, 52);
+        ctx.fillStyle = "#fbbf24";
+        ctx.font = '800 26px "Segoe UI", system-ui, sans-serif';
+        ctx.fillText("NR796W  \u2022  1931", 256, 96);
+        tex = new CanvasTexture(canvas);
+        tex.colorSpace = SRGBColorSpace;
+        tex.userData = { sharedAsset: true };
+      }
+      return this._registerMaterial(
+        new MeshBasicMaterial({
+          map: tex,
+          side: DoubleSide
+        }),
+        1
+      );
+    }
+    _buildTowBannerMaterial() {
+      let tex = null;
+      if (typeof document !== "undefined") {
+        const W2 = 2048;
+        const H2 = 512;
+        const canvas = document.createElement("canvas");
+        canvas.width = W2;
+        canvas.height = H2;
+        const ctx = canvas.getContext("2d");
+        const bgGrad = ctx.createLinearGradient(0, 0, W2, H2);
+        bgGrad.addColorStop(0, "#fffbeb");
+        bgGrad.addColorStop(0.5, "#fef3c7");
+        bgGrad.addColorStop(1, "#fde68a");
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, W2, H2);
+        ctx.fillStyle = "#b91c1c";
+        ctx.fillRect(0, 0, W2, 28);
+        ctx.fillRect(0, H2 - 28, W2, 28);
+        ctx.fillRect(W2 - 28, 0, 28, H2);
+        ctx.strokeStyle = "#d97706";
+        ctx.lineWidth = 6;
+        ctx.strokeRect(42, 42, W2 - 84, H2 - 84);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        if ("letterSpacing" in ctx) {
+          ctx.letterSpacing = "14px";
+        }
+        ctx.fillStyle = "#1e293b";
+        ctx.font = '800 84px "Segoe UI", system-ui, -apple-system, sans-serif';
+        ctx.fillText("WELCOME TO", W2 * 0.52, 152);
+        if ("letterSpacing" in ctx) {
+          ctx.letterSpacing = "6px";
+        }
+        ctx.lineWidth = 10;
+        ctx.strokeStyle = "#ffffff";
+        ctx.font = '900 164px Georgia, "Times New Roman", serif';
+        ctx.strokeText("CHELAN COUNTY", W2 * 0.52, 336);
+        ctx.fillStyle = "#991b1b";
+        ctx.fillText("CHELAN COUNTY", W2 * 0.52, 336);
+        tex = new CanvasTexture(canvas);
+        tex.colorSpace = SRGBColorSpace;
+        tex.anisotropy = 8;
+        tex.userData = { sharedAsset: true };
+      }
+      return this._registerMaterial(
+        new MeshBasicMaterial({
+          map: tex,
+          side: DoubleSide,
+          depthWrite: false
+        }),
+        0.98
+      );
+    }
+    /**
+     * Positions Miss Veedol and her towed banner ahead of the Bald Eagle's climb corridor.
+     */
+    placeForEagleCorridor({ cx, cz, dirX, dirZ, perpX, perpZ, exitLat = 0 }) {
+      const alongDist = 294;
+      const centerY = 125;
+      const wx = cx + dirX * alongDist + perpX * exitLat;
+      const wz = cz + dirZ * alongDist + perpZ * exitLat;
+      this.group.position.set(wx, centerY, wz);
+      this.group.rotation.set(0, Math.atan2(-dirX, -dirZ), 0);
+      this.group.scale.setScalar(1);
+      this.setReveal(0, null, 1, 0, 0, 0);
+    }
+    /**
+     * Updates Miss Veedol's cruise path, propeller spin, and sinusoidal tow-banner flutter.
+     */
+    setReveal(reveal, liveFogColor = null, popScale = 1, _popFlash = 0, _progress = 0, dt = 0.016) {
+      const clamped = MathUtils.clamp(reveal, 0, 1);
+      this.revealFactor = clamped;
+      if (liveFogColor && liveFogColor.isColor) {
+        this._fogColor.copy(liveFogColor);
+      } else if (this.scene?.fog?.color) {
+        this._fogColor.copy(this.scene.fog.color);
+      }
+      if (clamped <= 2e-3) {
+        this.group.visible = false;
+        this.elapsedTime = 0;
+        return;
+      }
+      this.elapsedTime += Math.max(0, dt);
+      this.group.visible = true;
+      this.group.scale.setScalar(popScale);
+      const t = this.elapsedTime;
+      for (let i = 0; i < this._materials.length; i++) {
+        const m = this._materials[i];
+        const baseOp = m.userData?.baseOpacity ?? 1;
+        m.opacity = MathUtils.clamp(clamped * baseOp, 0, 1);
+      }
+      const cruiseX = -18 + Math.min(t * 5.2, 44);
+      const bobY = Math.sin(t * 1.8) * 0.45;
+      this.carryRig.position.set(cruiseX, bobY, 0);
+      this.planeGroup.rotation.x = Math.sin(t * 1.4) * 0.045;
+      this.planeGroup.rotation.z = 0.02 + Math.cos(t * 1.9) * 0.02;
+      if (this.propellerGroup) {
+        this.propellerGroup.rotation.x = t * 38 % (Math.PI * 2);
+      }
+      if (this.bannerGeo && this._bannerBasePositions) {
+        const posAttr = this.bannerGeo.attributes.position;
+        const base = this._bannerBasePositions;
+        const halfW = 19;
+        for (let i = 0; i < posAttr.count; i++) {
+          const bx = base[i * 3];
+          const by = base[i * 3 + 1];
+          const u2 = MathUtils.clamp((halfW - bx) / (halfW * 2), 0, 1);
+          const flutterAmp = Math.pow(u2, 1.15) * 1.45;
+          const waveZ = Math.sin(u2 * 9.5 - t * 8.5) * flutterAmp + Math.cos(u2 * 16 - t * 13 + by * 0.25) * (flutterAmp * 0.28);
+          const waveY = Math.cos(u2 * 7 - t * 6.5) * (u2 * 0.32);
+          posAttr.setXYZ(i, bx, by + waveY, waveZ);
+        }
+        posAttr.needsUpdate = true;
       }
     }
     hide() {
@@ -68447,6 +68873,7 @@ uniform float uFogReveal;
       this._initMaterials();
       this.welcomeBillboard = new ChelanWelcomeBillboard(this.scene);
       this.welcomeDroneSwarm = new ChelanWelcomeDroneSwarmEnding(this.scene);
+      this.welcomeMissVeedol = new ChelanWelcomeMissVeedolEnding(this.scene);
       this.eagleEndings = [
         {
           id: "welcome-text",
@@ -68457,6 +68884,11 @@ uniform float uFogReveal;
           id: "welcome-drone-swarm",
           label: "Welcome to Chelan County \u2014 Drone Light Show Formation",
           controller: this.welcomeDroneSwarm
+        },
+        {
+          id: "welcome-miss-veedol",
+          label: "Welcome to Chelan County \u2014 Miss Veedol (NR796W) Tow Banner",
+          controller: this.welcomeMissVeedol
         }
       ];
       this.nextEagleEndingIndex = 0;
@@ -69759,7 +70191,7 @@ uniform float uFogReveal;
      */
     update(dt, reducedMotion = false) {
       if (reducedMotion) return;
-      const clampedDt = Math.min(dt, 0.1);
+      const clampedDt = Math.min(dt, 0.25);
       this.elapsedTime += clampedDt;
       this._updateCampusSparrowsAndDoves(clampedDt);
       this.nextSpawnCountdown -= clampedDt;
@@ -69826,14 +70258,14 @@ uniform float uFogReveal;
                 const easedBack = 1 + backC3 * uBack * uBack * uBack + backC1 * uBack * uBack;
                 const popScale = 0.72 + 0.28 * easedBack;
                 const popFlash = Math.max(0, 1 - flight._welcomePopElapsed / 0.4);
-                const exitDissolve = 1 - MathUtils.smootherstep(u2, 0.955, 0.996);
-                const formationProgress = MathUtils.clamp(flight._welcomePopElapsed / 2.6, 0, 1);
+                const exitDissolve = 1 - MathUtils.smootherstep(u2, 0.968, 0.998);
+                const separationProgress = MathUtils.smoothstep(flight._welcomePopElapsed, 0.9, 22.5);
                 endingCtrl.setReveal(
                   popReveal * exitDissolve,
                   this.scene?.fog?.color,
                   popScale,
                   popFlash * exitDissolve,
-                  formationProgress,
+                  separationProgress,
                   clampedDt
                 );
               } else {
@@ -71884,12 +72316,20 @@ uniform float uFogReveal;
     }
     _getOptimalPixelRatio(highQualityActive = false) {
       const rawDpr = typeof window !== "undefined" && window.devicePixelRatio || 1;
-      const maxDpr = highQualityActive ? 2 : 1.5;
-      const cappedDpr = Math.min(rawDpr, maxDpr);
       const vpW = Math.max(1, typeof window !== "undefined" && window.innerWidth || 1920);
-      const maxFbWidth = this.kioskMode ? 2880 : 3840;
+      const maxFbWidth = 3840;
+      if (this.kioskMode) {
+        const kioskDpr = Math.min(2, Math.max(rawDpr, maxFbWidth / vpW));
+        if (vpW * kioskDpr > maxFbWidth) {
+          return Math.max(1, maxFbWidth / vpW);
+        }
+        return kioskDpr;
+      }
+      const isHq = highQualityActive || this.gpuAccelerated || this.hdrPopEnabled;
+      const maxDpr = isHq ? 2 : 1.5;
+      const cappedDpr = Math.min(rawDpr, maxDpr);
       if (vpW * cappedDpr > maxFbWidth) {
-        return Math.max(0.75, maxFbWidth / vpW);
+        return Math.max(1, maxFbWidth / vpW);
       }
       return cappedDpr;
     }
@@ -74257,7 +74697,7 @@ uniform float uFogReveal;
         if (flight && flight.group) {
           const titleEl = document.getElementById("tv-kiosk-stage-title");
           if (titleEl) {
-            titleEl.textContent = flight.group.position.y >= 104 ? flight.endingId === "welcome-drone-swarm" ? "Welcome to Chelan County \u2022 Drone Formation" : "Welcome to Chelan County" : "Bald Eagle Soar";
+            titleEl.textContent = flight.group.position.y >= 104 ? flight.endingId === "welcome-drone-swarm" ? "Welcome to Chelan County \u2022 Drone Formation" : flight.endingId === "welcome-miss-veedol" ? "Welcome to Chelan County \u2022 Miss Veedol" : "Welcome to Chelan County" : "Bald Eagle Soar";
           }
         }
         if (this.kioskBeatElapsed > 1.5 && (!this._activeEagleFlight || !this.followBirdViewActive) || this.kioskBeatElapsed >= beat.duration) {
@@ -74339,7 +74779,8 @@ uniform float uFogReveal;
           realTimeSunEnabled: this.realTimeSunEnabled,
           currentHour: this.currentHour,
           labelsChecked: Boolean(labelsToggle && labelsToggle.checked),
-          floorCutawayEnabled: this.floorCutawayEnabled
+          floorCutawayEnabled: this.floorCutawayEnabled,
+          gpuAccelerated: this.gpuAccelerated
         };
         document.getElementById("map-tools-panel")?.classList.add("hidden");
         if (this.adaPanelOpen && this.toggleAdaPanel) this.toggleAdaPanel(false);
@@ -74354,12 +74795,15 @@ uniform float uFogReveal;
         if (this.controls) {
           this.controls.enabled = false;
         }
-        const hq = this.gpuAccelerated || this.hdrPopEnabled;
-        const pr = this._getOptimalPixelRatio(hq);
-        this.renderer.setPixelRatio(pr);
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        if (this.lumaFoundry) {
-          this.lumaFoundry.setSize(window.innerWidth, window.innerHeight, pr);
+        if (!this.gpuAccelerated) {
+          this.setGpuAcceleration(true);
+        } else {
+          const pr = this._getOptimalPixelRatio(true);
+          this.renderer.setPixelRatio(pr);
+          this.renderer.setSize(window.innerWidth, window.innerHeight);
+          if (this.lumaFoundry) {
+            this.lumaFoundry.setSize(window.innerWidth, window.innerHeight, pr);
+          }
         }
         this.setRealTimeSunEnabled(true, { silent: true });
         this._syncKioskClockUI();
@@ -74371,7 +74815,7 @@ uniform float uFogReveal;
         this.kioskPlaylist = this._buildKioskPlaylist();
         this._enterKioskBeat(startBeatIndex || 0);
         if (!silent) {
-          this.announceToScreenReader("65-inch TV Kiosk Showcase Mode enabled");
+          this.announceToScreenReader("65-inch 4K TV Kiosk Showcase Mode enabled");
         }
       } else {
         if (this.followBirdViewActive) {
@@ -74391,6 +74835,9 @@ uniform float uFogReveal;
           this.floorCutawayEnabled = saved.floorCutawayEnabled;
           const labelsToggle = document.getElementById("toggle-labels");
           if (labelsToggle) labelsToggle.checked = saved.labelsChecked;
+          if (saved.gpuAccelerated !== void 0 && saved.gpuAccelerated !== this.gpuAccelerated) {
+            this.setGpuAcceleration(saved.gpuAccelerated);
+          }
           if (!saved.realTimeSunEnabled) {
             this.currentHour = saved.currentHour;
             this.setRealTimeSunEnabled(false, { silent: true });
@@ -74498,7 +74945,7 @@ uniform float uFogReveal;
           const labelEl = document.getElementById("bird-view-species-label");
           if (labelEl) {
             const altFt = Math.round(pose.position.y / 0.3048 / 10) * 10;
-            const endingTag = pose.endingId === "welcome-drone-swarm" ? " \u2022 Drone Show" : "";
+            const endingTag = pose.endingId === "welcome-drone-swarm" ? " \u2022 Drone Show" : pose.endingId === "welcome-miss-veedol" ? " \u2022 Miss Veedol" : "";
             const phaseTag = pose.position.y >= 95 ? `~${altFt} ft High Soar${endingTag}` : "~300 ft Flyover";
             labelEl.textContent = `${pose.label} \u2022 ${phaseTag} (${formatCountdown(secLeft)})`;
           }
