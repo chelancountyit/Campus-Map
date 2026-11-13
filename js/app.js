@@ -2582,6 +2582,7 @@ class ChelanCampus3DApp {
 
         this.activeFloorFilter = floorNumOrNull === null ? null : Number(floorNumOrNull);
         this.activeDepartmentZone = this.activeFloorFilter === null ? null : (zoneId || null);
+        this.selectionRing.visible = !(this.activeFloorFilter !== null && this.floorCutawayEnabled);
 
         const splitRoadY = this.groundFoundry.getBuildingRoadHeight(this.selectedBuilding.id);
         const ty = splitRoadY !== null
@@ -3781,6 +3782,10 @@ class ChelanCampus3DApp {
         if (this.selectionRing && this.selectionRing.visible) {
             const s = 1 + Math.sin(elapsed * 3.2) * 0.04;
             this.selectionRing.scale.set(s, s, 1);
+        }
+
+        if (this.floorCutawayFoundry) {
+            this.floorCutawayFoundry.updateAnimation(elapsed, this.reducedMotion);
         }
 
         if (this.adaFoundry) {

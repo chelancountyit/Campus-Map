@@ -31,7 +31,74 @@ export class FloorCutawayFoundry {
         this._disposableTextures = [];
         this._sharedFloorTextures = null;
         this._activeFloorAxis = null;
+        this._zonePulseMeshes = [];
         this.clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1000);
+    }
+
+    /**
+     * Pulses the selected department zone outline using the same sine scale pulse
+     * (3.2 rad/s, +/-4%) as the campus building selection ring.
+     */
+    updateAnimation(elapsed, reducedMotion = false) {
+        if (this._zonePulseMeshes.length === 0) return;
+        const s = reducedMotion ? 1 : 1 + Math.sin(elapsed * 3.2) * 0.04;
+        for (const mesh of this._zonePulseMeshes) {
+            mesh.scale.set(s, 1, s);
+        }
+    }
+
+    /**
+     * Builds the glowing cyan outline (matching the building selection ring) around a selected zone.
+     * The ribbon geometry is centered on the zone centroid so scaling pulses around the zone center.
+     */
+    _addZoneSelectionPulse(poly, zoneY, zoneId) {
+        if (!Array.isArray(poly) || poly.length < 3) return;
+        const [cx, cz] = this._computePolygonCentroid(poly);
+        const half = 0.3;
+        const positions = [];
+        for (let i = 0; i < poly.length; i++) {
+            const a = poly[i];
+            const b = poly[(i + 1) % poly.length];
+            const dx = b[0] - a[0];
+            const dz = b[1] - a[1];
+            const len = Math.hypot(dx, dz);
+            if (len < 1e-6) continue;
+            const ux = dx / len;
+            const uz = dz / len;
+            const nx = -uz * half;
+            const nz = ux * half;
+            // Extend each edge by half its width so adjacent edges overlap cleanly at corners
+            const ax = a[0] - cx - ux * half;
+            const az = a[1] - cz - uz * half;
+            const bx = b[0] - cx + ux * half;
+            const bz = b[1] - cz + uz * half;
+            positions.push(
+                ax + nx, 0, az + nz,
+                ax - nx, 0, az - nz,
+                bx - nx, 0, bz - nz,
+                ax + nx, 0, az + nz,
+                bx - nx, 0, bz - nz,
+                bx + nx, 0, bz + nz
+            );
+        }
+        if (positions.length === 0) return;
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        const mat = new THREE.MeshBasicMaterial({
+            color: '#38bdf8',
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.85,
+            depthTest: false,
+            depthWrite: false
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.name = `CutawayDepartmentZonePulse_${zoneId}`;
+        mesh.position.set(cx, zoneY + 0.08, cz);
+        mesh.renderOrder = 22;
+        this.rootGroup.add(mesh);
+        this._zonePulseMeshes.push(mesh);
     }
 
     /**
@@ -178,6 +245,7 @@ export class FloorCutawayFoundry {
             if (tex && typeof tex.dispose === 'function') tex.dispose();
         }
         this._disposableTextures = [];
+        this._zonePulseMeshes = [];
 
         this.rootGroup.visible = false;
         this.activeBuildingId = null;
@@ -1273,6 +1341,7 @@ export class FloorCutawayFoundry {
             zMesh.receiveShadow = true;
             zMesh.renderOrder = 18;
             this.rootGroup.add(zMesh);
+            if (isSelectedZone) this._addZoneSelectionPulse(z.poly, zoneY, z.id);
 
             const plaqueTex = this._createZoneLabelTexture(
                 z.title,
@@ -1883,6 +1952,7 @@ export class FloorCutawayFoundry {
             qMesh.receiveShadow = true;
             qMesh.renderOrder = 18;
             this.rootGroup.add(qMesh);
+            if (isSelectedZone) this._addZoneSelectionPulse([c00, c01, c11, c10], zoneY, z.id);
 
             const plaqueTex = this._createZoneLabelTexture(z.title, z.subtitle, z.headerBg, z.borderColor, isSelectedZone);
             if (plaqueTex) {

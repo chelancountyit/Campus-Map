@@ -70375,7 +70375,82 @@ uniform float uFogReveal;
       this._disposableTextures = [];
       this._sharedFloorTextures = null;
       this._activeFloorAxis = null;
+      this._zonePulseMeshes = [];
       this.clipPlane = new Plane(new Vector3(0, -1, 0), 1e3);
+    }
+    /**
+     * Pulses the selected department zone outline using the same sine scale pulse
+     * (3.2 rad/s, +/-4%) as the campus building selection ring.
+     */
+    updateAnimation(elapsed, reducedMotion = false) {
+      if (this._zonePulseMeshes.length === 0) return;
+      const s = reducedMotion ? 1 : 1 + Math.sin(elapsed * 3.2) * 0.04;
+      for (const mesh of this._zonePulseMeshes) {
+        mesh.scale.set(s, 1, s);
+      }
+    }
+    /**
+     * Builds the glowing cyan outline (matching the building selection ring) around a selected zone.
+     * The ribbon geometry is centered on the zone centroid so scaling pulses around the zone center.
+     */
+    _addZoneSelectionPulse(poly, zoneY, zoneId) {
+      if (!Array.isArray(poly) || poly.length < 3) return;
+      const [cx, cz] = this._computePolygonCentroid(poly);
+      const half = 0.3;
+      const positions = [];
+      for (let i = 0; i < poly.length; i++) {
+        const a2 = poly[i];
+        const b2 = poly[(i + 1) % poly.length];
+        const dx = b2[0] - a2[0];
+        const dz = b2[1] - a2[1];
+        const len = Math.hypot(dx, dz);
+        if (len < 1e-6) continue;
+        const ux = dx / len;
+        const uz = dz / len;
+        const nx = -uz * half;
+        const nz = ux * half;
+        const ax = a2[0] - cx - ux * half;
+        const az = a2[1] - cz - uz * half;
+        const bx = b2[0] - cx + ux * half;
+        const bz = b2[1] - cz + uz * half;
+        positions.push(
+          ax + nx,
+          0,
+          az + nz,
+          ax - nx,
+          0,
+          az - nz,
+          bx - nx,
+          0,
+          bz - nz,
+          ax + nx,
+          0,
+          az + nz,
+          bx - nx,
+          0,
+          bz - nz,
+          bx + nx,
+          0,
+          bz + nz
+        );
+      }
+      if (positions.length === 0) return;
+      const geo = new BufferGeometry();
+      geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
+      const mat = new MeshBasicMaterial({
+        color: "#38bdf8",
+        side: DoubleSide,
+        transparent: true,
+        opacity: 0.85,
+        depthTest: false,
+        depthWrite: false
+      });
+      const mesh = new Mesh(geo, mat);
+      mesh.name = `CutawayDepartmentZonePulse_${zoneId}`;
+      mesh.position.set(cx, zoneY + 0.08, cz);
+      mesh.renderOrder = 22;
+      this.rootGroup.add(mesh);
+      this._zonePulseMeshes.push(mesh);
     }
     /**
      * Determines whether Floor 1 of a campus building is a split-level basement / walk-out
@@ -70498,6 +70573,7 @@ uniform float uFogReveal;
         if (tex && typeof tex.dispose === "function") tex.dispose();
       }
       this._disposableTextures = [];
+      this._zonePulseMeshes = [];
       this.rootGroup.visible = false;
       this.activeBuildingId = null;
       this.activeFloorNumber = null;
@@ -71434,6 +71510,7 @@ uniform float uFogReveal;
         zMesh.receiveShadow = true;
         zMesh.renderOrder = 18;
         this.rootGroup.add(zMesh);
+        if (isSelectedZone) this._addZoneSelectionPulse(z2.poly, zoneY, z2.id);
         const plaqueTex = this._createZoneLabelTexture(
           z2.title,
           z2.subtitle,
@@ -72019,6 +72096,7 @@ uniform float uFogReveal;
         qMesh.receiveShadow = true;
         qMesh.renderOrder = 18;
         this.rootGroup.add(qMesh);
+        if (isSelectedZone) this._addZoneSelectionPulse([c00, c01, c11, c10], zoneY, z2.id);
         const plaqueTex = this._createZoneLabelTexture(z2.title, z2.subtitle, z2.headerBg, z2.borderColor, isSelectedZone);
         if (plaqueTex) {
           const centerPt = bilerp((z2.s0 + z2.s1) * 0.5, (z2.t0 + z2.t1) * 0.5);
@@ -74324,6 +74402,7 @@ uniform float uFogReveal;
       if (!entry || !entry.group) return;
       this.activeFloorFilter = floorNumOrNull === null ? null : Number(floorNumOrNull);
       this.activeDepartmentZone = this.activeFloorFilter === null ? null : zoneId || null;
+      this.selectionRing.visible = !(this.activeFloorFilter !== null && this.floorCutawayEnabled);
       const splitRoadY = this.groundFoundry.getBuildingRoadHeight(this.selectedBuilding.id);
       const ty = splitRoadY !== null ? splitRoadY : this.groundFoundry.getTerrainHeight(this.selectedBuilding.center[0], this.selectedBuilding.center[1]);
       const activeBand = this.floorCutawayFoundry.setActiveFloor(
@@ -75320,6 +75399,9 @@ uniform float uFogReveal;
       if (this.selectionRing && this.selectionRing.visible) {
         const s = 1 + Math.sin(elapsed * 3.2) * 0.04;
         this.selectionRing.scale.set(s, s, 1);
+      }
+      if (this.floorCutawayFoundry) {
+        this.floorCutawayFoundry.updateAnimation(elapsed, this.reducedMotion);
       }
       if (this.adaFoundry) {
         this.watchdog.runIsolated("adaFoundry.updateAnimation", () => {
