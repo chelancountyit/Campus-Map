@@ -215,14 +215,22 @@ export function buildBuilding350Structure(arch, building, mats) {
         arch.add(midCop);
     });
 
-    // Recessed Bright White Elastomeric Roof Membrane Slab
-    const roofSlab = new THREE.Mesh(
-        new THREE.BoxGeometry(width - parapetThick * 1.8, 0.40, depth - parapetThick * 1.8),
-        whiteRoofMat
-    );
-    roofSlab.position.set(midX, 17.35, midZ);
-    roofSlab.receiveShadow = true;
-    arch.add(roofSlab);
+    // White elastomeric roof membrane laid over the top of each brick roof level (matches the other campus roofs)
+    const roofCapThick = 0.06;
+    const roofEdgeInset = 0.35;
+    [
+        { x0: minX + roofEdgeInset, x1: maxX - roofEdgeInset, z0: frontPavStartZ, z1: maxZ - roofEdgeInset, topY: 18.12 },
+        { x0: minX + roofEdgeInset, x1: maxX - roofEdgeInset, z0: minZ + roofEdgeInset, z1: rearPavEndZ, topY: 18.12 },
+        { x0: minX + washInset + roofEdgeInset, x1: maxX - roofEdgeInset, z0: rearPavEndZ, z1: frontPavStartZ, topY: 17.85 }
+    ].forEach(({ x0, x1, z0, z1, topY }) => {
+        const roofCap = new THREE.Mesh(
+            new THREE.BoxGeometry(x1 - x0, roofCapThick, z1 - z0),
+            whiteRoofMat
+        );
+        roofCap.position.set((x0 + x1) * 0.5, topY + roofCapThick * 0.5, (z0 + z1) * 0.5);
+        roofCap.receiveShadow = true;
+        arch.add(roofCap);
+    });
 
     buildRooftopEquipment(arch, midX, whiteRoofMat, terraCottaTrimMat, darkFrameMat);
 
@@ -756,7 +764,7 @@ function buildParkSideEntrancePortal(parent, sideX, bz, mats) {
 }
 
 function buildRooftopEquipment(arch, midX, whiteRoofMat, trimMat, darkMat) {
-    const roofY = 17.55;
+    const roofY = 17.91;
 
     // White-painted rooftop elevator/mechanical penthouse near front-center (visible in a2489d57.jpg)
     const pent1 = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.1, 3.6), whiteRoofMat);

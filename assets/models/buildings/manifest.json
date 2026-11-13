@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "bakedAt": "2026-11-12T06:09:18.308Z",
+  "bakedAt": "2026-11-13T06:30:49.285Z",
   "buildings": {
     "courthouse-350": {
       "file": "courthouse-350.glb",
-      "bytes": 5028064,
-      "kb": 4910.2
+      "bytes": 5029740,
+      "kb": 4911.9
     },
     "building-316": {
       "file": "building-316.glb",

@@ -29875,9 +29875,9 @@
       metalness: 0.03
     });
     const whiteRoofMat = new MeshStandardMaterial({
-      color: "#dfe3e8",
-      roughness: 0.78,
-      metalness: 0.05
+      color: "#e6dfcc",
+      roughness: 0.86,
+      metalness: 0.04
     });
     const pipeHandrailMat = new MeshStandardMaterial({
       color: "#b8c0c8",
@@ -31281,13 +31281,21 @@
       );
       arch.add(midCop);
     });
-    const roofSlab = new Mesh(
-      new BoxGeometry(width - parapetThick * 1.8, 0.4, depth - parapetThick * 1.8),
-      whiteRoofMat
-    );
-    roofSlab.position.set(midX, 17.35, midZ);
-    roofSlab.receiveShadow = true;
-    arch.add(roofSlab);
+    const roofCapThick = 0.06;
+    const roofEdgeInset = 0.35;
+    [
+      { x0: minX + roofEdgeInset, x1: maxX - roofEdgeInset, z0: frontPavStartZ, z1: maxZ - roofEdgeInset, topY: 18.12 },
+      { x0: minX + roofEdgeInset, x1: maxX - roofEdgeInset, z0: minZ + roofEdgeInset, z1: rearPavEndZ, topY: 18.12 },
+      { x0: minX + washInset + roofEdgeInset, x1: maxX - roofEdgeInset, z0: rearPavEndZ, z1: frontPavStartZ, topY: 17.85 }
+    ].forEach(({ x0, x1, z0, z1, topY }) => {
+      const roofCap = new Mesh(
+        new BoxGeometry(x1 - x0, roofCapThick, z1 - z0),
+        whiteRoofMat
+      );
+      roofCap.position.set((x0 + x1) * 0.5, topY + roofCapThick * 0.5, (z0 + z1) * 0.5);
+      roofCap.receiveShadow = true;
+      arch.add(roofCap);
+    });
     buildRooftopEquipment(arch, midX, whiteRoofMat, terraCottaTrimMat, darkFrameMat);
     const washRotY = -Math.PI * 0.5;
     const washBays = [
@@ -31693,7 +31701,7 @@
     parent.add(g);
   }
   function buildRooftopEquipment(arch, midX, whiteRoofMat, trimMat, darkMat) {
-    const roofY = 17.55;
+    const roofY = 17.91;
     const pent1 = new Mesh(new BoxGeometry(4.2, 2.1, 3.6), whiteRoofMat);
     pent1.position.set(midX - 0.8, roofY + 1.05, 16.2);
     pent1.castShadow = true;

@@ -1340,6 +1340,13 @@ class ChelanCampus3DApp {
             'courtroom-1-f4-vestibule': 'Courtroom 1',
             'county-clerk-f5-full': 'Clerk',
             'sheriff-401-f1': 'Sheriff',
+            'rjc-401-f1': 'RJC',
+            'prosecutor-401-f5': 'Prosecutor',
+            'law-library-401-f5': 'Law Library',
+            'superior-courtroom-1-401-f5': 'Courtroom 1',
+            'superior-courtroom-2-401-f5': 'Courtroom 2',
+            'superior-hearing-room-401-f5': 'Hearing Room',
+            'jury-checkin-401-f5': 'Jury Check-in',
             'rjc-401-f2': 'RJC',
             'rjc-401-f3': 'RJC',
             'rjc-401-f4': 'RJC',
@@ -2513,9 +2520,10 @@ class ChelanCampus3DApp {
                         : `F${deptFloor}`;
 
                 const row = document.createElement('div');
-                row.className = `dept-row ${isDeptActive ? 'active' : ''}`;
+                row.className = `dept-row ${d.parentZoneId ? 'dept-subrow' : ''} ${isDeptActive ? 'active' : ''}`;
                 row.dataset.floor = String(deptFloor);
                 row.dataset.zoneId = deptZoneId;
+                if (d.parentZoneId) row.dataset.parentZoneId = d.parentZoneId;
                 row.setAttribute('role', 'button');
                 row.setAttribute('tabindex', '0');
                 row.setAttribute('aria-label', `${d.name}, ${d.level}, ${d.phone}`);

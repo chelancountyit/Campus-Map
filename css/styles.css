@@ -478,6 +478,16 @@ body, html {
     box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.3);
 }
 
+.dept-row.dept-subrow {
+    margin-inline-start: 20px;
+    padding-block: 5px;
+    border-inline-start: 3px solid rgba(56, 189, 248, 0.45);
+}
+
+.dept-row.dept-subrow .dept-floor-pill {
+    display: none;
+}
+
 .dept-floor-pill {
     font-size: 0.68rem;
     font-weight: 700;

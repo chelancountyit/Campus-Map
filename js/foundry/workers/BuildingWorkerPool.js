@@ -17,7 +17,7 @@ export class BuildingWorkerPool {
         this.groundFoundry = groundFoundry;
         this.workerScriptUrl = workerScriptUrl;
         this.glbBaseUrl = './assets/models/buildings';
-        this.glbCacheVersion = '246';
+        this.glbCacheVersion = '248';
         this.useGlbFastPath = true;
         this.glbLoadedCount = 0;
 

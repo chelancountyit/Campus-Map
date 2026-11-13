@@ -697,11 +697,14 @@ export class FloorCutawayFoundry {
                 zoneId === 'courtroom-1-f4-vestibule' ||
                 zoneId === 'courtroom-2-f4-orondo' ||
                 zoneId === 'district-court-judges-f4-middle' ||
+                zoneId === 'superior-courtroom-1-401-f5' ||
+                zoneId === 'superior-courtroom-2-401-f5' ||
                 zoneId === 'superior-court-401-f5'
             ) {
                 return 'oakParquet';
             }
             if (
+                zoneId === 'rjc-401-f1' ||
                 zoneId === 'rjc-401-f2' ||
                 zoneId === 'rjc-401-f3' ||
                 zoneId === 'rjc-401-f4' ||
@@ -1294,8 +1297,8 @@ export class FloorCutawayFoundry {
 
         for (const z of zones) {
             if (!Array.isArray(z.poly) || z.poly.length < 3) continue;
-            const isSelectedZone = activeZoneId ? activeZoneId === z.id : false;
-            const hasOtherSelected = Boolean(activeZoneId && activeZoneId !== z.id);
+            const isSelectedZone = activeZoneId ? (activeZoneId === z.id || activeZoneId === z.parentId) : false;
+            const hasOtherSelected = Boolean(activeZoneId && !isSelectedZone);
             const fillOpacity = isSelectedZone ? 0.94 : (hasOtherSelected ? 0.48 : 0.86);
             const zoneTexKey = this._getFloorTextureKey(this.activeBuildingId, bandFloor, z.id);
             const zoneTex = this._getFloorTextureSet(zoneTexKey);
@@ -1343,7 +1346,7 @@ export class FloorCutawayFoundry {
             this.rootGroup.add(zMesh);
             if (isSelectedZone) this._addZoneSelectionPulse(z.poly, zoneY, z.id);
 
-            const plaqueTex = this._createZoneLabelTexture(
+            const plaqueTex = z.noPlaque ? null : this._createZoneLabelTexture(
                 z.title,
                 z.subtitle,
                 z.headerBg,
@@ -1562,92 +1565,266 @@ export class FloorCutawayFoundry {
 
     /**
      * Building 401 (`regional-jail-east` — 401 Washington St):
-     *   - Floor 1: Sheriff
+     *   - Floor 1: lengthwise halves — Washington St half RJC, other half Sheriff
      *   - Floors 2, 3, 4: RJC
-     *   - Floor 5: Superior Court
+     *   - Floor 5: Prosecutor (north wing + adjoining west corner), Washington St corner strip split
+     *     into Jury Check-in (Hearing Room end) and Law Library, Superior Courtroom 1, Superior
+     *     Courtroom 2, Hearing Room, remainder Superior Court
+     *
+     * Local frame: origin = footprint[2] (south corner), `u` runs along the long axis toward the
+     * north wing, `v` runs across the building away from Washington St (v = 0 is the Washington St wall).
      */
     _buildBuilding401DepartmentZones(innerRing, plateY, band, activeZoneId = null) {
         if (!innerRing || innerRing.length < 3) return;
         const plaquePos = [9.17, -23.46];
         const plaqueRotY = Math.atan2(0.80425, 0.59429);
 
-        let zone = null;
+        const ox = 26.32;
+        const oz = 6.53;
+        const dx = -0.7957;
+        const dz = -0.6057;
+        const rx = 0.6057;
+        const rz = -0.7957;
+        const toLocal = ([x, z]) => [(x - ox) * dx + (z - oz) * dz, (x - ox) * rx + (z - oz) * rz];
+        const toWorld = (u, v) => [ox + u * dx + v * rx, oz + u * dz + v * rz];
+
+        const rjcStyle = { fillColor: '#d97706', borderColor: '#fbbf24', headerBg: '#78350f' };
+        const zones = [];
+
         if (band.floor === 1) {
-            zone = {
-                id: 'sheriff-401-f1',
-                title: 'Sheriff',
-                subtitle: '',
-                poly: innerRing,
-                fillColor: '#1d4ed8',
-                borderColor: '#60a5fa',
-                headerBg: '#1e3a8a',
-                plaqueW: 13.0,
-                plaqueH: 3.3,
-                plaquePos,
-                plaqueRotY
-            };
-        } else if (band.floor === 2) {
-            zone = {
-                id: 'rjc-401-f2',
+            const splitD = rx * ox + rz * oz + 13.5;
+            const washingtonHalf = this._clipPolygonHalfPlane(innerRing, rx, rz, splitD);
+            const sheriffHalf = this._clipPolygonHalfPlane(innerRing, -rx, -rz, -splitD);
+            if (washingtonHalf.length >= 3) {
+                zones.push({
+                    id: 'rjc-401-f1',
+                    title: 'RJC',
+                    subtitle: '',
+                    poly: washingtonHalf,
+                    ...rjcStyle,
+                    plaqueW: 8.6,
+                    plaqueH: 2.0,
+                    plaquePos: toWorld(31.8, 6.75),
+                    plaqueRotY
+                });
+            }
+            if (sheriffHalf.length >= 3) {
+                zones.push({
+                    id: 'sheriff-401-f1',
+                    title: 'Sheriff',
+                    subtitle: '',
+                    poly: sheriffHalf,
+                    fillColor: '#1d4ed8',
+                    borderColor: '#60a5fa',
+                    headerBg: '#1e3a8a',
+                    plaqueW: 10.8,
+                    plaqueH: 2.5,
+                    plaquePos: toWorld(31.8, 20.3),
+                    plaqueRotY
+                });
+            }
+        } else if (band.floor === 2 || band.floor === 3 || band.floor === 4) {
+            zones.push({
+                id: `rjc-401-f${band.floor}`,
                 title: 'RJC',
                 subtitle: '',
                 poly: innerRing,
-                fillColor: '#d97706',
-                borderColor: '#fbbf24',
-                headerBg: '#78350f',
+                ...rjcStyle,
                 plaqueW: 11.4,
                 plaqueH: 3.3,
                 plaquePos,
                 plaqueRotY
-            };
-        } else if (band.floor === 3) {
-            zone = {
-                id: 'rjc-401-f3',
-                title: 'RJC',
-                subtitle: '',
-                poly: innerRing,
-                fillColor: '#d97706',
-                borderColor: '#fbbf24',
-                headerBg: '#78350f',
-                plaqueW: 11.4,
-                plaqueH: 3.3,
-                plaquePos,
-                plaqueRotY
-            };
-        } else if (band.floor === 4) {
-            zone = {
-                id: 'rjc-401-f4',
-                title: 'RJC',
-                subtitle: '',
-                poly: innerRing,
-                fillColor: '#d97706',
-                borderColor: '#fbbf24',
-                headerBg: '#78350f',
-                plaqueW: 11.4,
-                plaqueH: 3.3,
-                plaquePos,
-                plaqueRotY
-            };
+            });
         } else if (band.floor === 5) {
-            zone = {
-                id: 'superior-court-401-f5',
-                title: 'Superior Court',
-                subtitle: '',
-                poly: innerRing,
+            const superiorStyle = {
                 fillColor: '#6d28d9',
                 borderColor: '#c4b5fd',
-                headerBg: '#4c1d95',
-                plaqueW: 15.6,
-                plaqueH: 3.4,
-                plaquePos,
-                plaqueRotY
+                headerBg: '#4c1d95'
             };
+            if (innerRing.length !== 10) {
+                zones.push({
+                    id: 'superior-court-401-f5',
+                    title: 'Superior Court',
+                    subtitle: '',
+                    poly: innerRing,
+                    ...superiorStyle,
+                    plaqueW: 15.6,
+                    plaqueH: 3.4,
+                    plaquePos,
+                    plaqueRotY
+                });
+            } else {
+                const [uMin, vMin] = toLocal(innerRing[2]);
+                const [, vMax] = toLocal(innerRing[1]);
+                const [uJoin] = toLocal(innerRing[0]);
+                const vSplit = 6.5;
+                const lawEndU = 29.4;
+                const prosecutorStartU = 39.3;
+                // Jury Check-in occupies the Hearing Room end of the Washington St strip; its dividing line
+                // continues the Hearing Room / Courtroom 2 boundary straight across the strip
+                const courtroom2StartU = 12.5;
+
+                zones.push({
+                    id: 'jury-checkin-401-f5',
+                    title: 'Jury Check-in',
+                    subtitle: '',
+                    poly: [
+                        innerRing[2],
+                        toWorld(uMin, vSplit),
+                        toWorld(courtroom2StartU, vSplit),
+                        toWorld(courtroom2StartU, vMin)
+                    ],
+                    fillColor: '#0d9488',
+                    borderColor: '#5eead4',
+                    headerBg: '#134e4a',
+                    plaqueW: 9.6,
+                    plaqueH: 2.2,
+                    plaquePos: toWorld((uMin + courtroom2StartU) * 0.5, (vMin + vSplit) * 0.5),
+                    plaqueRotY: plaqueRotY - Math.PI / 2
+                });
+                zones.push({
+                    id: 'law-library-401-f5',
+                    title: 'Law Library',
+                    subtitle: '',
+                    poly: [
+                        toWorld(courtroom2StartU, vMin),
+                        toWorld(courtroom2StartU, vSplit),
+                        toWorld(lawEndU, vSplit),
+                        toWorld(lawEndU, vMin)
+                    ],
+                    fillColor: '#ea580c',
+                    borderColor: '#fdba74',
+                    headerBg: '#7c2d12',
+                    parentId: 'superior-court-401-f5',
+                    plaqueW: 11.6,
+                    plaqueH: 2.7,
+                    plaquePos: toWorld((courtroom2StartU + lawEndU) * 0.5, (vMin + vSplit) * 0.5),
+                    plaqueRotY: plaqueRotY - Math.PI / 2
+                });
+                zones.push({
+                    id: 'prosecutor-401-f5',
+                    title: 'Prosecutor',
+                    subtitle: '',
+                    poly: [
+                        toWorld(prosecutorStartU, vMin),
+                        toWorld(prosecutorStartU, vSplit),
+                        toWorld(uJoin, vSplit),
+                        innerRing[0],
+                        innerRing[9],
+                        innerRing[8],
+                        innerRing[7],
+                        innerRing[6],
+                        innerRing[5],
+                        innerRing[4],
+                        innerRing[3]
+                    ],
+                    fillColor: '#4c1d95',
+                    borderColor: '#a78bfa',
+                    headerBg: '#2e1065',
+                    plaqueW: 12.0,
+                    plaqueH: 2.8,
+                    plaquePos: toWorld(63.0, 24.0),
+                    plaqueRotY
+                });
+                const courtroom2EndU = courtroom2StartU + (uJoin - prosecutorStartU);
+                const hearingStartV = 14.8;
+                const centerV = (vSplit + vMax) * 0.5;
+                const courtroomStyle1 = { fillColor: '#0284c7', borderColor: '#7dd3fc', headerBg: '#0c4a6e' };
+                const courtroomStyle2 = { fillColor: '#db2777', borderColor: '#f9a8d4', headerBg: '#831843' };
+                const hearingStyle = { fillColor: '#16a34a', borderColor: '#86efac', headerBg: '#14532d' };
+
+                zones.push({
+                    id: 'superior-courtroom-1-401-f5',
+                    title: 'Courtroom 1',
+                    subtitle: '',
+                    poly: [
+                        toWorld(prosecutorStartU, vSplit),
+                        toWorld(uJoin, vSplit),
+                        toWorld(uJoin, vMax),
+                        toWorld(prosecutorStartU, vMax)
+                    ],
+                    ...courtroomStyle1,
+                    parentId: 'superior-court-401-f5',
+                    plaqueW: 12.6,
+                    plaqueH: 2.9,
+                    plaquePos: toWorld((prosecutorStartU + uJoin) * 0.5, centerV),
+                    plaqueRotY
+                });
+                zones.push({
+                    id: 'superior-courtroom-2-401-f5',
+                    title: 'Courtroom 2',
+                    subtitle: '',
+                    poly: [
+                        toWorld(courtroom2StartU, vSplit),
+                        toWorld(courtroom2EndU, vSplit),
+                        toWorld(courtroom2EndU, vMax),
+                        toWorld(courtroom2StartU, vMax)
+                    ],
+                    ...courtroomStyle2,
+                    parentId: 'superior-court-401-f5',
+                    plaqueW: 12.6,
+                    plaqueH: 2.9,
+                    plaquePos: toWorld((courtroom2StartU + courtroom2EndU) * 0.5, centerV),
+                    plaqueRotY
+                });
+                zones.push({
+                    id: 'superior-hearing-room-401-f5',
+                    title: 'Hearing Room',
+                    subtitle: '',
+                    poly: [
+                        toWorld(uMin, hearingStartV),
+                        toWorld(courtroom2StartU, hearingStartV),
+                        toWorld(courtroom2StartU, vMax),
+                        innerRing[1]
+                    ],
+                    ...hearingStyle,
+                    parentId: 'superior-court-401-f5',
+                    plaqueW: 9.6,
+                    plaqueH: 2.2,
+                    plaquePos: toWorld((uMin + courtroom2StartU) * 0.5, (hearingStartV + vMax) * 0.5),
+                    plaqueRotY
+                });
+                // Remaining Superior Court space: the band between Courtroom 2 and Courtroom 1 (plus the
+                // Washington St side strip) and the lobby between the Law Library and the Hearing Room
+                zones.push({
+                    id: 'superior-court-401-f5',
+                    title: 'Superior Court',
+                    subtitle: '',
+                    poly: [
+                        toWorld(lawEndU, vMin),
+                        toWorld(prosecutorStartU, vMin),
+                        toWorld(prosecutorStartU, vMax),
+                        toWorld(courtroom2EndU, vMax),
+                        toWorld(courtroom2EndU, vSplit),
+                        toWorld(lawEndU, vSplit)
+                    ],
+                    ...superiorStyle,
+                    plaqueW: 15.6,
+                    plaqueH: 3.4,
+                    plaquePos: toWorld((courtroom2EndU + prosecutorStartU) * 0.5, centerV),
+                    plaqueRotY
+                });
+                zones.push({
+                    id: 'superior-court-401-f5',
+                    title: 'Superior Court',
+                    subtitle: '',
+                    poly: [
+                        toWorld(uMin, vSplit),
+                        toWorld(courtroom2StartU, vSplit),
+                        toWorld(courtroom2StartU, hearingStartV),
+                        toWorld(uMin, hearingStartV)
+                    ],
+                    ...superiorStyle,
+                    noPlaque: true
+                });
+            }
         }
 
-        if (zone) {
-            this._renderPolygonDepartmentZones([zone], plateY, band.floor, activeZoneId);
+        if (zones.length > 0) {
+            this._renderPolygonDepartmentZones(zones, plateY, band.floor, activeZoneId);
         }
     }
+
 
     /**
      * Regional Justice Center West Wing Annex (`regional-jail-west` — 413–415 Washington St):

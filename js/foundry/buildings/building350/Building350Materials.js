@@ -188,11 +188,11 @@ export function createBuilding350Materials() {
         metalness: 0.03
     });
 
-    // 11. Roof Membrane & Rooftop Mechanical Materials (matched to Building 401's #dfe3e8 roofMembraneMat)
+    // 11. Roof Membrane & Rooftop Mechanical Materials (weathered dirty-white / cream elastomeric membrane)
     const whiteRoofMat = new THREE.MeshStandardMaterial({
-        color: '#dfe3e8',
-        roughness: 0.78,
-        metalness: 0.05
+        color: '#e6dfcc',
+        roughness: 0.86,
+        metalness: 0.04
     });
 
     const pipeHandrailMat = new THREE.MeshStandardMaterial({
